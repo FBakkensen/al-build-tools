@@ -75,7 +75,7 @@ if [[ ! -x "$alc_path" ]]; then
 fi
 
 # Build analyzer arguments correctly
-cmd_args=("/project:$AppDir" "/out:$output_full_path" "/packagecachepath:$package_cache_path")
+cmd_args=("/project:$AppDir" "/out:$output_full_path" "/packagecachepath:$package_cache_path" "/warnaserror")
 for analyzer_path in "${analyzer_paths[@]}"; do
     cmd_args+=("/analyzer:$analyzer_path")
 done

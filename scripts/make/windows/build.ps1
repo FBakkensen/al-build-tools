@@ -71,7 +71,7 @@ if ($analyzerPaths.Count -gt 0) {
 
 
 # Build analyzer arguments correctly
-$cmdArgs = @("/project:$ResolvedAppDir", "/out:$outputFullPath", "/packagecachepath:$packageCachePath")
+$cmdArgs = @("/project:$ResolvedAppDir", "/out:$outputFullPath", "/packagecachepath:$packageCachePath", "/warnaserror")
 if ($analyzerPaths.Count -gt 0) {
     foreach ($analyzer in $analyzerPaths) {
         $cmdArgs += "/analyzer:$analyzer"
