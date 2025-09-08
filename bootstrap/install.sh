@@ -94,7 +94,8 @@ if [[ "$downloaded" != true ]]; then
 fi
 
 # Find top-level folder name inside the tarball without extracting fully
-top=$(tar -tzf "$archive" | head -1 | cut -d/ -f1)
+first_entry=$(tar -tzf "$archive" | sed -n '1p')
+top=${first_entry%%/*}
 if [[ -z "$top" ]]; then
   print_err "Archive appears empty or unreadable."; exit 1
 fi
@@ -111,4 +112,3 @@ mkdir -p "$dest_abs"
 cp -a "$src_dir/." "$dest_abs/"
 
 echo "[al-build-tools] Copied '$source_dir' from $url@$ref into $dest_abs"
-
