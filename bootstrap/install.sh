@@ -25,6 +25,7 @@ url="$DEFAULT_URL"
 ref="$DEFAULT_REF"
 dest="$DEFAULT_DEST"
 source_dir="$DEFAULT_SOURCE"
+verbose=false
 
 print_err() { printf "[al-build-tools] %s\n" "$*" 1>&2; }
 
@@ -43,6 +44,7 @@ while [[ $# -gt 0 ]]; do
     --ref) ref="$2"; shift 2 ;;
     --dest) dest="$2"; shift 2 ;;
     --source) source_dir="$2"; shift 2 ;;
+    --verbose) verbose=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) print_err "Unknown arg: $1"; usage; exit 2 ;;
   esac
@@ -63,6 +65,7 @@ if [[ -z "$dest_abs" ]]; then
 fi
 
 echo "[al-build-tools] Installing from $url@$ref into $dest_abs (source: $source_dir)"
+if [[ "$verbose" == true ]]; then set -x; fi
 
 # Non-fatal check: is destination a git repo?
 if ! git -C "$dest_abs" rev-parse --git-dir >/dev/null 2>&1; then
@@ -92,25 +95,76 @@ for u in "${try_urls[@]}"; do
 done
 
 if [[ "$downloaded" != true ]]; then
-  print_err "Failed to download repo archive for ref '$ref' from $url."; exit 1
+  print_err "Failed to download tar archive for ref '$ref' from $url. Trying ZIP..."
+  downloaded=false
 fi
 
-# Find top-level folder name inside the tarball without extracting fully
-first_entry=$(tar -tzf "$archive" | sed -n '1p')
-top=${first_entry%%/*}
-if [[ -z "$top" ]]; then
-  print_err "Archive appears empty or unreadable."; exit 1
+src_dir=""
+if [[ "$downloaded" == true ]]; then
+  # Find top-level folder name inside the tarball without extracting fully
+  if first_entry=$(tar -tzf "$archive" 2>/dev/null | sed -n '1p'); then
+    top=${first_entry%%/*}
+  else
+    top=""
+  fi
+  if [[ -n "$top" ]]; then
+    tar -xzf "$archive" -C "$tmpdir"
+    candidate="$tmpdir/$top/$source_dir"
+    if [[ -d "$candidate" ]]; then src_dir="$candidate"; fi
+  fi
 fi
 
-# Extract and copy overlay content
-tar -xzf "$archive" -C "$tmpdir"
-src_dir="$tmpdir/$top/$source_dir"
-if [[ ! -d "$src_dir" ]]; then
-  print_err "Expected subfolder '$source_dir' not found in archive at ref '$ref'."; exit 1
+# Fallback: try ZIP archive if tar path failed
+if [[ -z "$src_dir" ]]; then
+  zipfile="$tmpdir/src.zip"
+  base="$url"
+  zurls=(
+    "$base/archive/refs/heads/$ref.zip"
+    "$base/archive/refs/tags/$ref.zip"
+    "$base/archive/$ref.zip"
+  )
+  for zu in "${zurls[@]}"; do
+    if curl -fsSL "$zu" -o "$zipfile"; then
+      if command -v unzip >/dev/null 2>&1; then
+        mkdir -p "$tmpdir/z" && unzip -q "$zipfile" -d "$tmpdir/z"
+      else
+        # Minimal Python fallback for unzip
+        if command -v python3 >/dev/null 2>&1; then
+python3 - <<PY
+import sys, zipfile, os
+zf = zipfile.ZipFile("$zipfile")
+out = "$tmpdir/z"
+os.makedirs(out, exist_ok=True)
+zf.extractall(out)
+PY
+        else
+          print_err "Need 'unzip' or 'python3' to extract ZIP fallback."; exit 1
+        fi
+      fi
+      topdir=$(find "$tmpdir/z" -mindepth 1 -maxdepth 1 -type d | head -n1)
+      candidate="$topdir/$source_dir"
+      if [[ -d "$candidate" ]]; then src_dir="$candidate"; break; fi
+    fi
+  done
+fi
+
+# Last-chance: try to locate the source dir anywhere under extraction
+if [[ -z "$src_dir" ]]; then
+  alt=$(find "$tmpdir" -maxdepth 3 -type d -name "$source_dir" | head -n1 || true)
+  if [[ -n "$alt" ]]; then src_dir="$alt"; fi
+fi
+
+if [[ -z "$src_dir" ]]; then
+  print_err "Could not locate '$source_dir' in downloaded archive(s) for ref '$ref'."; exit 1
 fi
 
 mkdir -p "$dest_abs"
 # Robust copy including dotfiles (e.g., .github): tar stream from src -> dest
 tar -C "$src_dir" -cf - . | tar -C "$dest_abs" -xpf -
+
+if [[ "$verbose" == true ]]; then
+  echo "[al-build-tools] Copied contents from: $src_dir"
+  (set +x; ls -la "$dest_abs" || true)
+fi
 
 echo "[al-build-tools] Copied '$source_dir' from $url@$ref into $dest_abs"
