@@ -5,7 +5,15 @@
 # =============================================================================
 # App Directory Configuration
 # =============================================================================
-APP_DIR := .
+APP_DIR := app
+
+# =============================================================================
+# Build Options (tweak as needed)
+# =============================================================================
+# Treat AL compiler warnings as errors (1 to enable, 0 to disable)
+WARN_AS_ERROR ?= 1
+# Export so scripts inherit this setting on all platforms
+export WARN_AS_ERROR
 
 # =============================================================================
 # Platform Detection
@@ -13,7 +21,7 @@ APP_DIR := .
 ifeq ($(OS),Windows_NT)
 	PLATFORM := windows
 	SCRIPT_EXT := .ps1
-	SCRIPT_CMD := pwsh.exe -NoProfile -ExecutionPolicy Bypass -File
+	SCRIPT_CMD := powershell -NoProfile -ExecutionPolicy Bypass -File
 else
 	PLATFORM := linux
 	SCRIPT_EXT := .sh
@@ -41,10 +49,13 @@ help:
 	@echo "  help          - Show this help message"
 	@echo ""
 	@echo "Platform: $(PLATFORM)"
+	@echo ""
+	@echo "Options (set in Makefile):"
+	@echo "  WARN_AS_ERROR=$(WARN_AS_ERROR)   Treat warnings as errors (/warnaserror+)"
 
 # Build target - main compilation
 build:
-	$(SCRIPT_CMD) scripts/make/$(PLATFORM)/build$(SCRIPT_EXT) $(APP_DIR) | tee build.log
+	$(SCRIPT_CMD) scripts/make/$(PLATFORM)/build$(SCRIPT_EXT) $(APP_DIR)
 
 # Clean build artifacts
 clean:

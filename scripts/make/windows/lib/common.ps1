@@ -52,23 +52,38 @@ function Write-ErrorAndExit {
 
 # Discover AL compiler (alc.exe) in VS Code extensions
 function Get-HighestVersionALExtension {
-    $alExtDir = Join-Path $env:USERPROFILE ".vscode\extensions"
-    if (-not (Test-Path $alExtDir)) { return $null }
-    $alExts = Get-ChildItem -Path $alExtDir -Filter "ms-dynamics-smb.al-*" -ErrorAction SilentlyContinue
-    if (-not $alExts -or $alExts.Count -eq 0) { return $null }
+    # Search multiple VS Code roots: stable, insiders, local/server variants
+    $roots = @(
+        (Join-Path $env:USERPROFILE ".vscode\extensions"),
+        (Join-Path $env:USERPROFILE ".vscode-insiders\extensions"),
+        (Join-Path $env:USERPROFILE ".vscode-server\extensions"),
+        (Join-Path $env:USERPROFILE ".vscode-server-insiders\extensions")
+    )
+    $candidates = @()
+    foreach ($root in $roots) {
+        if (-not (Test-Path $root)) { continue }
+        $items = Get-ChildItem -Path $root -Filter "ms-dynamics-smb.al-*" -ErrorAction SilentlyContinue
+        if ($items) { $candidates += $items }
+    }
+    if (-not $candidates -or $candidates.Count -eq 0) { return $null }
+
     $parseVersion = {
         param($name)
-        if ($name -match "ms-dynamics-smb\.al-(\d+\.\d+\.\d+)") {
+        # Extract numeric prefix; tolerate suffixes like -preview
+        if ($name -match "ms-dynamics-smb\.al-([0-9]+(\.[0-9]+)*)") {
             return [version]$matches[1]
         } else {
             return [version]"0.0.0"
         }
     }
-    $alExtsWithVersion = $alExts | ForEach-Object {
+
+    $withVersion = $candidates | ForEach-Object {
         $ver = & $parseVersion $_.Name
-        [PSCustomObject]@{ Ext = $_; Version = $ver }
+        $isInsiders = if ($_.FullName -match 'insiders') { 1 } else { 0 }
+        [PSCustomObject]@{ Ext = $_; Version = $ver; Insiders = $isInsiders }
     }
-    $highest = $alExtsWithVersion | Sort-Object Version -Descending | Select-Object -First 1
+    # Prefer Insiders when versions are equal
+    $highest = $withVersion | Sort-Object -Property Version, Insiders -Descending | Select-Object -First 1
     if ($highest) { return $highest.Ext } else { return $null }
 }
 
@@ -92,11 +107,12 @@ function Get-EnabledAnalyzerPaths {
                  'PerTenantExtensionCop' = 'Microsoft.Dynamics.Nav.PerTenantExtensionCop.dll' }
     $supported = @('CodeCop','UICop','AppSourceCop','PerTenantExtensionCop')
     $enabled = @()
+
     if ($settingsPath -and (Test-Path $settingsPath)) {
         try {
             $json = Get-Content $settingsPath -Raw | ConvertFrom-Json
             if ($json.'al.codeAnalyzers') {
-                $enabled = $json.'al.codeAnalyzers' | ForEach-Object { $_ -replace '\$\{|\}', '' }
+                $enabled = @($json.'al.codeAnalyzers')
             } elseif ($json.enableCodeCop -or $json.enableUICop -or $json.enableAppSourceCop -or $json.enablePerTenantExtensionCop) {
                 if ($json.enableCodeCop) { $enabled += 'CodeCop' }
                 if ($json.enableUICop) { $enabled += 'UICop' }
@@ -108,19 +124,70 @@ function Get-EnabledAnalyzerPaths {
     if (-not $enabled -or $enabled.Count -eq 0) {
         $enabled = @('CodeCop','UICop')
     }
-    # Filter and deduplicate
-    $enabled = $enabled | Where-Object { $supported -contains $_ } | Select-Object -Unique
+
     $alExt = Get-HighestVersionALExtension
-    $dllPaths = @()
-    if ($alExt) {
-        foreach ($name in $enabled) {
-            $dll = $dllMap[$name]
-            if ($dll) {
-                $found = Get-ChildItem -Path $alExt.FullName -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($found) {
-                    $dllPaths += $found.FullName
+    $workspaceRoot = (Get-Location).Path
+    $appFull = try { (Resolve-Path $AppDir -ErrorAction Stop).Path } catch { Join-Path $workspaceRoot $AppDir }
+    $analyzersDir = if ($alExt) { Join-Path $alExt.FullName 'bin/Analyzers' } else { $null }
+
+    function Resolve-AnalyzerEntry {
+        param([string]$Entry)
+        $val = $Entry
+        if ($null -eq $val) { return @() }
+        # Token-aware join when a token is concatenated with a filename
+        if ($val -match '^\$\{analyzerFolder\}(.*)$' -and $analyzersDir) {
+            $tail = $matches[1]
+            if ($tail -and $tail[0] -notin @('\\','/')) { $val = Join-Path $analyzersDir $tail }
+            else { $val = "$analyzersDir$tail" }
+        }
+        if ($val -match '^\$\{alExtensionPath\}(.*)$' -and $alExt) {
+            $tail2 = $matches[1]
+            if ($tail2 -and $tail2[0] -notin @('\\','/')) { $val = Join-Path $alExt.FullName $tail2 }
+            else { $val = "$($alExt.FullName)$tail2" }
+        }
+        # Placeholder expansion
+        if ($alExt) {
+            $val = $val.Replace('${alExtensionPath}', $alExt.FullName)
+            $val = $val.Replace('${analyzerFolder}', $analyzersDir)
+        }
+        $val = $val.Replace('${workspaceFolder}', $workspaceRoot)
+        $val = $val.Replace('${workspaceRoot}', $workspaceRoot)
+        $val = $val.Replace('${appDir}', $appFull)
+        # Strip remaining ${}
+        $val = [regex]::Replace($val, '\$\{([^}]+)\}', '$1')
+        # Expand env vars and ~
+        $val = [Environment]::ExpandEnvironmentVariables($val)
+        if ($val.StartsWith('~')) { $val = $val -replace '^~', $env:USERPROFILE }
+        # Make absolute if relative
+        if (-not [IO.Path]::IsPathRooted($val)) { $val = Join-Path $workspaceRoot $val }
+
+        # Directory => *.dll inside
+        if (Test-Path $val -PathType Container) {
+            return Get-ChildItem -Path $val -Filter '*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+        }
+        # Wildcards
+        if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($val)) {
+            return Get-ChildItem -Path $val -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+        }
+        # File exists
+        if (Test-Path $val -PathType Leaf) { return @($val) }
+        return @()
+    }
+
+    $dllPaths = New-Object System.Collections.Generic.List[string]
+    foreach ($item in $enabled) {
+        $name = ($item | Out-String).Trim()
+        if ($name -match '^\$\{([A-Za-z]+)\}$') { $name = $matches[1] }
+        if ($supported -contains $name) {
+            if ($alExt) {
+                $dll = $dllMap[$name]
+                if ($dll) {
+                    $found = Get-ChildItem -Path $alExt.FullName -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1
+                    if ($found) { $dllPaths.Add($found.FullName) }
                 }
             }
+        } else {
+            (Resolve-AnalyzerEntry -Entry $name) | ForEach-Object { if ($_ -and -not $dllPaths.Contains($_)) { $dllPaths.Add($_) } }
         }
     }
     return $dllPaths

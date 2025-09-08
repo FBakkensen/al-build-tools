@@ -62,8 +62,6 @@ get_enabled_analyzer() {
         first_analyzer=$(jq -r '.["al.codeAnalyzers"][0] // empty' "$settings_path" 2>/dev/null)
         
         if [[ -n "$first_analyzer" && "$first_analyzer" != "null" ]]; then
-            # Remove ${} wrapper
-            first_analyzer=$(echo "$first_analyzer" | sed 's/\${//g; s/}//g')
             echo "$first_analyzer"
             return
         fi
@@ -88,9 +86,7 @@ get_enabled_analyzers() {
         analyzers_json=$(jq -r '.["al.codeAnalyzers"] // empty' "$settings_path" 2>/dev/null)
         
         if [[ -n "$analyzers_json" && "$analyzers_json" != "null" ]]; then
-            # Parse array and remove ${} wrapper
             while IFS= read -r analyzer; do
-                analyzer=$(echo "$analyzer" | sed 's/\${//g; s/}//g')
                 analyzers+=("$analyzer")
             done < <(echo "$analyzers_json" | jq -r '.[]' 2>/dev/null)
         fi

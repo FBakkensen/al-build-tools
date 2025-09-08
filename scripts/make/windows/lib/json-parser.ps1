@@ -24,11 +24,24 @@ function Get-SettingsJsonObject {
     }
 }
 
+function Get-EnabledAnalyzer {
+    param([string]$AppDir)
+    $settings = Get-SettingsJsonObject $AppDir
+    if ($settings -and $settings.'al.codeAnalyzers') {
+        # Return the first analyzer only (singular)
+        $analyzers = $settings.'al.codeAnalyzers'
+        if ($analyzers.Count -gt 0) { return $analyzers[0] }
+        else { return 'CodeCop' }
+    } else {
+        return 'CodeCop'
+    }
+}
+
 function Get-EnabledAnalyzers {
     param([string]$AppDir)
     $settings = Get-SettingsJsonObject $AppDir
     if ($settings -and $settings.'al.codeAnalyzers') {
-        return $settings.'al.codeAnalyzers' | ForEach-Object { $_.Replace('$${','').Replace('}','') }
+        return $settings.'al.codeAnalyzers'
     } else {
         return @('CodeCop','UICop')
     }

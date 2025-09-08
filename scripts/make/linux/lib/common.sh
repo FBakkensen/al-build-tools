@@ -89,52 +89,160 @@ write_error_and_exit() {
 # Find the highest version AL extension - equivalent to Get-HighestVersionALExtension
 # Returns the path to the highest version AL extension directory
 get_highest_version_al_extension() {
-    local al_ext_locations=(
+    # Search across common VS Code roots (stable, insiders, local, remote)
+    local al_ext_roots=(
         "$HOME/.vscode/extensions"
         "$HOME/.vscode-server/extensions"
+        "$HOME/.vscode-insiders/extensions"
+        "$HOME/.vscode-server-insiders/extensions"
     )
-    
-    local highest_path=""
-    local highest_version="0.0.0"
-    
-    for location in "${al_ext_locations[@]}"; do
-        if [[ -d "$location" ]]; then
-            for ext_dir in "$location"/ms-dynamics-smb.al-*; do
-                if [[ -d "$ext_dir" ]]; then
-                    local dir_name
-                    dir_name=$(basename "$ext_dir")
-                    if [[ $dir_name =~ ms-dynamics-smb\.al-([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-                        local version="${BASH_REMATCH[1]}"
-                        # Simple version comparison (works for most cases)
-                        if [[ $(printf '%s\n' "$version" "$highest_version" | sort -V | tail -n1) == "$version" && "$version" != "$highest_version" ]]; then
-                            highest_version="$version"
-                            highest_path="$ext_dir"
-                        fi
-                    fi
-                fi
-            done
-        fi
+
+    local best_path=""
+    local best_version="0.0.0"
+
+    for root in "${al_ext_roots[@]}"; do
+        [[ -d "$root" ]] || continue
+
+        # Collect candidate extension folders
+        shopt -s nullglob
+        local candidates=("$root"/ms-dynamics-smb.al-*)
+        shopt -u nullglob
+        [[ ${#candidates[@]} -gt 0 ]] || continue
+
+        # Build list of version|path pairs for sorting and comparison
+        local lines=""
+        local ext base ver
+        for ext in "${candidates[@]}"; do
+            [[ -d "$ext" ]] || continue
+            base=$(basename "$ext")
+            # Extract numeric version after prefix, strip any suffix (e.g., -preview)
+            ver=${base#ms-dynamics-smb.al-}
+            ver=$(echo "$ver" | sed -E 's/^([0-9]+(\.[0-9]+)*)[A-Za-z0-9.-]*/\1/')
+            [[ -n "$ver" ]] || ver="0.0.0"
+            lines+="$ver|$ext\n"
+        done
+
+        # Compare against current best
+        local version path
+        while IFS='|' read -r version path; do
+            [[ -n "$path" ]] || continue
+            if [[ $(printf '%s\n' "$version" "$best_version" | sort -V | tail -n1) == "$version" && "$version" != "$best_version" ]]; then
+                best_version="$version"
+                best_path="$path"
+            fi
+        done < <(printf "%b" "$lines")
     done
-    
-    echo "$highest_path"
+
+    # Fallback: derive extension root from discovered compiler path if possible
+    if [[ -z "$best_path" ]]; then
+        local alc
+        alc=$(get_al_compiler_path "")
+        if [[ -n "$alc" ]]; then
+            # Expect structure: <ext>/bin/<linux-*>/alc
+            best_path=$(dirname "$(dirname "$(dirname "$alc")")")
+        fi
+    fi
+
+    echo "$best_path"
 }
 
 # Function: get_al_compiler_path
-# Discover AL compiler path - equivalent to Get-ALCompilerPath
-# Returns the path to alc binary or empty if not found
+# Discover AL compiler path robustly across VS Code variants and layouts
+# Search order:
+#   1) Respect explicit `ALC_PATH` env var if executable
+#   2) Look in common extension roots for highest ms-dynamics-smb.al-* version
+#      and prefer bin/linux-<arch>/alc, then bin/linux/alc, then any */linux*/alc
+#   3) Fallback to any 'alc' under the extension folder
+#   4) Final fallback: if 'alc' is on PATH
 get_al_compiler_path() {
     local app_dir="$1"
-    local al_ext_path
-    al_ext_path=$(get_highest_version_al_extension)
-    
-    if [[ -n "$al_ext_path" ]]; then
-        local alc_path="${al_ext_path}/bin/linux/alc"
-        if [[ -f "$alc_path" ]]; then
-            echo "$alc_path"
-            return
-        fi
+
+    # 1) Direct override via env var
+    if [[ -n "$ALC_PATH" && -f "$ALC_PATH" ]]; then
+        echo "$ALC_PATH"
+        return
     fi
-    
+
+    # Determine preferred linux folder based on architecture
+    local arch
+    arch=$(uname -m 2>/dev/null || echo "")
+    local preferred_linux=""
+    case "$arch" in
+        x86_64|amd64) preferred_linux="linux-x64" ;;
+        aarch64|arm64) preferred_linux="linux-arm64" ;;
+        *) preferred_linux="" ;;
+    esac
+
+    # 2) Search common VS Code extension roots
+    local al_ext_roots=(
+        "$HOME/.vscode/extensions"
+        "$HOME/.vscode-server/extensions"
+        "$HOME/.vscode-insiders/extensions"
+        "$HOME/.vscode-server-insiders/extensions"
+    )
+
+    for root in "${al_ext_roots[@]}"; do
+        [[ -d "$root" ]] || continue
+
+        # Collect candidate extension folders
+        local candidates=()
+        shopt -s nullglob
+        candidates=("$root"/ms-dynamics-smb.al-*)
+        shopt -u nullglob
+        [[ ${#candidates[@]} -gt 0 ]] || continue
+
+        # Build a version-sorted list (desc) of candidates
+        local lines=""
+        local ext base ver
+        for ext in "${candidates[@]}"; do
+            [[ -d "$ext" ]] || continue
+            base=$(basename "$ext")
+            # Extract numeric version prefix after ms-dynamics-smb.al-
+            ver=${base#ms-dynamics-smb.al-}
+            ver=$(echo "$ver" | sed -E 's/^([0-9]+(\.[0-9]+)*)[A-Za-z0-9.-]*/\1/')
+            [[ -n "$ver" ]] || ver="0.0.0"
+            lines+="$ver|$ext\n"
+        done
+
+        # Iterate in descending version order
+        local pair version path
+        while IFS='|' read -r version path; do
+            [[ -n "$path" ]] || continue
+
+            # Prefer bin/linux-<arch>/alc if present
+            if [[ -n "$preferred_linux" && -f "$path/bin/$preferred_linux/alc" ]]; then
+                echo "$path/bin/$preferred_linux/alc"
+                return
+            fi
+            # Next try legacy bin/linux/alc
+            if [[ -f "$path/bin/linux/alc" ]]; then
+                echo "$path/bin/linux/alc"
+                return
+            fi
+            # Next try any bin/*linux*/alc
+            shopt -s nullglob
+            local matches=("$path/bin/"*linux*/alc)
+            shopt -u nullglob
+            if [[ ${#matches[@]} -gt 0 && -f "${matches[0]}" ]]; then
+                echo "${matches[0]}"
+                return
+            fi
+            # Fallback: any 'alc' under the extension
+            local any_alc
+            any_alc=$(find "$path" -type f -name alc 2>/dev/null | head -n 1)
+            if [[ -n "$any_alc" ]]; then
+                echo "$any_alc"
+                return
+            fi
+        done < <(printf "%b" "$lines" | sort -t'|' -k1,1V -r)
+    done
+
+    # 4) Final fallback: check PATH
+    if command -v alc &>/dev/null; then
+        command -v alc
+        return
+    fi
+
     echo ""
 }
 
@@ -161,13 +269,22 @@ get_enabled_analyzer_paths() {
     if [[ -n "$settings_path" && -f "$settings_path" && -n "$(command -v jq)" ]]; then
         local analyzers_json
         analyzers_json=$(jq -r '.["al.codeAnalyzers"] // empty' "$settings_path" 2>/dev/null)
-        
         if [[ -n "$analyzers_json" && "$analyzers_json" != "null" ]]; then
-            # Parse array and remove ${} wrapper
             while IFS= read -r analyzer; do
-                analyzer=$(echo "$analyzer" | sed 's/\${//g; s/}//g')
                 enabled+=("$analyzer")
             done < <(echo "$analyzers_json" | jq -r '.[]' 2>/dev/null)
+        fi
+        # Back-compat flags
+        if [[ ${#enabled[@]} -eq 0 ]]; then
+            local flags
+            flags=$(jq -r '[.enableCodeCop, .enableUICop, .enableAppSourceCop, .enablePerTenantExtensionCop] | @tsv' "$settings_path" 2>/dev/null)
+            if [[ -n "$flags" ]]; then
+                IFS=$'\t' read -r f1 f2 f3 f4 <<< "$flags"
+                [[ "$f1" == "true" ]] && enabled+=("CodeCop")
+                [[ "$f2" == "true" ]] && enabled+=("UICop")
+                [[ "$f3" == "true" ]] && enabled+=("AppSourceCop")
+                [[ "$f4" == "true" ]] && enabled+=("PerTenantExtensionCop")
+            fi
         fi
     fi
     
@@ -176,34 +293,109 @@ get_enabled_analyzer_paths() {
         enabled=("CodeCop" "UICop")
     fi
     
-    # Filter to supported analyzers and find DLL paths
+    # Helper: resolve placeholders in custom entries
+    local resolve_entry
+    resolve_entry() {
+        local raw="$1"
+        local app_dir="$2"
+        local ext_path="$3"
+        local workspace_root
+        workspace_root=$(pwd)
+
+        local value="$raw"
+        # Resolve common VS Code-like placeholders
+        local analyzers_dir="$ext_path/bin/Analyzers"
+
+        # Token-aware joins to handle "${token}File.dll" without a slash
+        if [[ "$value" =~ ^\$\{analyzerFolder\}(.*)$ ]]; then
+            local tail="${BASH_REMATCH[1]}"
+            if [[ -n "$tail" && "$tail" != /* ]]; then value="$analyzers_dir/$tail"; else value="$analyzers_dir$tail"; fi
+        fi
+        if [[ "$value" =~ ^\$\{alExtensionPath\}(.*)$ ]]; then
+            local tail2="${BASH_REMATCH[1]}"
+            if [[ -n "$tail2" && "$tail2" != /* ]]; then value="$ext_path/$tail2"; else value="$ext_path$tail2"; fi
+        fi
+
+        # Simple replacements for other tokens
+        value=${value//\${workspaceFolder\}/$workspace_root}
+        value=${value//\${workspaceRoot\}/$workspace_root}
+        value=${value//\${appDir\}/$app_dir}
+
+        # Remove any remaining ${} braces without replacing the content
+        value=$(echo "$value" | sed 's/\${\([^}]*\)}/\1/g')
+
+        # Expand ~ and environment variables
+        value=$(eval echo "$value")
+
+        # If relative, make absolute relative to workspace root
+        if [[ "$value" != /* ]]; then
+            value="$workspace_root/$value"
+        fi
+
+        # If directory, include all dlls inside
+        if [[ -d "$value" ]]; then
+            find "$value" -maxdepth 1 -type f -name '*.dll' 2>/dev/null
+            return
+        fi
+        # If contains wildcard, expand
+        if [[ "$value" == *'*'* ]]; then
+            compgen -G "$value" || true
+            return
+        fi
+        # If file exists, echo it
+        if [[ -f "$value" ]]; then
+            echo "$value"
+        fi
+    }
+
+    # Build final DLL path list
     local al_ext_path
     al_ext_path=$(get_highest_version_al_extension)
-    local dll_paths=()
-    
-    if [[ -n "$al_ext_path" ]]; then
-        for analyzer in "${enabled[@]}"; do
-            # Check if analyzer is supported
-            local is_supported=false
-            for supported_analyzer in "${supported[@]}"; do
-                if [[ "$analyzer" == "$supported_analyzer" ]]; then
-                    is_supported=true
-                    break
-                fi
-            done
-            
-            if [[ "$is_supported" == true ]]; then
-                local dll="${dll_map[$analyzer]}"
-                if [[ -n "$dll" ]]; then
-                    local dll_path
-                    dll_path=$(find "$al_ext_path" -name "$dll" -type f 2>/dev/null | head -1)
-                    if [[ -n "$dll_path" ]]; then
-                        dll_paths+=("$dll_path")
-                    fi
-                fi
+    local out_paths=()
+
+    for analyzer in "${enabled[@]}"; do
+        # Strip quotes and whitespace
+        analyzer=$(echo "$analyzer" | sed 's/^\s*\"\?//; s/\"\?\s*$//')
+        # If form is ${Name}, unwrap to Name for known analyzers
+        if [[ $analyzer =~ ^\$\{([A-Za-z]+)\}$ ]]; then
+            analyzer="${BASH_REMATCH[1]}"
+        fi
+        # Known analyzers by name
+        local is_supported=false
+        for supported_analyzer in "${supported[@]}"; do
+            if [[ "$analyzer" == "$supported_analyzer" ]]; then
+                is_supported=true
+                break
             fi
         done
-    fi
-    
-    printf '%s\n' "${dll_paths[@]}"
+        if [[ "$is_supported" == true && -n "$al_ext_path" ]]; then
+            local dll="${dll_map[$analyzer]}"
+            if [[ -n "$dll" ]]; then
+                local dll_path
+                dll_path=$(find "$al_ext_path" -type f -name "$dll" 2>/dev/null | head -1)
+                if [[ -n "$dll_path" ]]; then
+                    out_paths+=("$dll_path")
+                fi
+            fi
+            continue
+        fi
+
+        # Otherwise treat as path expression
+        while IFS= read -r resolved; do
+            [[ -n "$resolved" ]] && out_paths+=("$resolved")
+        done < <(resolve_entry "$analyzer" "$app_dir" "$al_ext_path")
+    done
+
+    # Deduplicate while preserving order
+    declare -A seen
+    local unique=()
+    local p
+    for p in "${out_paths[@]}"; do
+        if [[ -n "$p" && -z "${seen[$p]}" ]]; then
+            seen[$p]=1
+            unique+=("$p")
+        fi
+    done
+
+    printf '%s\n' "${unique[@]}"
 }
