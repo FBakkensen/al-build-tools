@@ -1,4 +1,10 @@
 #requires -Version 7.0
+param(
+    [string]$Url = 'https://github.com/FBakkensen/al-build-tools',
+    [string]$Ref = 'main',
+    [string]$Dest = '.',
+    [string]$Source = 'overlay'
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -10,10 +16,10 @@ function Write-Step($n, $msg) { Write-Host ("[{0}] {1}" -f $n, $msg) }
 function Install-AlBuildTools {
     [CmdletBinding()]
     param(
-        [string]$Url = 'https://github.com/FBakkensen/al-build-tools',
-        [string]$Ref = 'main',
-        [string]$Dest = '.',
-        [string]$Source = 'overlay'
+        [Parameter(Mandatory=$true)][string]$Url,
+        [Parameter(Mandatory=$true)][string]$Ref,
+        [Parameter(Mandatory=$true)][string]$Dest,
+        [Parameter(Mandatory=$true)][string]$Source
     )
 
     $step = 0
@@ -95,5 +101,7 @@ function Install-AlBuildTools {
     }
 }
 
-# If the script is executed (not dot-sourced), nothing else to do. The typical one-liner is:
-#   iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Dest .
+# Auto-run only when the script is executed via -File (PSCommandPath is set).
+if ($PSCommandPath) {
+    Install-AlBuildTools -Url $Url -Ref $Ref -Dest $Dest -Source $Source
+}
