@@ -33,12 +33,12 @@ if supports_color; then
 else
   BOLD=""; DIM=""; RED=""; GREEN=""; YELLOW=""; CYAN=""; RESET=""
 fi
-note() { printf "%b[al-build-tools]%b %s\n" "$CYAN" "$RESET" "$*"; }
-ok()   { printf "%b[ok]%b %s\n" "$GREEN" "$RESET" "$*"; }
-warn() { printf "%b[warn]%b %s\n" "$YELLOW" "$RESET" "$*" 1>&2; }
-fail(){ printf "%b[error]%b %s\n" "$RED" "$RESET" "$*" 1>&2; exit 1; }
+note() { printf "%b[al-build-tools]%b %b\n" "$CYAN" "$RESET" "$*"; }
+ok()   { printf "%b[ok]%b %b\n" "$GREEN" "$RESET" "$*"; }
+warn() { printf "%b[warn]%b %b\n" "$YELLOW" "$RESET" "$*" 1>&2; }
+fail(){ printf "%b[error]%b %b\n" "$RED" "$RESET" "$*" 1>&2; exit 1; }
 stepno=0
-step(){ stepno=$((stepno+1)); printf "%b%s%b %s\n" "$BOLD" "[$stepno]" "$RESET" "$*"; }
+step(){ stepno=$((stepno+1)); printf "%b%s%b %b\n" "$BOLD" "[$stepno]" "$RESET" "$*"; }
 
 print_err() { printf "[al-build-tools] %s\n" "$*" 1>&2; }
 

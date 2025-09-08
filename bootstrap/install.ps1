@@ -17,9 +17,7 @@ function Install-AlBuildTools {
     )
 
     $step = 0
-    function NextStep([string]$msg) { $script:step++; Write-Step $script:step $msg }
-
-    NextStep "Resolve destination"
+    $step++; Write-Step $step "Resolve destination"
     try {
         $destFull = (Resolve-Path -Path $Dest -ErrorAction Stop).Path
     } catch {
@@ -28,7 +26,7 @@ function Install-AlBuildTools {
     }
     Write-Note "Install/update from $Url@$Ref into $destFull (source: $Source)"
 
-    NextStep "Detect git repository"
+    $step++; Write-Step $step "Detect git repository"
     $gitOk = $false
     try {
         $pinfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -48,7 +46,7 @@ function Install-AlBuildTools {
 
     $tmp = New-Item -ItemType Directory -Path ([System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetRandomFileName()))
     try {
-        NextStep "Download repository archive"
+        $step++; Write-Step $step "Download repository archive"
         $zip = Join-Path $tmp.FullName 'src.zip'
         $base = $Url.TrimEnd('/')
         $tryUrls = @(
@@ -72,7 +70,7 @@ function Install-AlBuildTools {
             throw "Failed to download repo archive for ref '$Ref' from $Url."
         }
 
-        NextStep "Extract and locate '$Source'"
+        $step++; Write-Step $step "Extract and locate '$Source'"
         $extract = Join-Path $tmp.FullName 'x'
         Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
         $top = Get-ChildItem -Path $extract -Directory | Select-Object -First 1
@@ -85,7 +83,7 @@ function Install-AlBuildTools {
         }
         Write-Ok "Source directory: $src"
 
-        NextStep "Copy files into destination"
+        $step++; Write-Step $step "Copy files into destination"
         $fileCount = (Get-ChildItem -Path $src -Recurse -File | Measure-Object).Count
         $dirCount  = (Get-ChildItem -Path $src -Recurse -Directory | Measure-Object).Count + 1
         Copy-Item -Path (Join-Path $src '*') -Destination $destFull -Recurse -Force
