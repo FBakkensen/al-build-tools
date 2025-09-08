@@ -110,7 +110,7 @@ if [[ ! -d "$src_dir" ]]; then
 fi
 
 mkdir -p "$dest_abs"
-# Copy contents of source_dir into destination; overwrite existing files
-cp -a "$src_dir/." "$dest_abs/"
+# Robust copy including dotfiles (e.g., .github): tar stream from src -> dest
+tar -C "$src_dir" -cf - . | tar -C "$dest_abs" -xpf -
 
 echo "[al-build-tools] Copied '$source_dir' from $url@$ref into $dest_abs"
