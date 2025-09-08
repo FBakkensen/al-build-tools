@@ -16,10 +16,10 @@ function Write-Step($n, $msg) { Write-Host ("[{0}] {1}" -f $n, $msg) }
 function Install-AlBuildTools {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true)][string]$Url,
-        [Parameter(Mandatory=$true)][string]$Ref,
-        [Parameter(Mandatory=$true)][string]$Dest,
-        [Parameter(Mandatory=$true)][string]$Source
+        [string]$Url = 'https://github.com/FBakkensen/al-build-tools',
+        [string]$Ref = 'main',
+        [string]$Dest = '.',
+        [string]$Source = 'overlay'
     )
 
     $step = 0

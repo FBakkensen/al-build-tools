@@ -16,11 +16,6 @@ Windows (PowerShell 7+)
 iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Dest .
 ```
 
-Alternative (avoids stale function issues by running the file directly):
-```
-$u = 'https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1'; $p = "$env:TEMP/albt_install.ps1"; iwr -useb $u -OutFile $p; pwsh -NoLogo -NoProfile -File $p -Dest .; rm $p
-```
-
 Re-run the same command any time to update — it simply re-copies `overlay/*` over your working tree.
 
 ---
