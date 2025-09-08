@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 function Write-Note($msg) { Write-Host "[al-build-tools] $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "[ok] $msg" -ForegroundColor Green }
 function Write-Warn2($m)  { Write-Warning $m }
-function Write-Step($n, $msg) { Write-Host ("[{0}] {1}" -f $n, $msg) -ForegroundColor White }
+function Write-Step($n, $msg) { Write-Host ("[{0}] {1}" -f $n, $msg) }
 
 function Install-AlBuildTools {
     [CmdletBinding()]

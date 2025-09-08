@@ -69,7 +69,7 @@ if [[ -z "$dest_abs" ]]; then
   mkdir -p "$dest"
   dest_abs=$(cd "$dest" && pwd)
 fi
-note "Install/update from ${BOLD}$url${RESET}@${BOLD}$ref${RESET} into ${BOLD}$dest_abs${RESET} (source: ${BOLD}$source_dir${RESET})"
+note "Install/update from $url@$ref into $dest_abs (source: $source_dir)"
 
 step "Check prerequisites"
 for bin in curl tar; do
@@ -186,4 +186,4 @@ dirs=$(find "$src_dir" -type d | wc -l | tr -d ' ')
 tar -C "$src_dir" -cf - . | tar -C "$dest_abs" -xpf -
 ok "Copied $files files across $dirs directories"
 
-note "Completed: ${BOLD}$source_dir${RESET} from ${BOLD}$url${RESET}@${BOLD}$ref${RESET} into ${BOLD}$dest_abs${RESET}"
+note "Completed: $source_dir from $url@$ref into $dest_abs"
