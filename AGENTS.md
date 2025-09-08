@@ -10,7 +10,29 @@ These instructions apply to the entire repository. They exist to help human cont
 
 This repo is a template for setting up local build workflows on Linux and Windows. It provides mirrored platform scripts and a thin `Makefile` shim so teams can adopt the same structure in their projects.
 
+Deployment model: install = update. A bootstrap script copies only the contents of `overlay/` into a target git repository. Re-running the same one‑liner updates by re-copying from `overlay/`.
+
+## Bootstrap (copy/paste)
+
+- Linux/macOS
+
+```
+curl -fsSL https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.sh | bash -s -- --dest .
+```
+
+- Windows (PowerShell 7+)
+
+```
+iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Dest .
+```
+
+Notes:
+- The commands copy `overlay/*` into the destination (default `.`) and overwrite existing files. No backups are made; use git to review/commit.
+- You can override branch/tag with `--ref`/`-Ref` and the repo with `--url`/`-Url`.
+
 ## Quick Start
+
+After bootstrapping into a project, these are the standard entry points that become available in that project’s root:
 
 - Linux
   - Build: `bash scripts/make/linux/build.sh`
@@ -29,13 +51,17 @@ This repo is a template for setting up local build workflows on Linux and Window
 
 ## Repo Layout (entry points)
 
-- `Makefile` — convenience wrapper that should delegate into platform-specific scripts.
-- `scripts/make/linux/` — Linux build tasks
-  - `build.sh`, `clean.sh`, `show-config.sh`, `show-analyzers.sh`, `next-object-number.sh`
-  - `lib/common.sh`, `lib/json-parser.sh`
-- `scripts/make/windows/` — Windows build tasks (PowerShell 7+)
-  - `build.ps1`, `clean.ps1`, `show-config.ps1`, `show-analyzers.ps1`
-  - `lib/common.ps1`, `lib/json-parser.ps1`
+- `overlay/` — the payload that gets copied into projects
+  - `overlay/Makefile` — convenience wrapper that delegates to platform-specific scripts.
+  - `overlay/scripts/make/linux/` — Linux build tasks
+    - `build.sh`, `clean.sh`, `show-config.sh`, `show-analyzers.sh`, `next-object-number.sh`
+    - `lib/common.sh`, `lib/json-parser.sh`
+  - `overlay/scripts/make/windows/` — Windows build tasks (PowerShell 7+)
+    - `build.ps1`, `clean.ps1`, `show-config.ps1`, `show-analyzers.ps1`
+    - `lib/common.ps1`, `lib/json-parser.ps1`
+- `bootstrap/` — one-liner installers that copy `overlay/` into a target repo
+  - `bootstrap/install.sh` (Linux/macOS)
+  - `bootstrap/install.ps1` (Windows, PowerShell 7+)
 
 Use the `lib/*` helpers instead of re-implementing common functionality (logging, JSON parsing, argument handling, etc.). Keep behavior in parity across platforms.
 
@@ -46,7 +72,7 @@ Use the `lib/*` helpers instead of re-implementing common functionality (logging
    - If a task is inherently OS-specific, document why and guard its usage (e.g., in the `Makefile` or caller script).
 
 2. Do not break entry points
-   - Do not rename or move existing scripts without explicit approval. Update the `Makefile` only to dispatch to these scripts.
+   - Do not rename or move existing scripts within `overlay/` without explicit approval. Update `overlay/Makefile` only to dispatch to these scripts.
 
 3. Shell standards (Linux)
    - Shebang: `#!/usr/bin/env bash`
@@ -71,13 +97,13 @@ Use the `lib/*` helpers instead of re-implementing common functionality (logging
 ## Adding or Modifying Tasks
 
 1. Implement both sides
-   - Add `scripts/make/linux/<task>.sh` and `scripts/make/windows/<task>.ps1` with equivalent behavior.
+   - Add `overlay/scripts/make/linux/<task>.sh` and `overlay/scripts/make/windows/<task>.ps1` with equivalent behavior.
 
 2. Wire the `Makefile`
-   - Dispatch to the platform script based on OS detection (or provide targets that directly call the platform scripts). Keep logic minimal in `Makefile` and rich in the scripts.
+   - Dispatch to the platform script based on OS detection (or provide targets that directly call the platform scripts). Keep logic minimal in `overlay/Makefile` and rich in the scripts.
 
 3. Reuse helpers
-   - Prefer common helpers in `lib/` over duplicating logic. If a helper is missing, introduce it in both `linux/lib` and `windows/lib` with consistent naming and behavior.
+   - Prefer common helpers in `lib/` over duplicating logic. If a helper is missing, introduce it in both `overlay/scripts/make/linux/lib` and `overlay/scripts/make/windows/lib` with consistent naming and behavior.
 
 4. Document the task
    - Add a short usage header at the top of each script. If the task is commonly used, mention it in this file during the next edit.
@@ -137,4 +163,3 @@ Makefile text eol=lf
 ---
 
 If anything in this guide becomes outdated as the build evolves, update this file in the same PR as your changes.
-
