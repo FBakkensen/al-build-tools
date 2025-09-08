@@ -25,7 +25,20 @@ url="$DEFAULT_URL"
 ref="$DEFAULT_REF"
 dest="$DEFAULT_DEST"
 source_dir="$DEFAULT_SOURCE"
-verbose=false
+
+# Pretty output helpers
+supports_color() { [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && [[ $(tput colors 2>/dev/null || echo 0) -ge 8 ]]; }
+if supports_color; then
+  BOLD="\033[1m"; DIM="\033[2m"; RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; CYAN="\033[36m"; RESET="\033[0m"
+else
+  BOLD=""; DIM=""; RED=""; GREEN=""; YELLOW=""; CYAN=""; RESET=""
+fi
+note() { printf "%b[al-build-tools]%b %s\n" "$CYAN" "$RESET" "$*"; }
+ok()   { printf "%b[ok]%b %s\n" "$GREEN" "$RESET" "$*"; }
+warn() { printf "%b[warn]%b %s\n" "$YELLOW" "$RESET" "$*" 1>&2; }
+fail(){ printf "%b[error]%b %s\n" "$RED" "$RESET" "$*" 1>&2; exit 1; }
+stepno=0
+step(){ stepno=$((stepno+1)); printf "%b%s%b %s\n" "$BOLD" "[$stepno]" "$RESET" "$*"; }
 
 print_err() { printf "[al-build-tools] %s\n" "$*" 1>&2; }
 
@@ -44,35 +57,36 @@ while [[ $# -gt 0 ]]; do
     --ref) ref="$2"; shift 2 ;;
     --dest) dest="$2"; shift 2 ;;
     --source) source_dir="$2"; shift 2 ;;
-    --verbose) verbose=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) print_err "Unknown arg: $1"; usage; exit 2 ;;
   esac
 done
 
-# Dependency checks
-for bin in curl tar; do
-  if ! command -v "$bin" >/dev/null 2>&1; then
-    print_err "Required tool '$bin' not found in PATH."; exit 1
-  fi
-done
-
+step "Resolve destination"
 # Resolve absolute destination path
 dest_abs=$(cd "$dest" 2>/dev/null && pwd || true)
 if [[ -z "$dest_abs" ]]; then
   mkdir -p "$dest"
   dest_abs=$(cd "$dest" && pwd)
 fi
+note "Install/update from ${BOLD}$url${RESET}@${BOLD}$ref${RESET} into ${BOLD}$dest_abs${RESET} (source: ${BOLD}$source_dir${RESET})"
 
-echo "[al-build-tools] Installing from $url@$ref into $dest_abs (source: $source_dir)"
-if [[ "$verbose" == true ]]; then set -x; fi
+step "Check prerequisites"
+for bin in curl tar; do
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    fail "Required tool '$bin' not found in PATH."
+  fi
+done
+ok "Tools present: curl, tar"
 
+step "Detect git repository"
 # Non-fatal check: is destination a git repo?
 if ! git -C "$dest_abs" rev-parse --git-dir >/dev/null 2>&1; then
   if [[ ! -d "$dest_abs/.git" ]]; then
-    print_err "Warning: destination '$dest_abs' does not look like a git repo. Proceeding anyway."
+    warn "Destination '$dest_abs' does not look like a git repo. Proceeding anyway."
   fi
 fi
+ok "Working in: $dest_abs"
 
 tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t albt)
 trap 'rm -rf "$tmpdir"' EXIT
@@ -86,8 +100,10 @@ try_urls=(
   "$base/archive/$ref.tar.gz"
 )
 
+step "Download repository archive"
 downloaded=false
 for u in "${try_urls[@]}"; do
+  note "Downloading: $u"
   if curl -fsSL "$u" -o "$archive"; then
     downloaded=true
     break
@@ -95,10 +111,11 @@ for u in "${try_urls[@]}"; do
 done
 
 if [[ "$downloaded" != true ]]; then
-  print_err "Failed to download tar archive for ref '$ref' from $url. Trying ZIP..."
+  warn "Tar download failed for ref '$ref'. Trying ZIP fallback..."
   downloaded=false
 fi
 
+step "Extract and locate '$source_dir'"
 src_dir=""
 if [[ "$downloaded" == true ]]; then
   # Find top-level folder name inside the tarball without extracting fully
@@ -124,6 +141,7 @@ if [[ -z "$src_dir" ]]; then
     "$base/archive/$ref.zip"
   )
   for zu in "${zurls[@]}"; do
+    note "Downloading (zip): $zu"
     if curl -fsSL "$zu" -o "$zipfile"; then
       if command -v unzip >/dev/null 2>&1; then
         mkdir -p "$tmpdir/z" && unzip -q "$zipfile" -d "$tmpdir/z"
@@ -155,16 +173,17 @@ if [[ -z "$src_dir" ]]; then
 fi
 
 if [[ -z "$src_dir" ]]; then
-  print_err "Could not locate '$source_dir' in downloaded archive(s) for ref '$ref'."; exit 1
+  fail "Could not locate '$source_dir' in downloaded archive(s) for ref '$ref'."
 fi
+ok "Source directory: $src_dir"
 
+step "Copy files into destination"
 mkdir -p "$dest_abs"
+# Count files/dirs before copy for a friendly summary
+files=$(find "$src_dir" -type f | wc -l | tr -d ' ')
+dirs=$(find "$src_dir" -type d | wc -l | tr -d ' ')
 # Robust copy including dotfiles (e.g., .github): tar stream from src -> dest
 tar -C "$src_dir" -cf - . | tar -C "$dest_abs" -xpf -
+ok "Copied $files files across $dirs directories"
 
-if [[ "$verbose" == true ]]; then
-  echo "[al-build-tools] Copied contents from: $src_dir"
-  (set +x; ls -la "$dest_abs" || true)
-fi
-
-echo "[al-build-tools] Copied '$source_dir' from $url@$ref into $dest_abs"
+note "Completed: ${BOLD}$source_dir${RESET} from ${BOLD}$url${RESET}@${BOLD}$ref${RESET} into ${BOLD}$dest_abs${RESET}"
