@@ -8,7 +8,7 @@ Install and update are the same: the bootstrap copies everything from this repoâ
 
 Linux/macOS
 ```
-curl -fsSL https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.sh | bash -s -- --dest .
+sh -c 'URL=https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.sh; TMP=$(mktemp); (command -v curl >/dev/null && curl -fsSL "$URL" -o "$TMP") || (command -v wget >/dev/null && wget -qO "$TMP" "$URL") || { echo "Download failed: need curl or wget" >&2; exit 1; }; bash "$TMP" -- --dest .; RC=$?; rm -f "$TMP"; exit $RC'
 ```
 
 Windows (PowerShell 7+)
@@ -91,4 +91,3 @@ Examples
 ## Contributing
 
 Please keep Linux and Windows behavior in parity. When adding new tasks, update both `overlay/scripts/make/linux` and `overlay/scripts/make/windows`, and keep the Makefile thin.
-

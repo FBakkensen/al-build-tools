@@ -62,6 +62,8 @@ if [[ -z "$dest_abs" ]]; then
   dest_abs=$(cd "$dest" && pwd)
 fi
 
+echo "[al-build-tools] Installing from $url@$ref into $dest_abs (source: $source_dir)"
+
 # Non-fatal check: is destination a git repo?
 if ! git -C "$dest_abs" rev-parse --git-dir >/dev/null 2>&1; then
   if [[ ! -d "$dest_abs/.git" ]]; then
