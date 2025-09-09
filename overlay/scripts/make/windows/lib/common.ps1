@@ -1,5 +1,6 @@
 
-param([string]$AppDir = "app")
+# Note: Do not declare top-level params in dot-sourced libraries.
+# This avoids accidentally overriding caller variables like $AppDir.
 
 function Get-AppJsonPath {
     param([string]$AppDir)
