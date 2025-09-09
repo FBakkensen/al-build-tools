@@ -17,7 +17,11 @@ if ($appJson) {
 $settingsJson = Get-SettingsJsonObject $AppDir
 if ($settingsJson) {
     Write-Host "Settings.json configuration:" -ForegroundColor Cyan
-    Write-Host "  Analyzers: $($settingsJson.'al.codeAnalyzers')"
+    if ($settingsJson.'al.codeAnalyzers' -and $settingsJson.'al.codeAnalyzers'.Count -gt 0) {
+        Write-Host "  Analyzers: $($settingsJson.'al.codeAnalyzers')"
+    } else {
+        Write-Host "  Analyzers: (none)"
+    }
 } else {
     Write-Host "No .vscode/settings.json found or invalid." -ForegroundColor Yellow
 }

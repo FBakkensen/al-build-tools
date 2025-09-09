@@ -14,9 +14,13 @@ source "$(dirname "$0")/lib/json-parser.sh"
 # Show enabled analyzers
 enabled_analyzers=($(get_enabled_analyzers "$AppDir"))
 echo -e "\033[0;36mEnabled analyzers:\033[0m"
-for analyzer in "${enabled_analyzers[@]}"; do
-    echo "  $analyzer"
-done
+if [[ ${#enabled_analyzers[@]} -gt 0 ]]; then
+    for analyzer in "${enabled_analyzers[@]}"; do
+        echo "  $analyzer"
+    done
+else
+    echo "  (none)"
+fi
 
 # Show analyzer DLL paths
 analyzer_paths=($(get_enabled_analyzer_paths "$AppDir"))

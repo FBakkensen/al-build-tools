@@ -288,10 +288,7 @@ get_enabled_analyzer_paths() {
         fi
     fi
     
-    # Default to CodeCop and UICop if nothing configured
-    if [[ ${#enabled[@]} -eq 0 ]]; then
-        enabled=("CodeCop" "UICop")
-    fi
+    # Do not enable any default analyzers when none are configured
     
     # Helper: resolve placeholders in custom entries
     local resolve_entry

@@ -66,9 +66,8 @@ get_enabled_analyzer() {
             return
         fi
     fi
-    
-    # Default to CodeCop
-    echo "CodeCop"
+    # No default analyzer when not explicitly configured
+    return 0
 }
 
 # Function: get_enabled_analyzers
@@ -92,10 +91,6 @@ get_enabled_analyzers() {
         fi
     fi
     
-    # Default to CodeCop and UICop if nothing configured
-    if [[ ${#analyzers[@]} -eq 0 ]]; then
-        analyzers=("CodeCop" "UICop")
-    fi
-    
+    # Do not default any analyzers when none are configured
     printf '%s\n' "${analyzers[@]}"
 }

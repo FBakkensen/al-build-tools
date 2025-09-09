@@ -36,7 +36,7 @@ if get_settings_json_object "$AppDir" >/dev/null; then
     if [[ -n "$analyzers" && "$analyzers" != "null" ]]; then
         echo "  Analyzers: $analyzers"
     else
-        echo "  Analyzers: (default: CodeCop, UICop)"
+        echo "  Analyzers: (none)"
     fi
 else
     echo -e "\033[1;33mNo .vscode/settings.json found or invalid.\033[0m"

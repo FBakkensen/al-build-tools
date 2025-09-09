@@ -122,9 +122,7 @@ function Get-EnabledAnalyzerPaths {
             }
         } catch {}
     }
-    if (-not $enabled -or $enabled.Count -eq 0) {
-        $enabled = @('CodeCop','UICop')
-    }
+    # Do not enable default analyzers when none are configured
 
     $alExt = Get-HighestVersionALExtension
     $workspaceRoot = (Get-Location).Path

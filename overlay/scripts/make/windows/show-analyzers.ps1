@@ -6,7 +6,11 @@ param([string]$AppDir)
 
 $enabledAnalyzers = Get-EnabledAnalyzers $AppDir
 Write-Host "Enabled analyzers:" -ForegroundColor Cyan
-$enabledAnalyzers | ForEach-Object { Write-Host "  $_" }
+if ($enabledAnalyzers -and $enabledAnalyzers.Count -gt 0) {
+    $enabledAnalyzers | ForEach-Object { Write-Host "  $_" }
+} else {
+    Write-Host "  (none)"
+}
 
 $analyzerPaths = Get-EnabledAnalyzerPaths $AppDir
 if ($analyzerPaths -and $analyzerPaths.Count -gt 0) {

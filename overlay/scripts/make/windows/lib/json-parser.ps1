@@ -31,10 +31,9 @@ function Get-EnabledAnalyzer {
         # Return the first analyzer only (singular)
         $analyzers = $settings.'al.codeAnalyzers'
         if ($analyzers.Count -gt 0) { return $analyzers[0] }
-        else { return 'CodeCop' }
-    } else {
-        return 'CodeCop'
     }
+    # No default analyzer when not explicitly configured
+    return $null
 }
 
 function Get-EnabledAnalyzers {
@@ -42,7 +41,7 @@ function Get-EnabledAnalyzers {
     $settings = Get-SettingsJsonObject $AppDir
     if ($settings -and $settings.'al.codeAnalyzers') {
         return $settings.'al.codeAnalyzers'
-    } else {
-        return @('CodeCop','UICop')
     }
+    # Return empty when none configured
+    return @()
 }
