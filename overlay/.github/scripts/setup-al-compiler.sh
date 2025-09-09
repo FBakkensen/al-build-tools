@@ -58,5 +58,23 @@ if [ -d "$EXT_DIR/extension" ]; then
   rmdir "$EXT_DIR/extension"
 fi
 
+# Download custom analyzer (BusinessCentral.LinterCop) into existing analyzers folder
+ANALYZERS_DIR="$EXT_DIR/bin/Analyzers"
+echo "Downloading BusinessCentral.LinterCop.dll to $ANALYZERS_DIR ..."
+if [ ! -d "$ANALYZERS_DIR" ]; then
+  echo "Error: Analyzer folder not found at $ANALYZERS_DIR"
+  echo "The AL extension layout may have changed; aborting custom analyzer download."
+  exit 1
+fi
+
+wget -q -O "$ANALYZERS_DIR/BusinessCentral.LinterCop.dll" \
+  "https://github.com/StefanMaron/BusinessCentral.LinterCop/releases/latest/download/BusinessCentral.LinterCop.dll"
+
+if [ ! -s "$ANALYZERS_DIR/BusinessCentral.LinterCop.dll" ]; then
+  echo "Error: Failed to download BusinessCentral.LinterCop.dll or file is empty."
+  exit 1
+fi
+echo "BusinessCentral.LinterCop.dll installed."
+
 echo "AL compiler and analyzers installed to $EXT_DIR (alc should be at $EXT_DIR/bin/linux/alc)"
 echo "Setup complete."
