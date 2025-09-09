@@ -76,6 +76,16 @@ fi
 
 # Build analyzer arguments correctly
 cmd_args=("/project:$AppDir" "/out:$output_full_path" "/packagecachepath:$package_cache_path")
+
+# Optional: pass ruleset if specified and file exists and is non-empty
+if [[ -n "${RULESET_PATH:-}" ]]; then
+    if [[ -f "$RULESET_PATH" && -s "$RULESET_PATH" ]]; then
+        echo "Using ruleset: $RULESET_PATH"
+        cmd_args+=("/ruleset:$RULESET_PATH")
+    else
+        echo "Ruleset not found or empty, skipping: ${RULESET_PATH}"
+    fi
+fi
 for analyzer_path in "${analyzer_paths[@]}"; do
     cmd_args+=("/analyzer:$analyzer_path")
 done

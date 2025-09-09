@@ -70,6 +70,18 @@ if ($analyzerPaths.Count -gt 0) {
 
 # Build analyzer arguments correctly
 $cmdArgs = @("/project:$AppDir", "/out:$outputFullPath", "/packagecachepath:$packageCachePath")
+
+# Optional: pass ruleset if specified and the file exists and is non-empty
+$rulesetPath = $env:RULESET_PATH
+if ($rulesetPath) {
+    $rsItem = Get-Item -LiteralPath $rulesetPath -ErrorAction SilentlyContinue
+    if ($rsItem -and $rsItem.Length -gt 0) {
+        Write-Host "Using ruleset: $($rsItem.FullName)"
+        $cmdArgs += "/ruleset:$($rsItem.FullName)"
+    } else {
+        Write-Host "Ruleset not found or empty, skipping: $rulesetPath"
+    }
+}
 if ($analyzerPaths.Count -gt 0) {
     foreach ($analyzer in $analyzerPaths) {
         $cmdArgs += "/analyzer:$analyzer"

@@ -5,7 +5,7 @@
 # =============================================================================
 # App Directory Configuration
 # =============================================================================
-APP_DIR := app
+APP_DIR := .
 
 # =============================================================================
 # Build Options (tweak as needed)
@@ -14,6 +14,11 @@ APP_DIR := app
 WARN_AS_ERROR ?= 1
 # Export so scripts inherit this setting on all platforms
 export WARN_AS_ERROR
+
+# Optional ruleset file for analyzers (leave empty to disable)
+# Example: RULESET_PATH := ruleset.json
+RULESET_PATH ?= ruleset.json
+export RULESET_PATH
 
 # =============================================================================
 # Platform Detection
@@ -52,6 +57,7 @@ help:
 	@echo ""
 	@echo "Options (set in Makefile):"
 	@echo "  WARN_AS_ERROR=$(WARN_AS_ERROR)   Treat warnings as errors (/warnaserror+)"
+	@echo "  RULESET_PATH=$(RULESET_PATH)   Optional ruleset file passed to ALC if present"
 
 # Build target - main compilation
 build:
