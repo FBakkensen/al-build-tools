@@ -1,0 +1,9 @@
+# CODEOWNERS
+#
+# This file tells GitHub who is responsible for code in this repository.
+# The last matching pattern takes precedence. See:
+# https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner(s) for everything in the repo
+* @FBakkensen
+
