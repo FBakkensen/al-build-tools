@@ -17,7 +17,7 @@ export WARN_AS_ERROR
 
 # Optional ruleset file for analyzers (leave empty to disable)
 # Example: RULESET_PATH := ruleset.json
-RULESET_PATH ?= ruleset.json
+RULESET_PATH ?= al.ruleset.json
 export RULESET_PATH
 
 # =============================================================================
