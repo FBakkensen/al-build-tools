@@ -27,8 +27,8 @@
 ## Phase 3.2: Contract & Integration Tests (TDD)  (MUST precede Phase 3.3)
 Contract = workflow quality gate behaviors defined in `contracts/README.md`.
 - [x] T004 [P] Contract test: Missing PSScriptAnalyzer produces blocking Configuration issue. Create `tests/contract/test_missing_psscriptanalyzer.sh` that simulates absence (e.g., run script with env var `FORCE_NO_PSSA=1`) and asserts non‑zero exit & grep message.
-- [ ] T005 [P] Contract test: Shell syntax error flagged. Create `tests/contract/test_shell_syntax.sh` (create temp bad script under `overlay/scripts/make/linux/` copy, invoke analysis, expect Blocking Syntax issue & non‑zero exit).
-- [ ] T006 [P] Contract test: Duplicate JSON keys in `overlay/al.ruleset.json` clone produce failure. Create `tests/contract/test_json_duplicates.sh` (write temp malformed JSON; run analysis; expect failure category Policy/Configuration).
+- [x] T005 [P] Contract test: Shell syntax error flagged. Create `tests/contract/test_shell_syntax.sh` (create temp bad script under `overlay/scripts/make/linux/` copy, invoke analysis, expect Blocking Syntax issue & non‑zero exit).
+- [x] T006 [P] Contract test: Duplicate JSON keys in `overlay/al.ruleset.json` clone produce failure. Create `tests/contract/test_json_duplicates.sh` (write temp malformed JSON; run analysis; expect failure category Policy/Configuration).
 - [ ] T007 [P] Contract test: Clean repo (no injected defects) succeeds. `tests/contract/test_clean_pass.sh` ensures exit 0 and zero Blocking lines.
 - [ ] T008 [P] Integration test: Timeout path. `tests/integration/test_timeout.sh` wraps script with `TIMEOUT_SECONDS=1` and injects artificial sleep (env `INJECT_SLEEP=2`) expecting timeout Blocking issue.
 
