@@ -98,7 +98,7 @@ else
         for ps_file in "${ps_files[@]}"; do
             if [[ -f "$ps_file" ]]; then
                 # Run Invoke-ScriptAnalyzer and get JSON output
-                output=$(pwsh -Command "Invoke-ScriptAnalyzer -Path '$ps_file' | ConvertTo-Json" 2>/dev/null || true)
+                output=$(pwsh -Command "Invoke-ScriptAnalyzer -Path '$ps_file' | ConvertTo-Json -Depth 5" 2>/dev/null || true)
                 if [[ -n "$output" ]]; then
                     # Parse JSON
                     while IFS= read -r issue_json; do
@@ -123,12 +123,97 @@ else
     fi
 fi
 
+# -----------------------------
+# JSON analysis (T011)
+# -----------------------------
+json_files=()
+
+# Discover JSON files under overlay (recursive), excluding node_modules
+if [[ -d overlay ]]; then
+    while IFS= read -r -d '' file; do
+        json_files+=("$file")
+    done < <(find overlay -type f -name "*.json" -not -path "*/node_modules/*" -print0 2>/dev/null || true)
+fi
+
+# Discover JSON files under bootstrap (top-level only), excluding node_modules
+if [[ -d bootstrap ]]; then
+    while IFS= read -r -d '' file; do
+        json_files+=("$file")
+    done < <(find bootstrap -maxdepth 1 -type f -name "*.json" -not -path "*/node_modules/*" -print0 2>/dev/null || true)
+fi
+
+# Initialize issues array for JSON files
+json_issues=()
+
+add_json_issue() {
+    local path="$1"
+    local category="$2"   # Configuration | Policy
+    local severity_wording="$3" # "Blocking" or "Advisory"
+    local message="$4"
+    json_issues+=("${path}:0:0:${category}:${severity_wording} ${category} issue: ${message}")
+}
+
+# Validate each discovered JSON file
+for jf in "${json_files[@]}"; do
+    # Basic JSON validity and UTF-8 check using jq
+    if ! jq -e '.' "$jf" >/dev/null 2>&1; then
+        add_json_issue "$jf" "Configuration" "Blocking" "Invalid or non UTF-8 JSON"
+        continue
+    fi
+
+    # Duplicate key detection using Python helper
+    if command -v python3 >/dev/null 2>&1; then
+        if ! python3 scripts/ci/json_dup_key_check.py "$jf" >/dev/null 2>&1; then
+            add_json_issue "$jf" "Configuration" "Blocking" "Policy/Configuration: Duplicate JSON keys"
+        fi
+    fi
+
+    # Special-case ruleset validation
+    if [[ "$jf" == "overlay/al.ruleset.json" ]]; then
+        # Allowed top-level keys
+        invalid_keys=$( { jq -r 'keys_unsorted[] | select(. as $k | ["name","description","generalAction","includedRuleSets","enableExternalRulesets","rules"] | index($k) | not)' "$jf" 2>/dev/null | tr '\n' ',' | sed 's/,$//'; } || echo "")
+        if [[ -n "${invalid_keys}" ]]; then
+            add_json_issue "$jf" "Configuration" "Blocking" "Invalid top-level keys: ${invalid_keys}"
+        fi
+
+        # Ensure .rules exists and is an array
+        if ! jq -e 'has("rules") and (.rules|type=="array")' "$jf" >/dev/null 2>&1; then
+            add_json_issue "$jf" "Configuration" "Blocking" "Missing or invalid rules array (.rules must be an array)"
+        else
+            # Duplicate rule ids
+            dupe_ids=$( { jq -r '[.rules[]? | .id // empty | select(type=="string" and (length>0))] | group_by(.)[] | select(length>1) | .[0]' "$jf" 2>/dev/null | tr '\n' ',' | sed 's/,$//'; } || echo "")
+            if [[ -n "${dupe_ids}" ]]; then
+                add_json_issue "$jf" "Configuration" "Blocking" "Duplicate rule ids: ${dupe_ids}"
+            fi
+
+            # Validate action values
+            bad_actions=$( { jq -r '.rules[]? | {id: (.id // "MISSING"), action: (.action // "MISSING")} | select((.action|type!="string") or (["Error","Warning","Info","Hidden","None","Default"] | index(.action) | not)) | "id=\(.id) action=\(.action)"' "$jf" 2>/dev/null | tr '\n' '; ' | sed 's/; $//'; } || echo "")
+            if [[ -n "${bad_actions}" ]]; then
+                add_json_issue "$jf" "Configuration" "Blocking" "Invalid rule action values: ${bad_actions}"
+            fi
+        fi
+
+        # Advisory: empty description present but blank/whitespace
+        desc_present_and_blank=$(jq -r 'if has("description") then ((.description | tostring) | gsub("^[\\s]+|[\\s]+$"; "") | if length==0 then "yes" else "no" end) else "no" end' "$jf" 2>/dev/null || echo "no")
+        if [[ "$desc_present_and_blank" == "yes" ]]; then
+            add_json_issue "$jf" "Policy" "Advisory" "Description is empty; please populate"
+        fi
+    fi
+
+done
+
+# Output summaries (debug)
 echo "Shell script analysis complete. Found ${#shell_issues[@]} issues."
 echo "PowerShell script analysis complete. Found ${#ps_issues[@]} issues."
+echo "JSON analysis complete. Found ${#json_issues[@]} issues."
+
 # Temporary: print issues for debugging
 for issue in "${shell_issues[@]}"; do
     echo "Shell Issue: $issue"
 done
 for issue in "${ps_issues[@]}"; do
     echo "PS Issue: $issue"
+done
+for issue in "${json_issues[@]}"; do
+    echo "JSON Issue: $issue"
 done
