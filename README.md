@@ -4,19 +4,19 @@ A minimal, cross-platform build toolkit for Microsoft AL projects with a dead-si
 
 Install and update are the same: the bootstrap copies everything from this repo’s `overlay/` folder into your project. Because you’re in git, you review and commit changes as you like.
 
-## Quick Start
+## Quick Start (Install Latest)
 
-Linux/macOS
-```
-sh -c 'URL=https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.sh; TMP=$(mktemp); (command -v curl >/dev/null && curl -fsSL "$URL" -o "$TMP") || (command -v wget >/dev/null && wget -qO "$TMP" "$URL") || { echo "Download failed: need curl or wget" >&2; exit 1; }; bash "$TMP" -- --dest .; RC=$?; rm -f "$TMP"; exit $RC'
-```
+- Linux/macOS (bash)
+  ```
+  curl -fsSL https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.sh | bash -s -- --dest .
+  ```
 
-Windows (PowerShell 7+)
-```
-iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Dest .
-```
+- Windows (PowerShell 7+)
+  ```
+  iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Dest .
+  ```
 
-Re-run the same command any time to update — it simply re-copies `overlay/*` over your working tree.
+Re-run the same command any time to update — it re-copies `overlay/*` over your working tree.
 
 ---
 
@@ -57,28 +57,7 @@ Only the contents of `overlay/` are ever copied to your project. That keeps the 
 - Make (optional)
   - If `make` is available: `make build`, `make clean`, etc., will dispatch to the platform scripts.
 
-## Options (if you need them)
-
-Both installers accept overrides. Defaults shown in parentheses.
-
-- URL/Url (`https://github.com/FBakkensen/al-build-tools`)
-- REF/Ref (`main`)
-- DEST/Dest (`.`)
-- SOURCE/Source (`overlay`)
-
-Examples
-- Linux/macOS (pin a tag):
-  ```
-  curl -fsSL https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.sh | bash -s -- --ref v1.2.3 --dest .
-  ```
-- Windows (pin a tag):
-  ```
-  iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Ref v1.2.3 -Dest .
-  ```
-- Windows (use a fork):
-  ```
-  iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Url 'https://github.com/yourorg/al-build-tools' -Ref main -Dest .
-  ```
+<!-- Simplified intentionally: one use case — install the latest. Advanced flags exist but are omitted here for clarity. -->
 
 ## How It Works
 
@@ -90,7 +69,7 @@ Examples
 
 - “Running scripts is disabled” on Windows: start PowerShell as Administrator and run:
   `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` or use `-ExecutionPolicy Bypass` for one-off runs.
-- Linux/macOS: ensure `curl` and `tar` are installed and available in `PATH`.
+- Linux/macOS: ensure `curl`, `tar`, and either `unzip` or `python3` are installed and in `PATH`.
 
 ## Contributing
 
