@@ -2,7 +2,7 @@
 # Bootstrap installer for al-build-tools (install = update)
 # Copies overlay/* from the GitHub repo into the target git project directory.
 #
-# Requirements: bash, curl, tar
+# Requirements: bash, curl, tar, and either unzip or python3
 # Usage (default ref=main, dest=.):
 #   curl -fsSL https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.sh | \
 #     bash -s -- --dest .
@@ -72,12 +72,21 @@ fi
 note "Install/update from $url@$ref into $dest_abs (source: $source_dir)"
 
 step "Check prerequisites"
+# Always require curl and tar (tar is used for robust copy of dotfiles)
 for bin in curl tar; do
   if ! command -v "$bin" >/dev/null 2>&1; then
     fail "Required tool '$bin' not found in PATH."
   fi
 done
-ok "Tools present: curl, tar"
+# Need either unzip or python3 for extracting the GitHub ZIP archive
+if command -v unzip >/dev/null 2>&1; then
+  extractor="unzip"
+elif command -v python3 >/dev/null 2>&1; then
+  extractor="python3"
+else
+  fail "Need either 'unzip' or 'python3' available to extract the ZIP archive."
+fi
+ok "Tools present: curl, tar, $extractor"
 
 step "Detect git repository"
 # Non-fatal check: is destination a git repo?
@@ -91,80 +100,45 @@ ok "Working in: $dest_abs"
 tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t albt)
 trap 'rm -rf "$tmpdir"' EXIT
 
-archive="$tmpdir/src.tar.gz"
-
+zipfile="$tmpdir/src.zip"
 base="$url"
-try_urls=(
-  "$base/archive/refs/heads/$ref.tar.gz"
-  "$base/archive/refs/tags/$ref.tar.gz"
-  "$base/archive/$ref.tar.gz"
+zurls=(
+  "$base/archive/refs/heads/$ref.zip"
+  "$base/archive/refs/tags/$ref.zip"
+  "$base/archive/$ref.zip"
 )
 
-step "Download repository archive"
+step "Download repository archive (ZIP)"
 downloaded=false
-for u in "${try_urls[@]}"; do
-  note "Downloading: $u"
-  if curl -fsSL "$u" -o "$archive"; then
+for zu in "${zurls[@]}"; do
+  note "Downloading (zip): $zu"
+  if curl -fsSL "$zu" -o "$zipfile"; then
     downloaded=true
     break
   fi
 done
-
 if [[ "$downloaded" != true ]]; then
-  warn "Tar download failed for ref '$ref'. Trying ZIP fallback..."
-  downloaded=false
+  fail "Failed to download ZIP archive for ref '$ref' from $url."
 fi
 
 step "Extract and locate '$source_dir'"
 src_dir=""
-if [[ "$downloaded" == true ]]; then
-  # Find top-level folder name inside the tarball without extracting fully
-  if first_entry=$(tar -tzf "$archive" 2>/dev/null | sed -n '1p'); then
-    top=${first_entry%%/*}
-  else
-    top=""
-  fi
-  if [[ -n "$top" ]]; then
-    tar -xzf "$archive" -C "$tmpdir"
-    candidate="$tmpdir/$top/$source_dir"
-    if [[ -d "$candidate" ]]; then src_dir="$candidate"; fi
-  fi
-fi
-
-# Fallback: try ZIP archive if tar path failed
-if [[ -z "$src_dir" ]]; then
-  zipfile="$tmpdir/src.zip"
-  base="$url"
-  zurls=(
-    "$base/archive/refs/heads/$ref.zip"
-    "$base/archive/refs/tags/$ref.zip"
-    "$base/archive/$ref.zip"
-  )
-  for zu in "${zurls[@]}"; do
-    note "Downloading (zip): $zu"
-    if curl -fsSL "$zu" -o "$zipfile"; then
-      if command -v unzip >/dev/null 2>&1; then
-        mkdir -p "$tmpdir/z" && unzip -q "$zipfile" -d "$tmpdir/z"
-      else
-        # Minimal Python fallback for unzip
-        if command -v python3 >/dev/null 2>&1; then
-python3 - <<PY
+# Extract the downloaded ZIP and locate the requested subfolder
+mkdir -p "$tmpdir/z"
+if [[ "$extractor" == "unzip" ]]; then
+  unzip -q "$zipfile" -d "$tmpdir/z"
+else
+  python3 - "$zipfile" "$tmpdir/z" <<'PY'
 import sys, zipfile, os
-zf = zipfile.ZipFile("$zipfile")
-out = "$tmpdir/z"
-os.makedirs(out, exist_ok=True)
-zf.extractall(out)
+zf_path, out_dir = sys.argv[1], sys.argv[2]
+os.makedirs(out_dir, exist_ok=True)
+with zipfile.ZipFile(zf_path) as zf:
+    zf.extractall(out_dir)
 PY
-        else
-          print_err "Need 'unzip' or 'python3' to extract ZIP fallback."; exit 1
-        fi
-      fi
-      topdir=$(find "$tmpdir/z" -mindepth 1 -maxdepth 1 -type d | head -n1)
-      candidate="$topdir/$source_dir"
-      if [[ -d "$candidate" ]]; then src_dir="$candidate"; break; fi
-    fi
-  done
 fi
+topdir=$(find "$tmpdir/z" -mindepth 1 -maxdepth 1 -type d | head -n1)
+candidate="$topdir/$source_dir"
+if [[ -d "$candidate" ]]; then src_dir="$candidate"; fi
 
 # Last-chance: try to locate the source dir anywhere under extraction
 if [[ -z "$src_dir" ]]; then
