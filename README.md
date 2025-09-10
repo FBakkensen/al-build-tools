@@ -1,5 +1,8 @@
 # AL Build Tools (overlay bootstrap)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Contributions welcome](https://img.shields.io/badge/Contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 A minimal, cross-platform build toolkit for Microsoft AL projects with a dead-simple bootstrap. It is designed to be dropped into an existing git repo and updated by running the same single command again.
 
 Install and update are the same: the bootstrap copies everything from this repo’s `overlay/` folder into your project. Because you’re in git, you review and commit changes as you like.
@@ -73,4 +76,8 @@ Only the contents of `overlay/` are ever copied to your project. That keeps the 
 
 ## Contributing
 
-Please keep Linux and Windows behavior in parity. When adding new tasks, update both `overlay/scripts/make/linux` and `overlay/scripts/make/windows`, and keep the Makefile thin.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, cross‑platform parity rules, and analyzer tips. In short: keep Linux and Windows behavior in parity, update both `overlay/scripts/make/linux` and `overlay/scripts/make/windows`, and keep the Makefile thin.
+
+## License
+
+Licensed under the [MIT License](LICENSE). You are free to use, modify, and distribute this project with attribution and without warranty.
