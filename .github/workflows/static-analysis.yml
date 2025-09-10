@@ -1,0 +1,18 @@
+name: Static Analysis Quality Gate
+
+on:
+  pull_request:
+    paths:
+      - 'overlay/**'
+      - 'bootstrap/**'
+
+jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run static analysis
+        run: bash scripts/ci/run-static-analysis.sh
+        continue-on-error: true  # Allow failure until tests are implemented
