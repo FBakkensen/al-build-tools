@@ -36,8 +36,8 @@ Contract = workflow quality gate behaviors defined in `contracts/README.md`.
 Single file focus (`scripts/ci/run-static-analysis.sh`) → sequential.
 - [x] T009 Implement shell script discovery (target: `overlay/**/*.sh` & `bootstrap/*.sh`) + `shellcheck` invocation; map severities to categories (Syntax/Security/Style) and collect FileIssue structs.
 - [x] T010 Implement PowerShell parsing + `Invoke-ScriptAnalyzer` execution for `overlay/**/*.ps1` & `bootstrap/*.ps1`; emit MissingAnalyzerIssue when analyzer absent or `FORCE_NO_PSSA` set.
-- [ ] T011 Implement JSON & ruleset validation: parse all `overlay/**/*.json` + `bootstrap/*.json` (exclude node_modules) using Python helper; add `al.ruleset.json` schema checks (allowed top-level keys, unique rule IDs, valid actions).
-- [ ] T012 Implement aggregation: severity/blocking logic, counts, GitHub annotation formatting `::error file=...` plus summary stdout.
+- [x] T011 Implement JSON & ruleset validation: parse all `overlay/**/*.json` + `bootstrap/*.json` (exclude node_modules) using Python helper; add `al.ruleset.json` schema checks (allowed top-level keys, unique rule IDs, valid actions).
+- [x] T012 Implement aggregation: severity/blocking logic, counts, GitHub annotation formatting `::error file=...` plus summary stdout.
 - [ ] T013 Implement performance & timeout: honor `TIMEOUT_SECONDS` (default 60); abort with Blocking Configuration issue on overrun; capture duration in Summary.
 
 ## Phase 3.4: Integration

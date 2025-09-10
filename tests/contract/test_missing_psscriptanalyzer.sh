@@ -7,8 +7,10 @@ set -euo pipefail
 export FORCE_NO_PSSA=1
 
 # Capture output and exit code
+set +e
 output=$(bash scripts/ci/run-static-analysis.sh 2>&1)
 exit_code=$?
+set -e
 
 # Assert non-zero exit code
 if [ $exit_code -eq 0 ]; then
