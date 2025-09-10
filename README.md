@@ -38,7 +38,7 @@ Only the contents of `overlay/` are ever copied to your project. That keeps the 
 
 ## Requirements
 
-- Linux/macOS: `bash`, `curl`, `tar`
+- Linux/macOS: `bash`, `curl`, `tar`, and either `unzip` or `python3`
 - Windows: PowerShell 7+ (`Invoke-WebRequest`, `Expand-Archive` built-in)
 - Destination should be a git repo (no backups are created; git handles history and diffs)
 
@@ -71,6 +71,10 @@ Examples
   ```
   curl -fsSL https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.sh | bash -s -- --ref v1.2.3 --dest .
   ```
+- Windows (pin a tag):
+  ```
+  iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Ref v1.2.3 -Dest .
+  ```
 - Windows (use a fork):
   ```
   iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Url 'https://github.com/yourorg/al-build-tools' -Ref main -Dest .
@@ -78,7 +82,7 @@ Examples
 
 ## How It Works
 
-1. Downloads a zip/tar of this repo at the specified ref (default `main`).
+1. Downloads a ZIP of this repo at the specified ref (default `main`).
 2. Copies `overlay/*` into your destination directory, overwriting existing files.
 3. No state files and no backups — use git to review and commit changes.
 
