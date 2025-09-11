@@ -8,7 +8,11 @@ if [[ -z "$AppDir" ]]; then
 fi
 
 # Source shared libraries
+# shellcheck source=./lib/common.sh
+# shellcheck disable=SC1091
 source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=./lib/json-parser.sh
+# shellcheck disable=SC1091
 source "$(dirname "$0")/lib/json-parser.sh"
 
 # Diagnostic: Confirm function availability (equivalent to Windows version)
@@ -23,7 +27,7 @@ if [[ -z "$alc_path" ]]; then
 fi
 
 # Get enabled analyzer DLL paths
-analyzer_paths=($(get_enabled_analyzer_paths "$AppDir"))
+mapfile -t analyzer_paths < <(get_enabled_analyzer_paths "$AppDir")
 
 # Get output and package cache paths
 output_full_path=$(get_output_path "$AppDir")

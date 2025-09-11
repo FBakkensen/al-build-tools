@@ -8,11 +8,15 @@ if [[ -z "$AppDir" ]]; then
 fi
 
 # Source shared libraries
+# shellcheck source=./lib/common.sh
+# shellcheck disable=SC1091
 source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=./lib/json-parser.sh
+# shellcheck disable=SC1091
 source "$(dirname "$0")/lib/json-parser.sh"
 
 # Show enabled analyzers
-enabled_analyzers=($(get_enabled_analyzers "$AppDir"))
+mapfile -t enabled_analyzers < <(get_enabled_analyzers "$AppDir")
 echo -e "\033[0;36mEnabled analyzers:\033[0m"
 if [[ ${#enabled_analyzers[@]} -gt 0 ]]; then
     for analyzer in "${enabled_analyzers[@]}"; do
@@ -23,7 +27,7 @@ else
 fi
 
 # Show analyzer DLL paths
-analyzer_paths=($(get_enabled_analyzer_paths "$AppDir"))
+mapfile -t analyzer_paths < <(get_enabled_analyzer_paths "$AppDir")
 if [[ ${#analyzer_paths[@]} -gt 0 ]]; then
     echo -e "\033[0;36mAnalyzer DLL paths:\033[0m"
     for analyzer_path in "${analyzer_paths[@]}"; do

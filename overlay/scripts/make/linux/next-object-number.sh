@@ -10,7 +10,7 @@ objtype="$1"
 appjson="app/app.json"
 
 # Get ranges from app.json
-fromto=($(grep -Po '"from":\s*\d+|"to":\s*\d+' "$appjson" | awk '{print $2}'))
+mapfile -t fromto < <(grep -Po '"from":\s*\d+|"to":\s*\d+' "$appjson" | awk '{print $2}')
 
 # Find used numbers for the given object type
 used=$(grep -rhoP "$objtype\s+\d+" app/ | awk '{print $2}' | sort -n)

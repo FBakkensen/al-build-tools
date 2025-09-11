@@ -8,7 +8,11 @@ if [[ -z "$AppDir" ]]; then
 fi
 
 # Source shared libraries
+# shellcheck source=./lib/common.sh
+# shellcheck disable=SC1091
 source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=./lib/json-parser.sh
+# shellcheck disable=SC1091
 source "$(dirname "$0")/lib/json-parser.sh"
 
 # Check app.json configuration
