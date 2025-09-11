@@ -39,6 +39,29 @@ Local Checks (Recommended)
   - Run: `pwsh -File overlay/scripts/make/windows/show-analyzers.ps1`.
   - If available, run `PSScriptAnalyzer` on new/changed `.ps1` files.
 
+Static Analysis Quality Gate
+----------------------------
+Pull requests that modify files under `overlay/` or `bootstrap/` are checked by a static analysis quality gate in GitHub Actions. Findings appear as GitHub annotations and as a category summary.
+
+Run locally (Linux):
+```
+bash scripts/ci/run-static-analysis.sh
+```
+
+Categories and exit behavior:
+- Blocking: Syntax, Security, Configuration, Policy
+- Advisory (non-blocking): Style
+
+Examples:
+- Configuration (blocking): invalid JSON, duplicate JSON keys, missing PSScriptAnalyzer, timeout.
+- Policy (blocking): ruleset schema violations in `overlay/al.ruleset.json` (invalid top-level keys, duplicate rule ids, invalid actions).
+- Syntax/Security: shellcheck/PowerShell analyzer diagnostics. Note: shellcheck warnings are treated as advisory Style; PowerShell warnings map to Security and can block.
+
+Useful environment toggles (for development/testing):
+- TIMEOUT_SECONDS=N (default 60)
+- INJECT_SLEEP=N (simulate long work for timeout path)
+- FORCE_NO_PSSA=1 (simulate missing PSScriptAnalyzer)
+
 Line Endings and Encoding
 -------------------------
 - Use UTF‑8.

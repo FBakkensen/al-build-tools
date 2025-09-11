@@ -1,0 +1,49 @@
+name: Static Analysis Quality Gate
+
+on:
+  pull_request:
+    paths:
+      - 'overlay/**'
+      - 'bootstrap/**'
+
+jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Analyzer versions summary
+        shell: bash
+        run: |
+          {
+            echo "## Analyzer Versions"
+            echo
+            echo "- bash: $(bash --version | head -n1)"
+            if command -v jq >/dev/null 2>&1; then
+              echo "- jq: $(jq --version)"
+            else
+              echo "- jq: not installed"
+            fi
+            if command -v shellcheck >/dev/null 2>&1; then
+              echo "- shellcheck: $(shellcheck -V | head -n1)"
+            else
+              echo "- shellcheck: not installed"
+            fi
+            if command -v pwsh >/dev/null 2>&1; then
+              pwver=$(pwsh -NoLogo -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()' 2>/dev/null || true)
+              echo "- pwsh: ${pwver:-unknown}"
+              pssa_ver=$(pwsh -NoLogo -NoProfile -NonInteractive -Command '($m=Get-Module -Name PSScriptAnalyzer -ListAvailable | Select-Object -First 1); if ($m) { $m.Version.ToString() } else { "" }' 2>/dev/null || true)
+              if [ -n "$pssa_ver" ]; then
+                echo "- PSScriptAnalyzer: $pssa_ver"
+              else
+                echo "- PSScriptAnalyzer: not installed"
+              fi
+            else
+              echo "- pwsh: not installed"
+              echo "- PSScriptAnalyzer: pwsh not available"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run static analysis
+        run: bash scripts/ci/run-static-analysis.sh

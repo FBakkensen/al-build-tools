@@ -59,6 +59,13 @@ Defaults assume `AppDir=app` and presence of `app/app.json`.
 - Keep POSIX sh-compatible constructs where practical (but repo uses bash features deliberately where helpful; do not downgrade if clarity suffers).
 - PowerShell: Maintain `Set-StrictMode`, `$ErrorActionPreference='Stop'`, explicit `param()` blocks.
 
+## Command Execution Policy (Git)
+- Do not execute any git command unless the user explicitly instructs you to do so.
+- By default, explain the exact command(s) the user can run instead of running them yourself.
+- Never perform write- or remote-affecting actions automatically. Examples (non-exhaustive): `git add`, `git commit`, `git merge`, `git rebase`, `git reset`, `git checkout`, `git switch`, `git branch`, `git cherry-pick`, `git push`, `git pull`, `git fetch --prune`, `git tag`, `git clean`, `git submodule update`, `git remote add|set-url`, `git gc`, Git LFS commands.
+- Even read-only queries (e.g., `git status`, `git --no-pager log`, `git --no-pager diff`, `git rev-parse HEAD`) should only be executed when the user explicitly asks you to run them; otherwise, provide the commands as guidance.
+- When the user explicitly instructs you to run git commands: use `--no-pager` to avoid pagination, prefer non-interactive flags, avoid destructive options, never expose secrets, and keep output concise and scoped. Confirm branch/remote names before any ref-changing operation; never use force flags unless the user included them explicitly.
+
 ## Testing & Verification
 - Manual smoke: Run build & clean twice; verify no residual artifacts or errors.
 - Analyzer display: `show-analyzers.sh` must list enabled names + resolved DLL paths; confirm token expansion.

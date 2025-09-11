@@ -6,23 +6,23 @@ param([string]$AppDir)
 
 $appJson = Get-AppJsonObject $AppDir
 if ($appJson) {
-    Write-Host "App.json configuration:" -ForegroundColor Cyan
-    Write-Host "  Name: $($appJson.name)"
-    Write-Host "  Publisher: $($appJson.publisher)"
-    Write-Host "  Version: $($appJson.version)"
+    Write-Output "App.json configuration:"
+    Write-Output "  Name: $($appJson.name)"
+    Write-Output "  Publisher: $($appJson.publisher)"
+    Write-Output "  Version: $($appJson.version)"
 } else {
-    Write-Host "ERROR: app.json not found or invalid." -ForegroundColor Red
+    Write-Error "ERROR: app.json not found or invalid."
 }
 
 $settingsJson = Get-SettingsJsonObject $AppDir
 if ($settingsJson) {
-    Write-Host "Settings.json configuration:" -ForegroundColor Cyan
+    Write-Output "Settings.json configuration:"
     if ($settingsJson.'al.codeAnalyzers' -and $settingsJson.'al.codeAnalyzers'.Count -gt 0) {
-        Write-Host "  Analyzers: $($settingsJson.'al.codeAnalyzers')"
+        Write-Output "  Analyzers: $($settingsJson.'al.codeAnalyzers')"
     } else {
-        Write-Host "  Analyzers: (none)"
+        Write-Output "  Analyzers: (none)"
     }
 } else {
-    Write-Host "No .vscode/settings.json found or invalid." -ForegroundColor Yellow
+    Write-Warning ".vscode/settings.json not found or invalid."
 }
 exit 0

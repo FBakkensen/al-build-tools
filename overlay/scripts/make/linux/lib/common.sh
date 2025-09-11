@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Linux Common Utilities Library - equivalent to Windows common.ps1
 # Bash functions for AL project operations
 

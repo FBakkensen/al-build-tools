@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Linux JSON Parser Library - equivalent to Windows json-parser.ps1
 # JSON parsing functions using jq
 

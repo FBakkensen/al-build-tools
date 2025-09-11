@@ -7,7 +7,7 @@ param([string]$AppDir = "app")
 
 # Diagnostic: Confirm function availability
 if (-not (Get-Command Get-EnabledAnalyzerPaths -ErrorAction SilentlyContinue)) {
-    Write-Host "ERROR: Get-EnabledAnalyzerPaths is not available after import!" -ForegroundColor Red
+    Write-Error "ERROR: Get-EnabledAnalyzerPaths is not available after import!"
     exit 1
 }
 
@@ -15,7 +15,7 @@ if (-not (Get-Command Get-EnabledAnalyzerPaths -ErrorAction SilentlyContinue)) {
 # Discover AL compiler
 $alcPath = Get-ALCompilerPath $AppDir
 if (-not $alcPath) {
-    Write-Host "AL Compiler not found. Please ensure AL extension is installed in VS Code." -ForegroundColor Red
+    Write-Error "AL Compiler not found. Please ensure AL extension is installed in VS Code."
     exit 1
 }
 
@@ -26,12 +26,12 @@ $analyzerPaths = Get-EnabledAnalyzerPaths $AppDir
 # Get output and package cache paths
 $outputFullPath = Get-OutputPath $AppDir
 if (-not $outputFullPath) {
-    Write-Host "[ERROR] Output path could not be determined. Check app.json and Get-OutputPath function." -ForegroundColor Red
+    Write-Error "[ERROR] Output path could not be determined. Check app.json and Get-OutputPath function."
     exit 1
 }
 $packageCachePath = Get-PackageCachePath $AppDir
 if (-not $packageCachePath) {
-    Write-Host "[ERROR] Package cache path could not be determined." -ForegroundColor Red
+    Write-Error "[ERROR] Package cache path could not be determined."
     exit 1
 }
 
@@ -40,7 +40,7 @@ if (Test-Path $outputFullPath -PathType Leaf) {
     try {
         Remove-Item $outputFullPath -Force
     } catch {
-        Write-Host "[ERROR] Failed to remove ${outputFullPath}: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Error "[ERROR] Failed to remove ${outputFullPath}: $($_.Exception.Message)"
         exit 1
     }
 } else {
@@ -50,20 +50,20 @@ if (Test-Path $outputFullPath -PathType Container) {
     try {
         Remove-Item $outputFullPath -Recurse -Force
     } catch {
-        Write-Host "[ERROR] Failed to remove conflicting directory ${outputFullPath}: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Error "[ERROR] Failed to remove conflicting directory ${outputFullPath}: $($_.Exception.Message)"
         exit 1
     }
 }
 # List contents of output directory after removal
 
-Write-Host "Building $appName v$appVersion..."
+Write-Output "Building $appName v$appVersion..."
 if ($analyzerPaths.Count -gt 0) {
-    Write-Host "Using analyzers from settings.json:"
-    $analyzerPaths | ForEach-Object { Write-Host "  - $_" }
-    Write-Host ""
+    Write-Output "Using analyzers from settings.json:"
+    $analyzerPaths | ForEach-Object { Write-Output "  - $_" }
+    Write-Output ""
 } else {
-    Write-Host "No analyzers found or enabled in settings.json"
-    Write-Host ""
+    Write-Output "No analyzers found or enabled in settings.json"
+    Write-Output ""
 }
 
 
@@ -76,10 +76,10 @@ $rulesetPath = $env:RULESET_PATH
 if ($rulesetPath) {
     $rsItem = Get-Item -LiteralPath $rulesetPath -ErrorAction SilentlyContinue
     if ($rsItem -and $rsItem.Length -gt 0) {
-        Write-Host "Using ruleset: $($rsItem.FullName)"
+        Write-Output "Using ruleset: $($rsItem.FullName)"
         $cmdArgs += "/ruleset:$($rsItem.FullName)"
     } else {
-        Write-Host "Ruleset not found or empty, skipping: $rulesetPath"
+        Write-Warning "Ruleset not found or empty, skipping: $rulesetPath"
     }
 }
 if ($analyzerPaths.Count -gt 0) {
@@ -97,9 +97,11 @@ if ($env:WARN_AS_ERROR -and ($env:WARN_AS_ERROR -eq '1' -or $env:WARN_AS_ERROR -
 $exitCode = $LASTEXITCODE
 
 if ($exitCode -ne 0) {
-    Write-Host ""; Write-Host "Build failed with errors above." -ForegroundColor Red
+    Write-Output ""
+    Write-Error "Build failed with errors above."
 } else {
-    Write-Host ""; Write-Host "Build completed successfully: $outputFile" -ForegroundColor Green
+    Write-Output ""
+    Write-Output "Build completed successfully: $outputFile"
 }
 
 exit $exitCode

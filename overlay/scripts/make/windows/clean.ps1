@@ -7,9 +7,9 @@ param([string]$AppDir)
 $outputPath = Get-OutputPath $AppDir
 if ($outputPath -and (Test-Path $outputPath)) {
     Remove-Item -Force $outputPath
-    Write-Host "Removed build artifact: $outputPath" -ForegroundColor Green
+    Write-Output "Removed build artifact: $outputPath"
     exit 0
 } else {
-    Write-Host "No build artifact found to clean ($outputPath)" -ForegroundColor Yellow
+    Write-Output "No build artifact found to clean ($outputPath)"
     exit 0
 }
