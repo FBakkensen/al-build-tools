@@ -60,6 +60,15 @@ Only the contents of `overlay/` are ever copied to your project. That keeps the 
 - Make (optional)
   - If `make` is available: `make build`, `make clean`, etc., will dispatch to the platform scripts.
 
+## Static Analysis Quality Gate
+
+PRs that modify `overlay/**` or `bootstrap/**` run a static analysis quality gate (shell, PowerShell, JSON, ruleset policy). See [specs/001-feature-plan/quickstart.md](specs/001-feature-plan/quickstart.md) for details.
+
+Run locally (Linux):
+```
+bash scripts/ci/run-static-analysis.sh
+```
+
 <!-- Simplified intentionally: one use case — install the latest. Advanced flags exist but are omitted here for clarity. -->
 
 ## How It Works

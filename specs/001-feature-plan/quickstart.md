@@ -15,3 +15,15 @@ Local replication (Linux):
 bash scripts/ci/run-static-analysis.sh
 ```
 (Script will exit non-zero on blocking findings.)
+
+## Issue categories and exit behavior
+
+- Syntax — Blocking. Examples: bash parse errors, PSScriptAnalyzer errors.
+- Security — Blocking. Examples: PowerShell warnings (PSScriptAnalyzer). Note: shellcheck warnings are treated as advisory Style.
+- Configuration — Blocking. Examples: invalid JSON, duplicate JSON keys, missing PSScriptAnalyzer, pwsh not installed, TIMEOUT exceeded.
+- Policy — Blocking. Examples: overlay/al.ruleset.json schema issues (invalid keys, duplicate rule ids, invalid actions).
+- Style — Advisory only; does not fail the gate.
+
+Exit semantics:
+- The script exits with code 1 if any blocking issues are present; otherwise exits 0.
+- Missing PSScriptAnalyzer or an exceeded TIMEOUT is treated as a blocking Configuration issue.
