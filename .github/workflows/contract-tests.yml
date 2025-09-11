@@ -11,10 +11,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup PowerShell 7
-        uses: PowerShell/setup-pwsh@v1
+      - name: Install PowerShell 7
+        uses: PSModule/install-powershell@v1
         with:
-          version: '7.x'
+          Version: latest
 
       - name: Tool versions summary
         shell: bash
@@ -34,4 +34,3 @@ jobs:
         run: |
           set -euo pipefail
           find tests -type f -name 'test_*.sh' -exec bash {} \;
-
