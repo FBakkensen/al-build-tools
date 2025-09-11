@@ -29,9 +29,9 @@ source_dir="$DEFAULT_SOURCE"
 # Pretty output helpers
 supports_color() { [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && [[ $(tput colors 2>/dev/null || echo 0) -ge 8 ]]; }
 if supports_color; then
-  BOLD="\033[1m"; DIM="\033[2m"; RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; CYAN="\033[36m"; RESET="\033[0m"
+  BOLD="\033[1m"; RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; CYAN="\033[36m"; RESET="\033[0m"
 else
-  BOLD=""; DIM=""; RED=""; GREEN=""; YELLOW=""; CYAN=""; RESET=""
+  BOLD=""; RED=""; GREEN=""; YELLOW=""; CYAN=""; RESET=""
 fi
 note() { printf "%b[al-build-tools]%b %b\n" "$CYAN" "$RESET" "$*"; }
 ok()   { printf "%b[ok]%b %b\n" "$GREEN" "$RESET" "$*"; }

@@ -206,7 +206,7 @@ get_al_compiler_path() {
         done
 
         # Iterate in descending version order
-        local pair version path
+        local version path
         while IFS='|' read -r version path; do
             [[ -n "$path" ]] || continue
 
@@ -292,7 +292,6 @@ get_enabled_analyzer_paths() {
     # Do not enable any default analyzers when none are configured
     
     # Helper: resolve placeholders in custom entries
-    local resolve_entry
     resolve_entry() {
         local raw="$1"
         local app_dir="$2"
@@ -319,8 +318,10 @@ get_enabled_analyzer_paths() {
         value=${value//\${workspaceRoot\}/$workspace_root}
         value=${value//\${appDir\}/$app_dir}
 
-        # Remove any remaining ${} braces without replacing the content
-        value=$(echo "$value" | sed 's/\${\([^}]*\)}/\1/g')
+        # Remove any remaining ${...} wrappers while preserving inner text
+        while [[ "$value" =~ \$\{([^}]*)\} ]]; do
+            value="${value/${BASH_REMATCH[0]}/${BASH_REMATCH[1]}}"
+        done
 
         # Expand ~ and environment variables
         value=$(eval echo "$value")
