@@ -319,8 +319,15 @@ get_enabled_analyzer_paths() {
         value=${value//\${appDir\}/$app_dir}
 
         # Remove any remaining ${...} wrappers while preserving inner text
+        local __remove_token_counter=0
+        local __remove_token_max=20
         while [[ "$value" =~ \$\{([^}]*)\} ]]; do
+            local __old_value="$value"
             value="${value/${BASH_REMATCH[0]}/${BASH_REMATCH[1]}}"
+            (( __remove_token_counter++ ))
+            if [[ "$value" == "$__old_value" ]] || (( __remove_token_counter >= __remove_token_max )); then
+                break
+            fi
         done
 
         # Expand ~ and environment variables
