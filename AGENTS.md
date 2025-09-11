@@ -40,3 +40,9 @@ This repository provides a minimal, cross‑platform AL build toolkit. Projects 
 ## Security & Configuration Tips
 - Never hardcode secrets; read from environment variables.
 - On Windows, use `-ExecutionPolicy Bypass` only for one‑off local runs.
+
+## Agent Behavior (Codex CLI)
+- Never run repository‑changing Git operations without explicit user instruction. This includes staging, committing, pushing, tagging, rebasing, or resetting.
+- Never create a pull request without explicit user instruction.
+- Do not suggest Git commands or propose opening a pull request unless the user explicitly asks for it.
+- When the user explicitly instructs to perform any of these actions, carry them out precisely as requested and confirm results.
