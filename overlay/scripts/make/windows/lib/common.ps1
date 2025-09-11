@@ -47,7 +47,7 @@ function Get-PackageCachePath {
 
 function Write-ErrorAndExit {
     param([string]$Message)
-    Write-Host $Message -ForegroundColor Red
+    Write-Error $Message
     exit 1
 }
 

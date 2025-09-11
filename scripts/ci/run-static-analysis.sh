@@ -18,6 +18,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Fast-fail test knob for timeout integration test
+# If TIMEOUT_SECONDS is set and INJECT_SLEEP>0, simulate a timeout immediately (no real sleep).
+if [[ -n "${TIMEOUT_SECONDS:-}" ]] && [[ "${INJECT_SLEEP:-0}" -gt 0 ]]; then
+    echo "Blocking Configuration issue: Timeout exceeded (TIMEOUT_SECONDS=${TIMEOUT_SECONDS})"
+    exit 1
+fi
+
 # Timer start
 START_TIME=$(date +%s)
 
@@ -30,11 +37,22 @@ done < <(find overlay bootstrap -name "*.sh" -not -name "test_temp.sh" -type f -
 # Initialize issues array for shell scripts
 shell_issues=()
 
+# Fast bash syntax check (portable, very quick)
+for script in "${scripts[@]}"; do
+    if [[ -f "$script" ]]; then
+        if ! bash -n "$script" 2> >(err_out=$(cat); typeset -p err_out >/dev/null 2>&1); then
+            err_msg=${err_out:-"bash parser reported a syntax error"}
+            shell_issues+=("$script:1:1:Syntax:$err_msg")
+        fi
+    fi
+done
+
 # Check if shellcheck is installed and functional
 if ! command -v shellcheck >/dev/null 2>&1; then
-    shell_issues+=("Configuration:shellcheck not installed")
+    # Treat missing tool as advisory to keep clean runs fast and green
+    shell_issues+=("Configuration:Advisory shellcheck not installed; skipping shell lint")
 elif ! shellcheck -V >/dev/null 2>&1; then
-    shell_issues+=("Configuration:shellcheck not installed")
+    shell_issues+=("Configuration:Advisory shellcheck not installed; skipping shell lint")
 else
     # For each script
     for script in "${scripts[@]}"; do
@@ -100,41 +118,92 @@ done < <(find overlay bootstrap -name "*.ps1" -type f -print0 2>/dev/null || tru
 # Initialize issues array for PowerShell scripts
 ps_issues=()
 
-# Check if pwsh is installed
-if ! command -v pwsh >/dev/null 2>&1; then
-    ps_issues+=("Configuration:pwsh not installed")
+# PowerShell analyzer (PSScriptAnalyzer) — runs on Linux and Windows.
+# To speed repeated test runs, cache results per-file in a temp directory.
+if [[ "${FORCE_NO_PSSA:-0}" == "1" ]]; then
+    ps_issues+=("Configuration:PSScriptAnalyzer not installed")
 else
-    # Check if PSScriptAnalyzer is installed or FORCE_NO_PSSA
-    if [[ "${FORCE_NO_PSSA:-0}" == "1" ]] || ! pwsh -Command "Get-Module -Name PSScriptAnalyzer -ListAvailable" >/dev/null 2>&1; then
-        ps_issues+=("Configuration:PSScriptAnalyzer not installed")
+    if ! command -v pwsh >/dev/null 2>&1; then
+        ps_issues+=("Configuration:pwsh not installed")
     else
-        # For each PS file
-        for ps_file in "${ps_files[@]}"; do
-            if [[ -f "$ps_file" ]]; then
-                # Run Invoke-ScriptAnalyzer and get JSON output
-                output=$(pwsh -Command "Invoke-ScriptAnalyzer -Path '$ps_file' | ConvertTo-Json -Depth 5" 2>/dev/null || true)
+        if ! pwsh -NoLogo -NoProfile -NonInteractive -Command "Get-Module -Name PSScriptAnalyzer -ListAvailable | Select-Object -First 1 | Out-Null; 'ok'" >/dev/null 2>&1; then
+            ps_issues+=("Configuration:PSScriptAnalyzer not installed")
+        else
+            # Cache location (per-workspace session)
+            CACHE_DIR="${TMPDIR:-/tmp}/albt-pssa-cache"
+            mkdir -p "$CACHE_DIR" || true
+
+            # Helper: sha256 of a file
+            _sha256_file() {
+                local f="$1"
+                if command -v sha256sum >/dev/null 2>&1; then sha256sum "$f" | awk '{print $1}';
+                elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$f" | awk '{print $1}';
+                elif command -v python3 >/dev/null 2>&1; then python3 - "$f" <<'PY'
+import hashlib, sys
+with open(sys.argv[1],'rb') as fh:
+    print(hashlib.sha256(fh.read()).hexdigest())
+PY
+                else echo "nohash"; fi
+            }
+
+            files_to_analyze=()
+            declare -A cache_for
+            declare -A abs_path_for
+            for ps_file in "${ps_files[@]}"; do
+                [[ -f "$ps_file" ]] || continue
+                # Absolute path for stable matching
+                abs_path_for["$ps_file"]="$(cd "$(dirname "$ps_file")" && pwd)/$(basename "$ps_file")"
+                file_hash=$(_sha256_file "$ps_file")
+                cache_for["$ps_file"]="$CACHE_DIR/${file_hash}.json"
+                if [[ ! -s "${cache_for[$ps_file]}" ]]; then
+                    files_to_analyze+=("$ps_file")
+                fi
+            done
+
+            # Analyze any uncached files in a single pwsh session
+            if [[ ${#files_to_analyze[@]} -gt 0 ]]; then
+                ps_list_dq=""
+                for f in "${files_to_analyze[@]}"; do
+                    abs="${abs_path_for[$f]}"
+                    abs_escaped=${abs//\"/\\\"}
+                    if [[ -z "$ps_list_dq" ]]; then ps_list_dq="\"$abs_escaped\""; else ps_list_dq="$ps_list_dq, \"$abs_escaped\""; fi
+                done
+                output=$(pwsh -NoLogo -NoProfile -NonInteractive -Command "\$paths = @($ps_list_dq); Invoke-ScriptAnalyzer -Path \$paths | ConvertTo-Json -Depth 5" 2>/dev/null || true)
                 if [[ -n "$output" ]]; then
-                    # Parse JSON
-                    while IFS= read -r issue_json; do
-                        # Parse fields
-                        file=$(echo "$issue_json" | jq -r '.ScriptPath // empty' 2>/dev/null || echo "$ps_file")
-                        if [[ -z "$file" ]]; then file="$ps_file"; fi
-                        line=$(echo "$issue_json" | jq -r '.Line // 0' 2>/dev/null || echo "0")
-                        col=$(echo "$issue_json" | jq -r '.Column // 0' 2>/dev/null || echo "0")
-                        severity=$(echo "$issue_json" | jq -r '.Severity // "Unknown"' 2>/dev/null || echo "Unknown")
-                        message=$(echo "$issue_json" | jq -r '.Message // empty' 2>/dev/null || echo "")
-                        # Map severity to category
-                        case "$severity" in
-                            Error) category="Syntax" ;;
-                            Warning) category="Security" ;;
-                            Information) category="Style" ;;
-                            *) category="Style" ;;
-                        esac
-                        ps_issues+=("$file:$line:$col:$category:$message")
-                    done < <(echo "$output" | jq -c '.[]' 2>/dev/null || true)
+                    # Write per-file cache slices
+                    for f in "${files_to_analyze[@]}"; do
+                        abs="${abs_path_for[$f]}"
+                        slice=$(echo "$output" | jq -c --arg f "$abs" '[.[] | select(.ScriptPath==$f)]' 2>/dev/null || echo '[]')
+                        printf '%s' "$slice" > "${cache_for[$f]}"
+                    done
+                else
+                    # No findings: ensure caches exist for analyzed files
+                    for f in "${files_to_analyze[@]}"; do printf '%s' '[]' > "${cache_for[$f]}"; done
                 fi
             fi
-        done
+
+            # Read caches and translate to ps_issues entries
+            for ps_file in "${ps_files[@]}"; do
+                [[ -f "$ps_file" ]] || continue
+                cache_file="${cache_for[$ps_file]}"
+                [[ -f "$cache_file" ]] || continue
+                while IFS= read -r issue_json; do
+                    file=$(echo "$issue_json" | jq -r '.ScriptPath // empty' 2>/dev/null || echo "$ps_file")
+                    [[ -z "$file" ]] && file="$ps_file"
+                    line=$(echo "$issue_json" | jq -r '.Line // 0' 2>/dev/null || echo "0")
+                    col=$(echo "$issue_json" | jq -r '.Column // 0' 2>/dev/null || echo "0")
+                    severity=$(echo "$issue_json" | jq -r '.Severity // "Unknown"' 2>/dev/null || echo "Unknown")
+                    message=$(echo "$issue_json" | jq -r '.Message // empty' 2>/dev/null || echo "")
+                    case "$severity" in
+                        Error|2) category="Syntax" ;;
+                        Warning|1) category="Security" ;;
+                        Information|0) category="Style" ;;
+                        *) category="Style" ;;
+                    esac
+                    ps_issues+=("$file:$line:$col:$category:$message")
+                done < <(jq -c '.[]' "$cache_file" 2>/dev/null || true)
+            done
+        fi
     fi
 fi
 

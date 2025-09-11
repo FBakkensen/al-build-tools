@@ -74,6 +74,41 @@ Only the contents of `overlay/` are ever copied to your project. That keeps the 
   `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` or use `-ExecutionPolicy Bypass` for one-off runs.
 - Linux/macOS: ensure `curl`, `tar`, and either `unzip` or `python3` are installed and in `PATH`.
 
+## WSL Development Setup (Ubuntu 22.04/24.04)
+
+Set up the tools needed to run local analysis and tests when developing inside WSL.
+
+- Check distro info
+  - `. /etc/os-release && echo "$ID $VERSION_ID $VERSION_CODENAME"`
+
+- Install base packages
+  - `sudo apt-get update && sudo apt-get install -y curl gpg jq python3 shellcheck`
+
+- Add Microsoft package repo (required for PowerShell 7)
+  - `sudo mkdir -p /etc/apt/keyrings`
+  - `curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg`
+  - `. /etc/os-release`
+  - `echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/${VERSION_ID}/prod ${VERSION_CODENAME} main" | sudo tee /etc/apt/sources.list.d/microsoft-prod.list >/dev/null`
+  - `sudo apt-get update && sudo apt-get install -y powershell`
+
+- Install PSScriptAnalyzer in PowerShell
+  - `pwsh -NoLogo -NoProfile -Command "Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; Install-Module PSScriptAnalyzer -Scope CurrentUser -Force"`
+
+- Verify tools
+  - `shellcheck -V`
+  - `pwsh --version`
+  - `pwsh -NoLogo -NoProfile -Command "Get-Module PSScriptAnalyzer -ListAvailable | Select Name,Version"`
+
+- Run repository tests
+  - `for t in tests/contract/*.sh tests/integration/*.sh; do echo "--- $t"; bash "$t" || break; done`
+
+Troubleshooting WSL apt sources
+- Remove stale/unsigned repos (example: Warp):
+  - `sudo rm -f /etc/apt/sources.list.d/warp*.list /etc/apt/trusted.gpg.d/warp*.gpg /etc/apt/keyrings/warp*.gpg 2>/dev/null || true`
+  - `sudo apt-get update`
+- If Microsoft repo 404s for your `${VERSION_ID}`, temporarily pin to jammy (22.04):
+  - `echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" | sudo tee /etc/apt/sources.list.d/microsoft-prod.list >/dev/null && sudo apt-get update`
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, cross‑platform parity rules, and analyzer tips. In short: keep Linux and Windows behavior in parity, update both `overlay/scripts/make/linux` and `overlay/scripts/make/windows`, and keep the Makefile thin.
