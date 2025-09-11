@@ -2,9 +2,7 @@ name: Static Analysis Quality Gate
 
 on:
   pull_request:
-    paths:
-      - 'overlay/**'
-      - 'bootstrap/**'
+  workflow_dispatch:
 
 jobs:
   static-analysis:
