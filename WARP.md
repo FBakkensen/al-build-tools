@@ -100,6 +100,8 @@ Big-picture architecture
 
 Important agent constraints (summarized from .github/copilot-instructions.md)
 - Git safety when operating in this repo:
+  - Never perform git stage, commit, or push without explicit instruction from the user.
+  - Never suggest any git operations; only perform them when explicitly instructed.
   - Do not run git commands unless explicitly asked to; prefer showing commands instead of running them.
   - If asked to run git: always use --no-pager, prefer non-interactive flags, avoid destructive operations, and never force-push unless the user explicitly includes it.
 - Cross-platform parity requirement for overlay scripts: any new task added under overlay/scripts/make/linux must have a Windows peer with aligned arguments, output shape, and behavior.
