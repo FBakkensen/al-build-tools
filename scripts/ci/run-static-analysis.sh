@@ -28,11 +28,44 @@ fi
 # Timer start
 START_TIME=$(date +%s)
 
+# -----------------------------
+# Performance & Timeout (T013)
+# -----------------------------
+# Default timeout in seconds; can be overridden via env TIMEOUT_SECONDS
+TIMEOUT_SECONDS=${TIMEOUT_SECONDS:-60}
+# Helper to check for timeout and record a blocking Configuration issue once
+check_timeout() {
+    local now elapsed
+    now=$(date +%s)
+    elapsed=$(( now - START_TIME ))
+    if (( elapsed > TIMEOUT_SECONDS )); then
+        if [[ "${TIMEOUT_TRIGGERED:-0}" -eq 0 ]]; then
+            # Record as a global configuration issue; aggregator will emit and exit non-zero
+            shell_issues+=("Configuration:Timeout exceeded ${TIMEOUT_SECONDS}s")
+            TIMEOUT_TRIGGERED=1
+        fi
+        return 1
+    fi
+    return 0
+}
+
+# Optional injection for tests to simulate long-running path
+if [[ -n "${INJECT_SLEEP:-}" ]]; then
+    if [[ "${INJECT_SLEEP}" =~ ^[0-9]+$ ]] && (( INJECT_SLEEP > 0 )); then
+        sleep "${INJECT_SLEEP}"
+    fi
+fi
+# Early timeout check (after any injected delay)
+check_timeout || true
+
 # Discover shell scripts
 scripts=()
 while IFS= read -r -d '' file; do
     scripts+=("$file")
 done < <(find overlay bootstrap -name "*.sh" -not -name "test_temp.sh" -type f -print0 2>/dev/null || true)
+
+# Timeout check before shell analysis
+check_timeout || true
 
 # Initialize issues array for shell scripts
 shell_issues=()
@@ -114,6 +147,9 @@ ps_files=()
 while IFS= read -r -d '' file; do
     ps_files+=("$file")
 done < <(find overlay bootstrap -name "*.ps1" -type f -print0 2>/dev/null || true)
+
+# Timeout check before PowerShell analysis
+check_timeout || true
 
 # Initialize issues array for PowerShell scripts
 ps_issues=()
@@ -218,6 +254,9 @@ if [[ -d overlay ]]; then
         json_files+=("$file")
     done < <(find overlay -type f -name "*.json" -not -path "*/node_modules/*" -print0 2>/dev/null || true)
 fi
+
+# Timeout check before JSON analysis
+check_timeout || true
 
 # Discover JSON files under bootstrap (top-level only), excluding node_modules
 if [[ -d bootstrap ]]; then
