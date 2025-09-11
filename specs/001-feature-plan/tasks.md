@@ -41,7 +41,7 @@ Single file focus (`scripts/ci/run-static-analysis.sh`) → sequential.
 - [x] T013 Implement performance & timeout: honor `TIMEOUT_SECONDS` (default 60); abort with Blocking Configuration issue on overrun; capture duration in Summary.
 
 ## Phase 3.4: Integration
-- [ ] T014 Wire finalized script in workflow: remove temporary allow-failure, add path filtering (`paths:` overlay/**, bootstrap/**), cache nothing, capture analyzer versions in job summary.
+- [x] T014 Wire finalized script in workflow: remove temporary allow-failure, add path filtering (`paths:` overlay/**, bootstrap/**), cache nothing, capture analyzer versions in job summary.
 
 ## Phase 3.5: Polish
 - [ ] T015 [P] Update `CONTRIBUTING.md` (new section "Static Analysis Quality Gate" with local run instructions & failure categories).
