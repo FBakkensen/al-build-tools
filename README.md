@@ -69,6 +69,18 @@ Run locally (Linux):
 bash scripts/ci/run-static-analysis.sh
 ```
 
+## Contract Tests for Bootstrap Installers
+
+This repo includes contract tests that exercise both installers (bash and PowerShell) with identical scenarios. Tests run without network by stubbing downloads to a local ZIP of `overlay/`.
+
+- Run the suite:
+  ```
+  find tests -type f -name 'test_*.sh' -exec bash {} \;
+  ```
+- Key scenarios covered: basic install/reporting, idempotent re-run, git vs non-git warning and .git preservation, custom destination, unzip→python3 fallback, hard failure when extraction is impossible, preservation/no side effects, paths with spaces, and read-only destination failure. A parity test also invokes the PowerShell installer through the same harness.
+
+See specs/002-add-tests-for/quickstart.md for details about the harness and how tests are structured.
+
 <!-- Simplified intentionally: one use case — install the latest. Advanced flags exist but are omitted here for clarity. -->
 
 ## How It Works

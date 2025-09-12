@@ -1,0 +1,36 @@
+name: Contract Tests (Bootstrap Installers)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PowerShell 7
+        uses: PSModule/install-powershell@v1
+        with:
+          Version: latest
+
+      - name: Tool versions summary
+        shell: bash
+        run: |
+          {
+            echo "## Contract Test Tool Versions"
+            echo
+            echo "- bash: $(bash --version | head -n1)"
+            echo "- python3: $(python3 --version 2>/dev/null || echo missing)"
+            echo "- unzip: $(unzip -v | head -n2 | tail -n1 2>/dev/null || echo missing)"
+            echo "- curl: $(curl --version | head -n1 2>/dev/null || echo missing)"
+            echo "- pwsh: $(pwsh -NoLogo -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()' 2>/dev/null || echo missing)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run contract tests (bash + pwsh)
+        shell: bash
+        run: |
+          set -euo pipefail
+          find tests -type f -name 'test_*.sh' -exec bash {} \;
