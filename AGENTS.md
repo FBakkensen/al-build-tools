@@ -5,8 +5,9 @@ This repository provides a minimal, cross‑platform AL build toolkit. Projects 
 ## Project Structure & Module Organization
 - `overlay/` (copied into target repos)
   - `Makefile` → dispatches to platform scripts
-  - `scripts/make/linux/` → `build.sh`, `clean.sh`, `show-config.sh`, `show-analyzers.sh`, `next-object-number.sh`, `lib/*.sh`
+  - `scripts/make/linux/` → `build.sh`, `clean.sh`, `show-config.sh`, `show-analyzers.sh`, `lib/*.sh`
   - `scripts/make/windows/` → `build.ps1`, `clean.ps1`, `show-config.ps1`, `show-analyzers.ps1`, `lib/*.ps1`
+  - `scripts/next-object-number.sh` → find first available AL object number (Linux)
   - `.github/` → optional workflows/scripts projects may inherit
 - `bootstrap/` → `install.sh`, `install.ps1` (one‑liner installers)
 - `scripts/` → repo maintenance and CI helpers (not copied)
@@ -14,7 +15,7 @@ This repository provides a minimal, cross‑platform AL build toolkit. Projects 
 
 ## Build, Test, and Development Commands
 - Install latest into a project
-  - Linux/macOS: `curl -fsSL https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.sh | bash -s -- --dest .`
+- Linux: `curl -fsSL https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.sh | bash -s -- --dest .`
   - Windows: `iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Dest .`
 - After copy (inside a project)
   - Linux: `bash scripts/make/linux/build.sh [app]` · Windows: `pwsh -File scripts/make/windows/build.ps1 [app]`

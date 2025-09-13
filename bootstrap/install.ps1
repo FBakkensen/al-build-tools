@@ -27,8 +27,9 @@ function Install-AlBuildTools {
     try {
         $destFull = (Resolve-Path -Path $Dest -ErrorAction Stop).Path
     } catch {
-        New-Item -ItemType Directory -Force -Path $Dest | Out-Null
-        $destFull = (Resolve-Path -Path $Dest).Path
+        # Create the destination if it does not exist, then resolve the actual path
+        $created = New-Item -ItemType Directory -Force -Path $Dest
+        $destFull = (Resolve-Path -Path $created.FullName).Path
     }
     Write-Note "Install/update from $Url@$Ref into $destFull (source: $Source)"
 
@@ -101,7 +102,10 @@ function Install-AlBuildTools {
     }
 }
 
-# Auto-run only when the script is executed via -File (PSCommandPath is set).
-if ($PSCommandPath) {
+# Auto-run only when executed as a script (not dot-sourced),
+# and allow tests to disable via ALBT_NO_AUTORUN=1.
+# - When dot-sourced, $MyInvocation.InvocationName is '.'
+# - When executed via -File or &, InvocationName is the script name/path
+if ($PSCommandPath -and ($MyInvocation.InvocationName -ne '.') -and -not $env:ALBT_NO_AUTORUN) {
     Install-AlBuildTools -Url $Url -Ref $Ref -Dest $Dest -Source $Source
 }

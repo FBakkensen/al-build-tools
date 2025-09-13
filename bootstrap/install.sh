@@ -64,8 +64,9 @@ done
 
 step "Resolve destination"
 # Resolve absolute destination path
-dest_abs=$(cd "$dest" 2>/dev/null && pwd || true)
-if [[ -z "$dest_abs" ]]; then
+if dest_try=$(cd "$dest" 2>/dev/null && pwd); then
+  dest_abs="$dest_try"
+else
   mkdir -p "$dest"
   dest_abs=$(cd "$dest" && pwd)
 fi
