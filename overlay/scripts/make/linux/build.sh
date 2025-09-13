@@ -22,6 +22,12 @@ alc_path=$(get_al_compiler_path "$AppDir")
 
 mapfile -t analyzer_paths < <(get_enabled_analyzer_paths "$AppDir")
 
+# Filter out empty/nonexistent analyzer entries to avoid '/analyzer:' with no value
+filtered_analyzers=()
+for p in "${analyzer_paths[@]:-}"; do
+    [[ -n "$p" && -f "$p" ]] && filtered_analyzers+=("$p")
+done
+
 output_full_path=$(get_output_path "$AppDir")
 [[ -n "$output_full_path" ]] || write_error_and_exit "[ERROR] Output path could not be determined. Check app.json and get_output_path function."
 
@@ -41,9 +47,9 @@ app_version=$(jq -r '.version // "1.0.0.0"' "$app_json_path" 2>/dev/null)
 output_file=$(basename "$output_full_path")
 echo -e "\033[0;32mBuilding ${app_name} v${app_version}...\033[0m"
 
-if [[ ${#analyzer_paths[@]} -gt 0 ]]; then
+if [[ ${#filtered_analyzers[@]} -gt 0 ]]; then
     echo "Using analyzers from settings.json:"
-    for analyzer_path in "${analyzer_paths[@]}"; do
+    for analyzer_path in "${filtered_analyzers[@]}"; do
         echo "  - $analyzer_path"
     done
     echo ""
@@ -63,7 +69,7 @@ if [[ -n "${RULESET_PATH:-}" ]]; then
         echo "Ruleset not found or empty, skipping: ${RULESET_PATH}"
     fi
 fi
-for analyzer_path in "${analyzer_paths[@]}"; do
+for analyzer_path in "${filtered_analyzers[@]}"; do
     cmd_args+=("/analyzer:$analyzer_path")
 done
 
@@ -83,4 +89,3 @@ else
     echo -e "\033[0;32mBuild completed successfully: $output_file\033[0m"
 fi
 exit $exit_code
-

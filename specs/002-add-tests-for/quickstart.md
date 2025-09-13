@@ -36,4 +36,4 @@ bash tests/contract/test_bootstrap_install_powershell_parity.sh
 
 ## Troubleshooting
 - Ensure pwsh is installed and on PATH; tests fail if prerequisites are missing.
-- If a test fails, inspect `$WORK/out-*.txt` in `.tmp-tests/…` for details.
+- On failure, each test prints the captured installer output (`out-*.txt`) to stderr. For deeper inspection, temporarily disable cleanup in `tests/contract/lib/bootstrap_test_helpers.sh` to keep the per‑test temp directory (created under the system temp path).

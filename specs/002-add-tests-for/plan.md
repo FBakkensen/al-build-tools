@@ -63,11 +63,11 @@ Add deterministic contract tests validating observable behaviors of `bootstrap/i
 - No mocks; environment simulation via PATH.
 
 **Observability**:
-- Rely on existing script stderr messages; no new logging required.
+- Rely on existing script stderr/messages; no new logging required.
 - Failure assertions check clarity of messages.
 
 **Versioning**:
-- No external contract changes to installers; purely additive tests.
+- No user‑visible contract change. One internal safety tweak added to `install.ps1` (dot‑source–safe auto‑run guard) to enable hermetic tests and prevent accidental repo pollution.
 - No version bump needed.
 
 Result: PASS (no violations). Re-check after Phase 1: PASS.

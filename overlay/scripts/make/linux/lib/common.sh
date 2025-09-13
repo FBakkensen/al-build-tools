@@ -159,10 +159,13 @@ get_highest_version_al_extension() {
 get_al_compiler_path() {
     local app_dir="$1"
 
-    # 1) Direct override via env var
-    if [[ -n "$ALC_PATH" && -f "$ALC_PATH" ]]; then
-        echo "$ALC_PATH"
-        return
+    # 1) Direct override via env var (guarded for set -u)
+    if [[ -v ALC_PATH ]]; then
+        local alc_override="$ALC_PATH"
+        if [[ -n "$alc_override" && -f "$alc_override" ]]; then
+            echo "$alc_override"
+            return
+        fi
     fi
 
     # Determine preferred linux folder based on architecture
@@ -392,12 +395,14 @@ get_enabled_analyzer_paths() {
     local unique=()
     local p
     for p in "${out_paths[@]}"; do
-        if [[ -n "$p" && -z "${seen[$p]}" ]]; then
+        if [[ -n "$p" && -z "${seen[$p]-}" ]]; then
             seen[$p]=1
             unique+=("$p")
         fi
     done
 
-    printf '%s\n' "${unique[@]}"
+    # Only print when we actually have entries; avoid a stray blank line
+    if [[ ${#unique[@]} -gt 0 ]]; then
+        printf '%s\n' "${unique[@]}"
+    fi
 }
-
