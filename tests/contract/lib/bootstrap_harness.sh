@@ -12,7 +12,8 @@ bh_init_workdir() {
   local tid=${1:?"usage: bh_init_workdir TEST_ID"}
   local repo_root
   repo_root="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-  export TEST_TMPDIR="$repo_root/.tmp-tests"
+  # Use system temp directory instead of repo directory to avoid pollution
+  export TEST_TMPDIR=""
   export WORK=$(make_temp_dir "${tid}")
   export OUT="$WORK/out.txt"
   export DEST="$WORK/target"
@@ -110,7 +111,6 @@ function Invoke-WebRequest {
   Copy-Item -LiteralPath $src -Destination $OutFile -Force
 }
 $ErrorActionPreference = 'Stop'
-Set-Variable -Name PSCommandPath -Value $null -Scope Global -Force
 . (Join-Path "__REPO__" 'bootstrap' 'install.ps1')
 Install-AlBuildTools -Url $env:URL -Ref $env:REF -Dest $env:DESTDIR -Source $env:SRC
 PSE
