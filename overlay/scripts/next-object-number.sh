@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# filepath: Scripts/next-object-number.sh
+# filepath: scripts/next-object-number.sh
 
 if [ $# -ne 1 ]; then
   echo "Usage: $0 <objecttype>"
@@ -10,7 +10,7 @@ objtype="$1"
 appjson="app/app.json"
 
 # Get ranges from app.json
-mapfile -t fromto < <(grep -Po '"from":\s*\d+|"to":\s*\d+' "$appjson" | awk '{print $2}')
+fromto=($(grep -Po '"from":\s*\d+|"to":\s*\d+' "$appjson" | awk '{print $2}'))
 
 # Find used numbers for the given object type
 used=$(grep -rhoP "$objtype\s+\d+" app/ | awk '{print $2}' | sort -n)

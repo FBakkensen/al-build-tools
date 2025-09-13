@@ -35,6 +35,12 @@ if (-not $packageCachePath) {
     exit 1
 }
 
+# Derive friendly app info for messages
+$appJson = Get-AppJsonObject $AppDir
+$appName = if ($appJson -and $appJson.name) { $appJson.name } else { 'Unknown App' }
+$appVersion = if ($appJson -and $appJson.version) { $appJson.version } else { '1.0.0.0' }
+$outputFile = Split-Path -Path $outputFullPath -Leaf
+
 
 if (Test-Path $outputFullPath -PathType Leaf) {
     try {
@@ -57,9 +63,16 @@ if (Test-Path $outputFullPath -PathType Container) {
 # List contents of output directory after removal
 
 Write-Output "Building $appName v$appVersion..."
-if ($analyzerPaths.Count -gt 0) {
+
+# Filter out empty or non-existent analyzer paths (parity with Linux)
+$filteredAnalyzers = New-Object System.Collections.Generic.List[string]
+foreach ($p in $analyzerPaths) {
+    if ($p -and (Test-Path $p -PathType Leaf)) { [void]$filteredAnalyzers.Add($p) }
+}
+
+if ($filteredAnalyzers.Count -gt 0) {
     Write-Output "Using analyzers from settings.json:"
-    $analyzerPaths | ForEach-Object { Write-Output "  - $_" }
+    $filteredAnalyzers | ForEach-Object { Write-Output "  - $_" }
     Write-Output ""
 } else {
     Write-Output "No analyzers found or enabled in settings.json"
@@ -82,8 +95,8 @@ if ($rulesetPath) {
         Write-Warning "Ruleset not found or empty, skipping: $rulesetPath"
     }
 }
-if ($analyzerPaths.Count -gt 0) {
-    foreach ($analyzer in $analyzerPaths) {
+if ($filteredAnalyzers.Count -gt 0) {
+    foreach ($analyzer in $filteredAnalyzers) {
         $cmdArgs += "/analyzer:$analyzer"
     }
 }
@@ -98,7 +111,8 @@ $exitCode = $LASTEXITCODE
 
 if ($exitCode -ne 0) {
     Write-Output ""
-    Write-Error "Build failed with errors above."
+    # Print a clean failure message without emitting a PowerShell error record
+    Write-Host "Build failed with errors above." -ForegroundColor Red
 } else {
     Write-Output ""
     Write-Output "Build completed successfully: $outputFile"

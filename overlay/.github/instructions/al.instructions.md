@@ -1,6 +1,8 @@
 ---
-applyTo: '**'
+applyTo: '**/*.al'
 ---
+
+follow the guidelines here https://github.com/microsoft/alguidelines/blob/main/content/docs/vibe-coding/al-guidelines-rules.md and the files it links to. using the `@` markdown syntax. u can preferrable get these ressources using the `gh` cli. do not clone the repo.
 
 # Instructions for Using next-object-number.sh Script
 
