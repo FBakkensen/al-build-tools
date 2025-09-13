@@ -9,7 +9,7 @@ get_app_json_path() {
     local app_dir="$1"
     local app_json_path1="${app_dir}/app.json"
     local app_json_path2="app.json"
-    
+
     if [[ -f "$app_json_path1" ]]; then
         echo "$app_json_path1"
     elif [[ -f "$app_json_path2" ]]; then
@@ -19,13 +19,13 @@ get_app_json_path() {
     fi
 }
 
-# Function: get_settings_json_path  
+# Function: get_settings_json_path
 # Find .vscode/settings.json location - equivalent to Get-SettingsJsonPath
 # Returns the path to settings.json or empty if not found
 get_settings_json_path() {
     local app_dir="$1"
     local settings_path="${app_dir}/.vscode/settings.json"
-    
+
     if [[ -f "$settings_path" ]]; then
         echo "$settings_path"
     elif [[ -f ".vscode/settings.json" ]]; then
@@ -42,29 +42,29 @@ get_output_path() {
     local app_dir="$1"
     local app_json
     app_json=$(get_app_json_path "$app_dir")
-    
+
     if [[ -z "$app_json" ]]; then
         echo ""
         return
     fi
-    
+
     # Check if jq is available
     if ! command -v jq &> /dev/null; then
         echo ""
         return
     fi
-    
+
     # Parse JSON fields with defaults
     local name version publisher
     name=$(jq -r '.name // "CopilotAllTablesAndFields"' "$app_json" 2>/dev/null)
     version=$(jq -r '.version // "1.0.0.0"' "$app_json" 2>/dev/null)
     publisher=$(jq -r '.publisher // "FBakkensen"' "$app_json" 2>/dev/null)
-    
+
     # Handle jq parsing failures
     if [[ -z "$name" || "$name" == "null" ]]; then name="CopilotAllTablesAndFields"; fi
     if [[ -z "$version" || "$version" == "null" ]]; then version="1.0.0.0"; fi
     if [[ -z "$publisher" || "$publisher" == "null" ]]; then publisher="FBakkensen"; fi
-    
+
     local output_file="${publisher}_${name}_${version}.app"
     echo "${app_dir}/${output_file}"
 }
@@ -90,6 +90,8 @@ write_error_and_exit() {
 # Find the highest version AL extension - equivalent to Get-HighestVersionALExtension
 # Returns the path to the highest version AL extension directory
 get_highest_version_al_extension() {
+    # Search across common VS Code roots (stable, insiders, local, remote)
+    local al_ext_roots=(
     # Search across common VS Code roots (stable, insiders, local, remote)
     local al_ext_roots=(
         "$HOME/.vscode/extensions"
@@ -145,9 +147,67 @@ get_highest_version_al_extension() {
     fi
 
     echo "$best_path"
+        "$HOME/.vscode-insiders/extensions"
+        "$HOME/.vscode-server-insiders/extensions"
+    )
+
+    local best_path=""
+    local best_version="0.0.0"
+
+    for root in "${al_ext_roots[@]}"; do
+        [[ -d "$root" ]] || continue
+
+        # Collect candidate extension folders
+        shopt -s nullglob
+        local candidates=("$root"/ms-dynamics-smb.al-*)
+        shopt -u nullglob
+        [[ ${#candidates[@]} -gt 0 ]] || continue
+
+        # Build list of version|path pairs for sorting and comparison
+        local lines=""
+        local ext base ver
+        for ext in "${candidates[@]}"; do
+            [[ -d "$ext" ]] || continue
+            base=$(basename "$ext")
+            # Extract numeric version after prefix, strip any suffix (e.g., -preview)
+            ver=${base#ms-dynamics-smb.al-}
+            ver=$(echo "$ver" | sed -E 's/^([0-9]+(\.[0-9]+)*)[A-Za-z0-9.-]*/\1/')
+            [[ -n "$ver" ]] || ver="0.0.0"
+            lines+="$ver|$ext\n"
+        done
+
+        # Compare against current best
+        local version path
+        while IFS='|' read -r version path; do
+            [[ -n "$path" ]] || continue
+            if [[ $(printf '%s\n' "$version" "$best_version" | sort -V | tail -n1) == "$version" && "$version" != "$best_version" ]]; then
+                best_version="$version"
+                best_path="$path"
+            fi
+        done < <(printf "%b" "$lines")
+    done
+
+    # Fallback: derive extension root from discovered compiler path if possible
+    if [[ -z "$best_path" ]]; then
+        local alc
+        alc=$(get_al_compiler_path "")
+        if [[ -n "$alc" ]]; then
+            # Expect structure: <ext>/bin/<linux-*>/alc
+            best_path=$(dirname "$(dirname "$(dirname "$alc")")")
+        fi
+    fi
+
+    echo "$best_path"
 }
 
 # Function: get_al_compiler_path
+# Discover AL compiler path robustly across VS Code variants and layouts
+# Search order:
+#   1) Respect explicit `ALC_PATH` env var if executable
+#   2) Look in common extension roots for highest ms-dynamics-smb.al-* version
+#      and prefer bin/linux-<arch>/alc, then bin/linux/alc, then any */linux*/alc
+#   3) Fallback to any 'alc' under the extension folder
+#   4) Final fallback: if 'alc' is on PATH
 # Discover AL compiler path robustly across VS Code variants and layouts
 # Search order:
 #   1) Respect explicit `ALC_PATH` env var if executable
@@ -244,6 +304,7 @@ get_al_compiler_path() {
         return
     fi
 
+
     echo ""
 }
 
@@ -254,7 +315,7 @@ get_enabled_analyzer_paths() {
     local app_dir="$1"
     local settings_path
     settings_path=$(get_settings_json_path "$app_dir")
-    
+
     # Analyzer name to DLL mapping
     declare -A dll_map=(
         ["CodeCop"]="Microsoft.Dynamics.Nav.CodeCop.dll"
@@ -262,10 +323,10 @@ get_enabled_analyzer_paths() {
         ["AppSourceCop"]="Microsoft.Dynamics.Nav.AppSourceCop.dll"
         ["PerTenantExtensionCop"]="Microsoft.Dynamics.Nav.PerTenantExtensionCop.dll"
     )
-    
+
     local supported=("CodeCop" "UICop" "AppSourceCop" "PerTenantExtensionCop")
     local enabled=()
-    
+
     # Parse enabled analyzers from settings.json
     if [[ -n "$settings_path" && -f "$settings_path" && -n "$(command -v jq)" ]]; then
         local analyzers_json
@@ -288,9 +349,9 @@ get_enabled_analyzer_paths() {
             fi
         fi
     fi
-    
+
     # Do not enable any default analyzers when none are configured
-    
+
     # Helper: resolve placeholders in custom entries
     resolve_entry() {
         local raw="$1"
@@ -397,4 +458,52 @@ get_enabled_analyzer_paths() {
     done
 
     printf '%s\n' "${unique[@]}"
+    local out_paths=()
+
+    for analyzer in "${enabled[@]}"; do
+        # Strip quotes and whitespace
+        analyzer=$(echo "$analyzer" | sed 's/^\s*\"\?//; s/\"\?\s*$//')
+        # If form is ${Name}, unwrap to Name for known analyzers
+        if [[ $analyzer =~ ^\$\{([A-Za-z]+)\}$ ]]; then
+            analyzer="${BASH_REMATCH[1]}"
+        fi
+        # Known analyzers by name
+        local is_supported=false
+        for supported_analyzer in "${supported[@]}"; do
+            if [[ "$analyzer" == "$supported_analyzer" ]]; then
+                is_supported=true
+                break
+            fi
+        done
+        if [[ "$is_supported" == true && -n "$al_ext_path" ]]; then
+            local dll="${dll_map[$analyzer]}"
+            if [[ -n "$dll" ]]; then
+                local dll_path
+                dll_path=$(find "$al_ext_path" -type f -name "$dll" 2>/dev/null | head -1)
+                if [[ -n "$dll_path" ]]; then
+                    out_paths+=("$dll_path")
+                fi
+            fi
+            continue
+        fi
+
+        # Otherwise treat as path expression
+        while IFS= read -r resolved; do
+            [[ -n "$resolved" ]] && out_paths+=("$resolved")
+        done < <(resolve_entry "$analyzer" "$app_dir" "$al_ext_path")
+    done
+
+    # Deduplicate while preserving order
+    declare -A seen
+    local unique=()
+    local p
+    for p in "${out_paths[@]}"; do
+        if [[ -n "$p" && -z "${seen[$p]}" ]]; then
+            seen[$p]=1
+            unique+=("$p")
+        fi
+    done
+
+    printf '%s\n' "${unique[@]}"
 }
+

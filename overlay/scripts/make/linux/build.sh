@@ -79,7 +79,7 @@ if [[ ! -x "$alc_path" ]]; then
 fi
 
 # Build analyzer arguments correctly
-cmd_args=("/project:$AppDir" "/out:$output_full_path" "/packagecachepath:$package_cache_path")
+cmd_args=("/project:$AppDir" "/out:$output_full_path" "/packagecachepath:$package_cache_path" "/parallel+")
 
 # Optional: pass ruleset if specified and file exists and is non-empty
 if [[ -n "${RULESET_PATH:-}" ]]; then
@@ -114,3 +114,4 @@ else
 fi
 
 exit $exit_code
+
