@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
 # shellcheck shell=bash
 # Linux Common Utilities Library - equivalent to Windows common.ps1
 # Bash functions for AL project operations
@@ -90,9 +92,6 @@ write_error_and_exit() {
 # Find the highest version AL extension - equivalent to Get-HighestVersionALExtension
 # Returns the path to the highest version AL extension directory
 get_highest_version_al_extension() {
-    # Search across common VS Code roots (stable, insiders, local, remote)
-    local al_ext_roots=(
-    # Search across common VS Code roots (stable, insiders, local, remote)
     local al_ext_roots=(
         "$HOME/.vscode/extensions"
         "$HOME/.vscode-server/extensions"
@@ -105,27 +104,22 @@ get_highest_version_al_extension() {
 
     for root in "${al_ext_roots[@]}"; do
         [[ -d "$root" ]] || continue
-
-        # Collect candidate extension folders
         shopt -s nullglob
         local candidates=("$root"/ms-dynamics-smb.al-*)
         shopt -u nullglob
         [[ ${#candidates[@]} -gt 0 ]] || continue
 
-        # Build list of version|path pairs for sorting and comparison
         local lines=""
         local ext base ver
         for ext in "${candidates[@]}"; do
             [[ -d "$ext" ]] || continue
             base=$(basename "$ext")
-            # Extract numeric version after prefix, strip any suffix (e.g., -preview)
             ver=${base#ms-dynamics-smb.al-}
             ver=$(echo "$ver" | sed -E 's/^([0-9]+(\.[0-9]+)*)[A-Za-z0-9.-]*/\1/')
             [[ -n "$ver" ]] || ver="0.0.0"
             lines+="$ver|$ext\n"
         done
 
-        # Compare against current best
         local version path
         while IFS='|' read -r version path; do
             [[ -n "$path" ]] || continue
@@ -136,63 +130,10 @@ get_highest_version_al_extension() {
         done < <(printf "%b" "$lines")
     done
 
-    # Fallback: derive extension root from discovered compiler path if possible
     if [[ -z "$best_path" ]]; then
         local alc
         alc=$(get_al_compiler_path "")
         if [[ -n "$alc" ]]; then
-            # Expect structure: <ext>/bin/<linux-*>/alc
-            best_path=$(dirname "$(dirname "$(dirname "$alc")")")
-        fi
-    fi
-
-    echo "$best_path"
-        "$HOME/.vscode-insiders/extensions"
-        "$HOME/.vscode-server-insiders/extensions"
-    )
-
-    local best_path=""
-    local best_version="0.0.0"
-
-    for root in "${al_ext_roots[@]}"; do
-        [[ -d "$root" ]] || continue
-
-        # Collect candidate extension folders
-        shopt -s nullglob
-        local candidates=("$root"/ms-dynamics-smb.al-*)
-        shopt -u nullglob
-        [[ ${#candidates[@]} -gt 0 ]] || continue
-
-        # Build list of version|path pairs for sorting and comparison
-        local lines=""
-        local ext base ver
-        for ext in "${candidates[@]}"; do
-            [[ -d "$ext" ]] || continue
-            base=$(basename "$ext")
-            # Extract numeric version after prefix, strip any suffix (e.g., -preview)
-            ver=${base#ms-dynamics-smb.al-}
-            ver=$(echo "$ver" | sed -E 's/^([0-9]+(\.[0-9]+)*)[A-Za-z0-9.-]*/\1/')
-            [[ -n "$ver" ]] || ver="0.0.0"
-            lines+="$ver|$ext\n"
-        done
-
-        # Compare against current best
-        local version path
-        while IFS='|' read -r version path; do
-            [[ -n "$path" ]] || continue
-            if [[ $(printf '%s\n' "$version" "$best_version" | sort -V | tail -n1) == "$version" && "$version" != "$best_version" ]]; then
-                best_version="$version"
-                best_path="$path"
-            fi
-        done < <(printf "%b" "$lines")
-    done
-
-    # Fallback: derive extension root from discovered compiler path if possible
-    if [[ -z "$best_path" ]]; then
-        local alc
-        alc=$(get_al_compiler_path "")
-        if [[ -n "$alc" ]]; then
-            # Expect structure: <ext>/bin/<linux-*>/alc
             best_path=$(dirname "$(dirname "$(dirname "$alc")")")
         fi
     fi
@@ -411,53 +352,6 @@ get_enabled_analyzer_paths() {
     # Build final DLL path list
     local al_ext_path
     al_ext_path=$(get_highest_version_al_extension)
-    local out_paths=()
-
-    for analyzer in "${enabled[@]}"; do
-        # Strip quotes and whitespace
-        analyzer=$(echo "$analyzer" | sed 's/^\s*\"\?//; s/\"\?\s*$//')
-        # If form is ${Name}, unwrap to Name for known analyzers
-        if [[ $analyzer =~ ^\$\{([A-Za-z]+)\}$ ]]; then
-            analyzer="${BASH_REMATCH[1]}"
-        fi
-        # Known analyzers by name
-        local is_supported=false
-        for supported_analyzer in "${supported[@]}"; do
-            if [[ "$analyzer" == "$supported_analyzer" ]]; then
-                is_supported=true
-                break
-            fi
-        done
-        if [[ "$is_supported" == true && -n "$al_ext_path" ]]; then
-            local dll="${dll_map[$analyzer]}"
-            if [[ -n "$dll" ]]; then
-                local dll_path
-                dll_path=$(find "$al_ext_path" -type f -name "$dll" 2>/dev/null | head -1)
-                if [[ -n "$dll_path" ]]; then
-                    out_paths+=("$dll_path")
-                fi
-            fi
-            continue
-        fi
-
-        # Otherwise treat as path expression
-        while IFS= read -r resolved; do
-            [[ -n "$resolved" ]] && out_paths+=("$resolved")
-        done < <(resolve_entry "$analyzer" "$app_dir" "$al_ext_path")
-    done
-
-    # Deduplicate while preserving order
-    declare -A seen
-    local unique=()
-    local p
-    for p in "${out_paths[@]}"; do
-        if [[ -n "$p" && -z "${seen[$p]}" ]]; then
-            seen[$p]=1
-            unique+=("$p")
-        fi
-    done
-
-    printf '%s\n' "${unique[@]}"
     local out_paths=()
 
     for analyzer in "${enabled[@]}"; do

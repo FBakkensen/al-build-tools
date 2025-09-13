@@ -69,7 +69,7 @@ if ($analyzerPaths.Count -gt 0) {
 
 
 # Build analyzer arguments correctly
-$cmdArgs = @("/project:$AppDir", "/out:$outputFullPath", "/packagecachepath:$packageCachePath")
+$cmdArgs = @("/project:$AppDir", "/out:$outputFullPath", "/packagecachepath:$packageCachePath", "/parallel+")
 
 # Optional: pass ruleset if specified and the file exists and is non-empty
 $rulesetPath = $env:RULESET_PATH
