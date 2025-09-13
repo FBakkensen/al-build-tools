@@ -27,9 +27,9 @@ function Install-AlBuildTools {
     try {
         $destFull = (Resolve-Path -Path $Dest -ErrorAction Stop).Path
     } catch {
-        New-Item -ItemType Directory -Force -Path $Dest | Out-Null
-        # Use GetFullPath instead of Resolve-Path to handle non-existent paths properly
-        $destFull = [System.IO.Path]::GetFullPath($Dest)
+        # Create the destination if it does not exist, then resolve the actual path
+        $created = New-Item -ItemType Directory -Force -Path $Dest
+        $destFull = (Resolve-Path -Path $created.FullName).Path
     }
     Write-Note "Install/update from $Url@$Ref into $destFull (source: $Source)"
 

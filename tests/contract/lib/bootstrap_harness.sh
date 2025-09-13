@@ -13,7 +13,8 @@ bh_init_workdir() {
   local repo_root
   repo_root="$(cd "$SCRIPT_DIR/../../.." && pwd)"
   # Use system temp directory instead of repo directory to avoid pollution
-  export TEST_TMPDIR=""
+  # Prefer $TMPDIR if set, otherwise default to /tmp
+  export TEST_TMPDIR="${TMPDIR:-/tmp}"
   export WORK=$(make_temp_dir "${tid}")
   export OUT="$WORK/out.txt"
   export DEST="$WORK/target"
