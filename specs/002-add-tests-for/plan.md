@@ -29,18 +29,18 @@
 - Phase 3-4: Implementation execution (manual or via tools)
 
 ## Summary
-Add deterministic contract tests validating observable behaviors of `bootstrap/install.sh` and `bootstrap/install.ps1`: successful initial install, idempotent re-run, git vs non-git messaging, custom destination creation, fallback to python when `unzip` absent, hard failure when both extraction tools absent, preservation of unrelated files, absence of side effects, PowerShell parity, and edge cases (spaces in path, read-only failure). Approach uses isolated temp directories, PATH manipulation to simulate tool absence, checksum hashing for idempotence, and invocation of PowerShell via `pwsh` on Linux.
+Add deterministic contract tests validating observable behaviors of `bootstrap/install.ps1`: successful initial install, idempotent re-run, git vs non-git messaging, custom destination creation, preservation of unrelated files, absence of side effects, and edge cases (spaces in path, read-only failure). Approach uses isolated temp directories, checksum hashing for idempotence, and invocation of PowerShell via `pwsh` on Linux.
 
 ## Technical Context
-**Language/Version**: Bash (POSIX + bash features), PowerShell 7, minimal coreutils
-**Primary Dependencies**: curl, unzip (optional), python3 (fallback), git (detection), sha256sum
+**Language/Version**: PowerShell 7, minimal coreutils
+**Primary Dependencies**: PowerShell 7 (`pwsh`), git (detection), sha256sum
 **Storage**: N/A (ephemeral temp dirs only)
-**Testing**: Shell contract tests (`tests/contract/*.sh`), PowerShell parity test via `pwsh`
-**Target Platform**: Linux CI runner (PowerShell executed cross-platform); Windows behavior inferred by parity
+**Testing**: Shell contract tests invoking `install.ps1` via `pwsh`
+**Target Platform**: Linux CI runner (PowerShell executed cross-platform)
 **Project Type**: single (tooling repo)
 **Performance Goals**: Total added test runtime < 120s
 **Constraints**: Deterministic; no network failure simulation; no external side effects
-**Scale/Scope**: Small single-maintainer test addition; <10 new test scripts + one PS parity script
+**Scale/Scope**: Small single-maintainer test addition; <10 new test scripts
 
 ## Constitution Check
 *Initial Gate & Post-Design Review*
@@ -59,8 +59,8 @@ Add deterministic contract tests validating observable behaviors of `bootstrap/i
 **Testing (NON-NEGOTIABLE)**:
 - Contract tests added first (failing until implementation adjustments if any needed). Existing installer already behaves; tests assert current contract.
 - Order: Only contract layer relevant (no integration/service layers needed).
-- Real dependencies: yes (curl, python, unzip, git).
-- No mocks; environment simulation via PATH.
+- Real dependencies: yes (`pwsh`, git).
+- No mocks.
 
 **Observability**:
 - Rely on existing script stderr/messages; no new logging required.
@@ -131,7 +131,7 @@ Completed (see `research.md`). All unknowns resolved; decisions documented (tool
 Completed: `data-model.md`, `contracts/README.md`, `quickstart.md` produced. Contract mapping table enumerates each requirement. No additional agent context changes required (tech stack unchanged).
 
 ## Phase 2: Task Planning Approach
-Each contract (C-INIT, C-IDEMP, C-GIT, C-CUSTOM-DEST, C-FALLBACK, C-HARD-FAIL, C-PRESERVE, C-GIT-METADATA, C-REPORT, C-POWERSHELL-PARITY, C-NO-SIDE-EFFECTS, C-SPACES, C-READONLY) will yield one shell test task. PowerShell parity consolidated into a single dedicated test script. Estimated 12-13 tasks (lean approach). Order: basic success first → idempotence → environment variations → edge cases → parity. Parallelizable except idempotence depends on initial installation test script prototype.
+Each contract (C-INIT, C-IDEMP, C-GIT, C-CUSTOM-DEST, C-PRESERVE, C-GIT-METADATA, C-REPORT, C-NO-SIDE-EFFECTS, C-SPACES, C-READONLY) will yield one test task. Estimated 9–10 tasks (lean approach). Order: basic success first → idempotence → environment variations → edge cases.
 
 ## Phase 3+: Future Implementation
 *These phases are beyond the scope of the /plan command*

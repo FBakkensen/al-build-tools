@@ -4,7 +4,7 @@ Date: 2025-09-11
 Feature: 002-add-tests-for
 
 ## Decisions
-- Test Focus: Contract-level behavioral verification of `bootstrap/install.sh` and `bootstrap/install.ps1`.
+- Test Focus: Contract-level behavioral verification of `bootstrap/install.ps1`.
 - Scope Limitation: Exclude network failure simulation to keep determinism.
 - Fallback Extraction: Simulate absence of `unzip` by PATH manipulation; rely on python3 fallback.
 - Dual Absence Failure: Simulate removal/absence of both `unzip` and `python3` via PATH isolation to assert hard failure path.
@@ -30,7 +30,6 @@ Feature: 002-add-tests-for
 None – all unknowns resolved.
 
 ## Constitution Alignment
-- Parity: Both script variants executed.
 - Idempotence: Explicit verification through re-run hashing.
 - Zero Hidden State: No persistent artifacts outside temp dirs.
 - Discover Over Configure: Tests observe real discovery logic, do not inject config.

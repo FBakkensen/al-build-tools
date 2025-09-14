@@ -15,13 +15,12 @@ The contracts define observable behaviors validated by the test suite.
 | C-GIT-METADATA | Preserve .git Metadata | No mutation of .git after installation | FR-008 |
 | C-REPORT | Success Reporting | Installer reports success indicator (file count or similar) | FR-009 |
 | C-EXIT-CODES | Error Exit Codes | All failure paths return non-zero | FR-010 |
-| C-POWERSHELL-PARITY | PowerShell Parity | install.ps1 mirrors install.sh behaviors (subset feasible on Linux) | FR-011 |
 | C-NO-SIDE-EFFECTS | No External Side Effects | No artifacts outside destination | FR-012 |
 | C-SPACES | Path With Spaces | Destination containing spaces installs successfully | Edge Case |
 | C-READONLY | Read-only Destination Fails | Read-only directory causes permission error, non-zero exit | Edge Case |
 
 ## Assertion Strategy
-Each contract will map to one shell test file (and a PowerShell parity test). Assertions use:
+Each contract will map to one test file. Assertions use:
 - Exit code check
 - Presence/absence of warning lines
 - File hash comparisons (sha256sum) for idempotence
