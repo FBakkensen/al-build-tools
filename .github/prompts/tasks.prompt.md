@@ -1,13 +1,10 @@
-# Break down the plan into executable tasks
-
-
-Break down the plan into executable tasks.
-
-This is the third step in the Spec-Driven Development lifecycle.
+---
+description: Generate an actionable, dependency-ordered tasks.md for the feature based on available design artifacts.
+---
 
 Given the context provided as an argument, do this:
 
-1. Run `scripts/check-task-prerequisites.sh --json` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute.
+1. Run `.specify/scripts/powershell/check-task-prerequisites.ps1 -Json` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute.
 2. Load and analyze available design documents:
    - Always read plan.md for tech stack and libraries
    - IF EXISTS: Read data-model.md for entities
@@ -21,7 +18,7 @@ Given the context provided as an argument, do this:
    - Generate tasks based on what's available
 
 3. Generate tasks following the template:
-   - Use `/templates/tasks-template.md` as the base
+   - Use `.specify/templates/tasks-template.md` as the base
    - Replace example tasks with actual tasks based on:
      * **Setup tasks**: Project init, dependencies, linting
      * **Test tasks [P]**: One per contract, one per integration scenario
