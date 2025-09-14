@@ -9,14 +9,13 @@ This repository provides a minimal, cross‑platform AL build toolkit. Projects 
   - `scripts/make/windows/` → `build.ps1`, `clean.ps1`, `show-config.ps1`, `show-analyzers.ps1`, `lib/*.ps1`
   - `scripts/next-object-number.sh` → find first available AL object number (Linux)
   - `.github/` → optional workflows/scripts projects may inherit
-- `bootstrap/` → `install.sh`, `install.ps1` (one‑liner installers)
+- `bootstrap/` → `install.ps1` (one‑liner installer)
 - `scripts/` → repo maintenance and CI helpers (not copied)
 - `specs/` → feature specs; `tests/` → contract/integration shell tests; `templates/` → doc templates
 
 ## Build, Test, and Development Commands
-- Install latest into a project
-- Linux: `curl -fsSL https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.sh | bash -s -- --dest .`
-  - Windows: `iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Dest .`
+- Install latest into a project (PowerShell 7+ on Windows/macOS/Linux):
+  - `iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Dest .`
 - After copy (inside a project)
   - Linux: `bash scripts/make/linux/build.sh [app]` · Windows: `pwsh -File scripts/make/windows/build.ps1 [app]`
   - Optional: `make build`, `make clean`

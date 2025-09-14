@@ -3,19 +3,19 @@
 **Feature Branch**: `002-add-tests-for`
 **Created**: 2025-09-11
 **Status**: Draft
-**Input**: User description: "Add tests for bootstrap install scripts (install.sh & install.ps1)"
+**Input**: User description: "Add tests for the PowerShell bootstrap installer (install.ps1)"
 
 ## Overview
 Provide a set of automated contract tests that validate the observable behavior of the bootstrap installer scripts responsible for copying the `overlay/` payload into a target project directory. The tests must ensure reliability, idempotence, clear failure signaling on prerequisite issues, and protection against regressions affecting downstream users who pipe the installer from a remote URL.
 
 Primary stakeholders: Repository maintainers and any external project maintainers who rely on a predictable, side‑effect constrained bootstrap to onboard or update the build overlay.
 
-Success is measured by: (a) repeatable green execution across supported scenarios, (b) deterministic detection of defined failure cases, (c) parity of documented behaviors between Linux (bash script) and Windows (PowerShell script) where applicable, (d) zero introduction of hidden state or unintended artifacts outside the destination directory.
+Success is measured by: (a) repeatable green execution across supported scenarios, (b) deterministic detection of defined failure cases, and (c) zero introduction of hidden state or unintended artifacts outside the destination directory across platforms supported by PowerShell 7.
 
 ## Out of Scope
 - Performance benchmarking (installer speed not a goal here)
 - Network resilience beyond simple success/failure of archive download
-- Platform-specific Windows Explorer/GUI nuances (tests will execute `install.ps1` via `pwsh` on Ubuntu runners, which is sufficient for contract parity)
+- Platform-specific Windows Explorer/GUI nuances (tests execute `install.ps1` via `pwsh` on Ubuntu runners)
 - Validation of the contents of `overlay/` beyond existence checks (functional behavior of overlay scripts is covered elsewhere)
 - Use of the unsupported `--ref` parameter (intentionally excluded from tests to discourage reliance)
 - Simulated network fetch failure scenarios (excluded to avoid flakiness; only positive-path download is covered)
@@ -37,8 +37,8 @@ A maintainer (or user) wants to bootstrap or update the AL build overlay in an e
 3. **Given** a valid git repository as destination, **When** the installer runs, **Then** it completes without altering the git metadata and warns only when appropriate (no false warning about git absence).
 4. **Given** a non-git directory, **When** the installer runs, **Then** it succeeds and emits a non-fatal warning about missing git but still copies files.
 5. **Given** a custom destination path that does not yet exist, **When** the installer is invoked with `--dest`, **Then** the path is created and populated.
-6. **Given** prerequisites satisfied except unzip (but python available), **When** the installer runs, **Then** it falls back to python extraction and succeeds.
-7. **Given** prerequisites satisfied except both unzip and python, **When** the installer runs, **Then** it fails fast with a clear error about extraction prerequisites.
+6. [Removed – not applicable to PowerShell installer] The PowerShell installer uses `Expand-Archive`; no unzip/python fallback paths exist.
+7. [Removed – not applicable to PowerShell installer] Extraction prerequisite failure path specific to bash installer.
 8. **Given** the destination already contains extraneous files, **When** the installer runs, **Then** those unrelated files remain untouched.
 
 ### Edge Cases
@@ -53,13 +53,13 @@ A maintainer (or user) wants to bootstrap or update the AL build overlay in an e
 - **FR-002**: The test suite MUST verify idempotent re-run (subsequent execution overwrites/updates without duplicate or stale artifacts and exits zero).
 - **FR-003**: The test suite MUST validate behavior in both git and non-git destination contexts (warning only in non-git case, no failure).
 - **FR-004**: The test suite MUST confirm custom destination creation when the specified path does not pre-exist.
-- **FR-005**: The test suite MUST exercise prerequisite branching ensuring fallback to python extraction when unzip is absent.
-- **FR-006**: The test suite MUST assert explicit failure when neither unzip nor python3 are available (prerequisite error message).
+- ~~FR-005~~: (Not applicable) Python fallback behavior removed with single PowerShell installer.
+- ~~FR-006~~: (Not applicable) Dual absence of unzip/python3 no longer a path; PowerShell `Expand-Archive` is built-in.
 - **FR-007**: The test suite MUST ensure unrelated pre-existing files in destination remain unchanged after installation.
 - **FR-008**: The test suite MUST confirm repeated runs do not mutate git metadata (e.g., no `.git` modifications) in a repository destination.
 - **FR-009**: The test suite MUST verify the installer reports count of copied files (or equivalent success indicator) on success.
 - **FR-010**: The test suite MUST ensure that error conditions produce non-zero exit codes (no silent success on failure paths).
-- **FR-011**: The test suite MUST execute both `bootstrap/install.sh` and `bootstrap/install.ps1` (via `pwsh`) in CI, asserting parity of observable behaviors (exit codes, warnings, idempotence, file copy results).
+- **FR-011**: The test suite MUST execute `bootstrap/install.ps1` (via `pwsh`) in CI and validate observable behaviors (exit codes, warnings, idempotence, file copy results).
 - **FR-012**: The suite MUST avoid external side effects outside of temporary working directories (clean teardown of temp artifacts).
 
 ### Non-Functional Requirements (Supporting)
@@ -94,4 +94,3 @@ A maintainer (or user) wants to bootstrap or update the AL build overlay in an e
 - [x] Requirements generated
 - [ ] Entities identified (not applicable – no persistent domain entities)
 - [ ] Review checklist passed (pending clarification resolution)
-

@@ -9,12 +9,7 @@ Install and update are the same: the bootstrap copies everything from this repo�
 
 ## Quick Start (Install Latest)
 
-- Linux (bash)
-  ```
-  curl -fsSL https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.sh | bash -s -- --dest .
-  ```
-
-- Windows (PowerShell 7+)
+- PowerShell 7+ (Windows, macOS, Linux)
   ```
   iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Dest .
   ```
@@ -33,8 +28,7 @@ Re-run the same command any time to update — it re-copies `overlay/*` over you
   - `scripts/next-object-number.ps1` — first free AL object id (Windows)
   - `.gitattributes` — recommended line-ending normalization.
   - `AGENTS.md` — contributor/agent guidance (optional to keep).
-- `bootstrap/` — the self-contained installers used by the one-liners above:
-  - `install.sh` (bash)
+- `bootstrap/` — the self-contained installer used by the one‑liner above:
   - `install.ps1` (PowerShell 7+)
 
 ## Why “overlay”?
@@ -43,8 +37,7 @@ Only the contents of `overlay/` are ever copied to your project. That keeps the 
 
 ## Requirements
 
-- Linux: `bash`, `curl`, `tar`, and either `unzip` or `python3`
-- Windows: PowerShell 7+ (`Invoke-WebRequest`, `Expand-Archive` built-in)
+- PowerShell 7+ to run the installer (`Invoke-WebRequest`, `Expand-Archive` built-in)
 - Destination should be a git repo (no backups are created; git handles history and diffs)
 
 ## After Installing
@@ -71,15 +64,15 @@ Run locally (Linux):
 bash scripts/ci/run-static-analysis.sh
 ```
 
-## Contract Tests for Bootstrap Installers
+## Contract Tests for Bootstrap Installer
 
-This repo includes contract tests that exercise both installers (bash and PowerShell) with identical scenarios. Tests run without network by stubbing downloads to a local ZIP of `overlay/`.
+This repo includes contract tests that exercise the PowerShell installer with a consistent set of scenarios. Tests run without network by stubbing downloads to a local ZIP of `overlay/`.
 
 - Run the suite:
   ```
   find tests -type f -name 'test_*.sh' -exec bash {} \;
   ```
-- Key scenarios covered: basic install/reporting, idempotent re-run, git vs non-git warning and .git preservation, custom destination, unzip→python3 fallback, hard failure when extraction is impossible, preservation/no side effects, paths with spaces, and read-only destination failure. A parity test also invokes the PowerShell installer through the same harness.
+- Key scenarios covered: basic install/reporting, idempotent re-run, git vs non-git warning and .git preservation, custom destination, preservation/no side effects, paths with spaces, and read-only destination failure.
 
 Note: During tests or scripted evaluation, set `ALBT_NO_AUTORUN=1` in the environment to prevent `bootstrap/install.ps1` from auto-running when dot-sourced.
 
@@ -97,7 +90,7 @@ See specs/002-add-tests-for/quickstart.md for details about the harness and how 
 
 - “Running scripts is disabled” on Windows: start PowerShell as Administrator and run:
   `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` or use `-ExecutionPolicy Bypass` for one-off runs.
-- Linux: ensure `curl`, `tar`, and either `unzip` or `python3` are installed and in `PATH`.
+- Linux/macOS: ensure PowerShell 7 (`pwsh`) is installed and available in `PATH`.
 
 ## WSL Development Setup (Ubuntu 22.04/24.04)
 
