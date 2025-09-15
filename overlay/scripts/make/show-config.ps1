@@ -37,4 +37,42 @@ if ($settingsJson) {
 } else {
     Write-Warning ".vscode/settings.json not found or invalid."
 }
+
+# Normalized deterministic key=value section (T010)
+# This block is additive to keep backward compatibility with existing consumers/tests.
+try {
+    $platform = if ($IsWindows) { 'Windows' } elseif ($IsMacOS) { 'macOS' } elseif ($IsLinux) { 'Linux' } else { ($PSVersionTable.Platform ?? 'Unknown') }
+} catch { $platform = 'Unknown' }
+
+$psver = try { $PSVersionTable.PSVersion.ToString() } catch { ($PSVersionTable.PSVersion.Major.ToString()) }
+
+$appName = if ($appJson) { "$($appJson.name)" } else { '(missing)' }
+$appPublisher = if ($appJson) { "$($appJson.publisher)" } else { '(missing)' }
+$appVersion = if ($appJson) { "$($appJson.version)" } else { '(missing)' }
+
+$analyzersList = '(none)'
+if ($settingsJson) {
+    if ($settingsJson.'al.codeAnalyzers' -and $settingsJson.'al.codeAnalyzers'.Count -gt 0) {
+        $analyzersList = ($settingsJson.'al.codeAnalyzers' | ForEach-Object { $_.ToString() }) -join ', '
+    } else {
+        $analyzersList = '(none)'
+    }
+} else {
+    # Treat missing settings as no analyzers configured for normalized view
+    $analyzersList = '(none)'
+}
+
+# Emit in fixed, deterministic order
+$normalized = [ordered]@{
+    'App.Name'           = $appName
+    'App.Publisher'      = $appPublisher
+    'App.Version'        = $appVersion
+    'Platform'           = $platform
+    'PowerShellVersion'  = $psver
+    'Settings.Analyzers' = $analyzersList
+}
+
+foreach ($k in $normalized.Keys) {
+    Write-Output ("{0}={1}" -f $k, $normalized[$k])
+}
 exit $Exit.Success

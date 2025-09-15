@@ -96,7 +96,7 @@
 	- Precede with tests: Create `tests/contract/Verbosity.Tests.ps1` to assert additional verbose output under env flag and flag pass-through; initially FAIL until implemented.
 	- DoD: `$VerbosePreference='Continue'` set when env var truthy.
 	- Validation: Verbosity tests pass.
-- [ ] T010 Normalize config output ordering & keys — FR-011, FR-025
+- [x] T010 Normalize config output ordering & keys — FR-011, FR-025
 	- Precede with tests: Add `tests/contract/ShowConfig.Tests.ps1` asserting stable key=value ordering; initially FAIL until implemented.
 	- DoD: `show-config.ps1` emits deterministic ordered key=value lines (incl. Platform, PowerShellVersion).
 	- Validation: Two consecutive runs identical; tests pass.

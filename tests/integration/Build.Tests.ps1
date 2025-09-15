@@ -4,21 +4,24 @@
 
 Describe 'Build integration (via make)' {
     BeforeAll {
+        . "$PSScriptRoot/_helpers.ps1"  # ensure helpers available at run-time in Pester 5
         $RepoRoot = (& { _Get-RepoRoot })
         . (Join-Path $RepoRoot 'overlay/scripts/make/lib/common.ps1')
         $Script:HasCompiler = ($null -ne (Get-ALCompilerPath '.'))
         $Script:ShimPath = Join-Path $PSScriptRoot '_alc-shim.ps1'
     }
 
-    It 'reports a clear error when AL compiler is not found' -Skip:$HasCompiler {
+    It 'reports a clear error when AL compiler is not found' {
+        if ($HasCompiler) { Set-ItResult -Skip -Because 'Compiler present'; return }
         $fx = New-AppFixture
         (Get-Content -LiteralPath $fx.MakefilePath -Raw) -replace 'APP_DIR := \.', 'APP_DIR := app' | Set-Content -LiteralPath $fx.MakefilePath
         $res = Invoke-Make -FixturePath $fx.FixturePath -Target 'build'
-        $res.ExitCode | Should Not Be 0
-        $res.StdErrNormalized | Should Match 'AL Compiler not found'
+        $res.ExitCode | Should -Not -Be 0
+        $res.StdErrNormalized | Should -Match 'AL Compiler not found'
     }
 
-    It 'builds successfully and reports output when AL compiler is available' -Skip:(-not $HasCompiler) {
+    It 'builds successfully and reports output when AL compiler is available' {
+        if (-not $HasCompiler) { Set-ItResult -Skip -Because 'No compiler available'; return }
         $fx = New-AppFixture
         (Get-Content -LiteralPath $fx.MakefilePath -Raw) -replace 'APP_DIR := \.', 'APP_DIR := app' | Set-Content -LiteralPath $fx.MakefilePath
         $pkgCache = Get-PackageCachePath $fx.AppDir
@@ -27,11 +30,11 @@ Describe 'Build integration (via make)' {
 
         $res = Invoke-Make -FixturePath $fx.FixturePath -Target 'build'
         if ($hasSymbols) {
-            $res.ExitCode | Should Be 0
-            $res.StdOutNormalized | Should Match 'Build completed successfully:'
+            $res.ExitCode | Should -Be 0
+            $res.StdOutNormalized | Should -Match 'Build completed successfully:'
         } else {
-            $res.ExitCode | Should Not Be 0
-            $res.StdOutNormalized | Should Match 'Build failed with errors above\.'
+            $res.ExitCode | Should -Not -Be 0
+            $res.StdOutNormalized | Should -Match 'Build failed with errors above\.'
         }
     }
 
@@ -46,16 +49,16 @@ Describe 'Build integration (via make)' {
             ALBT_SHIM_LOG = $logPath
             ALBT_SHIM_EXIT = 0
         }
-        $res.ExitCode | Should Be 0
+        $res.ExitCode | Should -Be 0
         # Validate arguments captured by shim
         $args = Get-Content -LiteralPath $logPath -Raw
-        $args | Should Match '/project:app'
-        $args | Should Match '/out:.*\.app'
-        $args | Should Match '/packagecachepath:.*\.alpackages'
-        $args | Should Match '/parallel\+'
+        $args | Should -Match '/project:app'
+        $args | Should -Match '/out:.*\.app'
+        $args | Should -Match '/packagecachepath:.*\.alpackages'
+        $args | Should -Match '/parallel\+'
         # WARN_AS_ERROR is exported as 1 by default in Makefile
-        $args | Should Match '/warnaserror\+'
+        $args | Should -Match '/warnaserror\+'
         # RULESET_PATH defaults to al.ruleset.json; should be passed if present and non-empty
-        $args | Should Match '/ruleset:.*al\.ruleset\.json'
+        $args | Should -Match '/ruleset:.*al\.ruleset\.json'
     }
 }

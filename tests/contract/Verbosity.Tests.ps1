@@ -48,14 +48,14 @@ Describe 'Verbosity behavior via env flag and -Verbose' {
         $script = Join-Path $OverlayMake 'show-config.ps1'
         $res = Invoke-ChildPwsh -ScriptPath $script -Arguments "`"$Tmp`"" -Env @{ ALBT_VIA_MAKE = '1'; VERBOSE = '1' }
         # Verbose messages may land on StdErr depending on host; check both
-        ($res.StdOut + $res.StdErr) | Should Match 'VERBOSE: .*verbose.*enabled'
-        $res.ExitCode | Should Be 0
+        ($res.StdOut + $res.StdErr) | Should -Match 'VERBOSE: .*verbose.*enabled'
+        $res.ExitCode | Should -Be 0
     }
 
     It 'emits verbose output when -Verbose is used' {
         $script = Join-Path $OverlayMake 'show-config.ps1'
         $res = Invoke-ChildPwsh -ScriptPath $script -Arguments "`"$Tmp`"" -Env @{ ALBT_VIA_MAKE = '1' } -EngineVerbose
-        ($res.StdOut + $res.StdErr) | Should Match 'VERBOSE: .*verbose.*enabled'
-        $res.ExitCode | Should Be 0
+        ($res.StdOut + $res.StdErr) | Should -Match 'VERBOSE: .*verbose.*enabled'
+        $res.ExitCode | Should -Be 0
     }
 }
