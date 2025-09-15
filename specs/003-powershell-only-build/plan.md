@@ -29,7 +29,7 @@
 ## Summary (Updated)
 This plan no longer creates net‑new PowerShell scripts; instead it RELOCATES the already functional Windows PowerShell scripts (`overlay/scripts/make/windows/*.ps1`) into the neutral `overlay/scripts/make/` directory, DELETES all Bash scripts under `overlay/scripts/make/linux/`, and ENHANCES the relocated scripts (guard, verbosity normalization, deterministic config output, standardized exit codes). We preserve proven logic, reducing risk versus rewrite while achieving a single cross‑platform surface. Parity with prior Windows behavior and replacement of Bash scripts are validated through contract & integration tests.
 
-Contracts C1–C14 still define authoritative externally observable behavior. Relocation adds a new implicit objective: baseline parity (FR-025) between pre‑relocation Windows outputs and post‑relocation unified scripts.
+Contracts C1–C14 still define authoritative externally observable behavior. Relocation adds a new implicit objective: baseline parity (FR-025) between pre‑relocation Windows outputs and post‑relocation unified scripts. See the pre‑relocation inventory at [inventory-windows-scripts.md](file:///d:/repos/al-build-tools/specs/003-powershell-only-build/inventory-windows-scripts.md) for current script behavior details.
 
 ## Technical Context
 **Languages**: PowerShell 7.2+ (single source for Windows & Linux)

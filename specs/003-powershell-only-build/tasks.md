@@ -27,6 +27,7 @@
 - [ ] T001 Inventory current Windows PowerShell scripts & helpers — FR-001
 	- DoD: List parameters, current behaviors, exit codes (implicit) for build/clean/show-*; identify helper functions in `lib/`.
 	- Validation: Document stored in planning notes (not shipped) summarizing each script.
+	- Deliverable: See inventory note at [inventory-windows-scripts.md](file:///d:/repos/al-build-tools/specs/003-powershell-only-build/inventory-windows-scripts.md)
 - [ ] T002 Capture baseline outputs (Windows) for build, clean, show-config, show-analyzers — FR-025
 	- DoD: Run each script via existing path (or via current Makefile) and store normalized output snapshots under `tests/baselines/` (internal only).
 	- Validation: Files exist; normalization documented.

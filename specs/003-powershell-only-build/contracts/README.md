@@ -1,6 +1,6 @@
 # Contracts: PowerShell-Only Build Toolkit
 
-This document defines normative externally observable contracts (C1–C14). Each contract is independently testable. Implementation MAY refactor internals provided these behaviors and exit semantics remain stable. As of the relocation update, legacy Bash scripts have been removed and Windows PowerShell scripts were relocated to a neutral path; FR-025 introduces a parity requirement: relocated outputs must match pre‑relocation Windows baselines (normalized) unless an enhancement is explicitly documented.
+This document defines normative externally observable contracts (C1–C14). Each contract is independently testable. Implementation MAY refactor internals provided these behaviors and exit semantics remain stable. As of the relocation update, legacy Bash scripts have been removed and Windows PowerShell scripts were relocated to a neutral path; FR-025 introduces a parity requirement: relocated outputs must match pre‑relocation Windows baselines (normalized) unless an enhancement is explicitly documented. For a detailed inventory of the pre‑relocation Windows scripts and behaviors, see [inventory-windows-scripts.md](file:///d:/repos/al-build-tools/specs/003-powershell-only-build/inventory-windows-scripts.md).
 
 ## Scope
 Applies to guarded make targets (`build`, `clean`, `show-config`, `show-analyzers`) and the unguarded utility `next-object-number.ps1`. Internal helper functions, CI scripts, and analyzer configuration are explicitly out-of-scope.

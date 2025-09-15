@@ -19,6 +19,8 @@ Although no persistent datastore is introduced, the feature defines conceptual e
 | DeprecatedScript | Removed Bash or Windows wrapper script | OriginalPath, RemovalCommit, Replacement | ReplacedBy RelocatedScript |
 | ParityBaseline | Stored normalized output snapshot pre-relocation | ScriptName, CaptureDate, NormalizationRules | ComparedBy ContractTestSuite |
 
+Pre‑relocation script behavior inventory is maintained at [inventory-windows-scripts.md](file:///d:/repos/al-build-tools/specs/003-powershell-only-build/inventory-windows-scripts.md) and serves as a reference for RelocatedScript semantics prior to enhancement.
+
 ## Relationships Diagram (Textual)
 ```
 MakeInfrastructure --> (sets env) GuardMechanism (inline) --> GuardedScript

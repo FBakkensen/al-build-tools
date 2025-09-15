@@ -28,6 +28,8 @@ Relocation with minimal targeted enhancement keeps:
 - Proven functional semantics (validated via parity baselines)
 - Focused refactors only where cross-platform path joins or verbosity inconsistencies exist
 
+The current Windows script behaviors used for parity are captured in [inventory-windows-scripts.md](file:///d:/repos/al-build-tools/specs/003-powershell-only-build/inventory-windows-scripts.md).
+
 Risk of inheriting suboptimal patterns is mitigated through:
 - ScriptAnalyzer strict rules post-relocation
 - Parity tests ensuring modifications are intentional

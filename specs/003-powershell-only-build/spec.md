@@ -23,6 +23,8 @@
 | Preserve | Keep `overlay/scripts/next-object-number.ps1` unguarded (only minor consistency tweaks if needed). |
 | Enhance | Add standardized exit codes, verbosity env var support, deterministic config output ordering, help stub behavior. |
 
+Source baseline behavior is documented in [inventory-windows-scripts.md](file:///d:/repos/al-build-tools/specs/003-powershell-only-build/inventory-windows-scripts.md) to anchor relocation and parity (FR-025).
+
 ## Entrypoints (Post‑Relocation, Guarded)
 - `overlay/scripts/make/build.ps1`
 - `overlay/scripts/make/clean.ps1`
