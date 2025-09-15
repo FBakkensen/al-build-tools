@@ -80,7 +80,7 @@
 			- Implement `_Normalize-Output` in helpers; reused by parity assertions.
 		- T014.9 [P] Parity snapshot (scaffold)
 			- `tests/integration/Parity.Tests.ps1`: Collect normalized outputs from `show-config`, `show-analyzers`, and conditionally `build/clean`; compare content‑level parity, not raw formatting, to support cross‑OS.
-		- T014.10 [P] Make-level invocation contract
+		- [x] T014.10 [P] Make-level invocation contract
 			- Ensure all tests call `make <target>` (exercise [`overlay/Makefile`](file:///d:/repos/al-build-tools/overlay/Makefile#L51-L65)) rather than scripts directly.
 
 ## Phase 4: Enhancements & Standardization
