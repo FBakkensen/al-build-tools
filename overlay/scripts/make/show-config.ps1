@@ -1,15 +1,20 @@
 
 # Windows Show-Config Script
+# Exit codes: uses mapping from lib/common.ps1 (FR-024)
 param([string]$AppDir)
 
 # Guard: require invocation via make
 if (-not $env:ALBT_VIA_MAKE) {
+    . "$PSScriptRoot\lib\common.ps1"
+    $Exit = Get-ExitCodes
     Write-Output "Run via make (e.g., make show-config)"
-    exit 2
+    exit $Exit.Guard
 }
 
 . "$PSScriptRoot\lib\common.ps1"
 . "$PSScriptRoot\lib\json-parser.ps1"
+
+$Exit = Get-ExitCodes
 
 $appJson = Get-AppJsonObject $AppDir
 if ($appJson) {
@@ -32,4 +37,4 @@ if ($settingsJson) {
 } else {
     Write-Warning ".vscode/settings.json not found or invalid."
 }
-exit 0
+exit $Exit.Success

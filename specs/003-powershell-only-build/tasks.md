@@ -84,11 +84,11 @@
 			- Ensure all tests call `make <target>` (exercise [`overlay/Makefile`](file:///d:/repos/al-build-tools/overlay/Makefile#L51-L65)) rather than scripts directly.
 
 ## Phase 4: Enhancements & Standardization
-- [ ] T007 Add guard (`ALBT_VIA_MAKE`) to each relocated script — FR-002..FR-004 (C1,C9)
+- [x] T007 Add guard (`ALBT_VIA_MAKE`) to each relocated script — FR-002..FR-004 (C1,C9)
 	- Precede with tests: Create `tests/contract/Guard.Tests.ps1` that expects exit 2 and guidance on direct invocation; initially FAILS until implementation.
 	- DoD: Direct invocation exits 2 with guidance; via make proceeds.
 	- Validation: Guard tests pass post-implementation.
-- [ ] T008 Add standardized exit code comment & mapping usage — FR-024
+- [x] T008 Add standardized exit code comment & mapping usage — FR-024
 	- Precede with tests: Extend contract tests to assert documented exit codes (e.g., analysis=3, contract=4, integration=5, missing tool=6); initially FAIL until mapping implemented.
 	- DoD: Comment block present; code paths updated to use mapping.
 	- Validation: Exit code tests pass.

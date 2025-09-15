@@ -1,16 +1,21 @@
 
 # Windows Build Script
+# Exit codes: uses mapping from lib/common.ps1 (FR-024)
 param([string]$AppDir = "app")
 
 # Guard: require invocation via make
 if (-not $env:ALBT_VIA_MAKE) {
+    . "$PSScriptRoot\lib\common.ps1"
+    $Exit = Get-ExitCodes
     Write-Output "Run via make (e.g., make build)"
-    exit 2
+    exit $Exit.Guard
 }
 
 # Import shared libraries
 . "$PSScriptRoot\lib\common.ps1"
 . "$PSScriptRoot\lib\json-parser.ps1"
+
+$Exit = Get-ExitCodes
 
 # Diagnostic: Confirm function availability
 if (-not (Get-Command Get-EnabledAnalyzerPaths -ErrorAction SilentlyContinue)) {
@@ -28,7 +33,7 @@ if ($alcShim) {
 }
 if (-not $alcPath) {
     Write-Error "AL Compiler not found. Please ensure AL extension is installed in VS Code."
-    exit 1
+    exit $Exit.MissingTool
 }
 
 # Get enabled analyzer DLL paths
@@ -125,10 +130,11 @@ if ($exitCode -ne 0) {
     Write-Output ""
     # Print a clean failure message without emitting a PowerShell error record
     Write-Host "Build failed with errors above." -ForegroundColor Red
+    exit $Exit.Analysis
 } else {
     Write-Output ""
     Write-Output "Build completed successfully: $outputFile"
 }
 
-exit $exitCode
+exit $Exit.Success
 # ...implementation to be added...

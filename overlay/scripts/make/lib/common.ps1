@@ -2,6 +2,45 @@
 # Note: Do not declare top-level params in dot-sourced libraries.
 # This avoids accidentally overriding caller variables like $AppDir.
 
+# ============================================================================
+# Standardized Exit Codes (FR-024)
+# ----------------------------------------------------------------------------
+# These codes are used by all public entrypoints and referenced by tests/CI.
+#
+# 0  = Success
+# 1  = General error (unexpected script error)
+# 2  = Guard violation (script must be run via make)
+# 3  = Analysis failure (e.g., static analysis/build checks failed)
+# 4  = Contract tests failed (Pester contract suite)
+# 5  = Integration tests failed (Pester integration suite)
+# 6  = Missing required tool (e.g., AL compiler, PSScriptAnalyzer, Pester)
+# ----------------------------------------------------------------------------
+# Access via Get-ExitCodes and prefer using these constants in scripts, e.g.:
+#   $Exit = Get-ExitCodes
+#   exit $Exit.Guard
+#   exit $Exit.MissingTool
+#   exit $Exit.Analysis
+# ============================================================================
+
+function Get-ExitCodes {
+    <#
+    .SYNOPSIS
+        Returns the standardized exit code mapping.
+    .OUTPUTS
+        Hashtable with keys: Success, GeneralError, Guard, Analysis, Contract,
+        Integration, MissingTool.
+    #>
+    return @{
+        Success      = 0
+        GeneralError = 1
+        Guard        = 2
+        Analysis     = 3
+        Contract     = 4
+        Integration  = 5
+        MissingTool  = 6
+    }
+}
+
 function Get-AppJsonPath {
     param([string]$AppDir)
     $appJsonPath1 = Join-Path -Path $AppDir -ChildPath "app.json"
