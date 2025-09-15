@@ -27,7 +27,7 @@
 **IMPORTANT**: This feature's planning includes generating `tasks.md` (Phase 2) to accelerate implementation (repository prompt adaptation). Implementation & validation follow after plan artifacts.
 
 ## Summary (Updated)
-This plan no longer creates net‑new PowerShell scripts; instead it RELOCATES the already functional Windows PowerShell scripts (`overlay/scripts/make/windows/*.ps1`) into the neutral `overlay/scripts/make/` directory, DELETES all Bash scripts under `overlay/scripts/make/linux/`, and ENHANCES the relocated scripts (guard, verbosity normalization, deterministic config output, standardized exit codes). We preserve proven logic, reducing risk versus rewrite while achieving a single cross‑platform surface. Parity with prior Windows behavior and replacement of Bash scripts are validated through contract & integration tests.
+Relocation is complete: scripts now live under `overlay/scripts/make/*.ps1`; the former `windows/` and `linux/` subfolders have been removed. Next we will make a minimal Makefile change (Windows-only) to call the new locations, add tests for current behavior, and then evolve features (guard, verbosity normalization, deterministic config output, standardized exit codes) in a test-driven way. Parity with prior Windows behavior will be validated through contract & integration tests.
 
 Contracts C1–C14 still define authoritative externally observable behavior. Relocation adds a new implicit objective: baseline parity (FR-025) between pre‑relocation Windows outputs and post‑relocation unified scripts. See the pre‑relocation inventory at [inventory-windows-scripts.md](file:///d:/repos/al-build-tools/specs/003-powershell-only-build/inventory-windows-scripts.md) for current script behavior details.
 
@@ -85,11 +85,11 @@ Focus remains valid; added confirmation that existing Windows scripts are suitab
 Artifacts updated to replace "create new scripts" language with "relocate & enhance". Contracts unchanged; add parity note referencing FR-025.
 
 ## Phase 2: Task Planning Approach (Adjusted)
-Task list revised to: (a) Inventory existing Windows scripts, (b) Relocate & inline helpers, (c) Delete Bash & windows folders, (d) Add guard + enhancements, (e) Establish parity baselines, (f) Implement tests, (g) Update Makefile & docs, (h) CI adjustments.
+Task list revised to: (a) Relocation completed (scripts at overlay/scripts/make), (b) Minimal Makefile update (Windows-only) to call new locations, (c) Implement tests for current behavior (contract + parity), (d) Add enhancements in a test-driven way (guard, verbosity, exit codes, config ordering), (e) Optional helper inlining after tests are in place, (f) CI adjustments, (g) Docs sweep.
 `tasks.md` will be rewritten to drop greenfield scaffold tasks and replace them with relocation + enhancement steps.
 
 ## Phase 3+: Implementation & Validation
-Execute relocation first (copy then delete) in a single commit set to avoid a transient broken state. Follow with enhancements and parity verification tests prior to final Bash removal commit if staged. PSSA + Pester green required before merging.
+Relocation is done. Next, make minimal Makefile change (Windows-only) to call `overlay/scripts/make/*.ps1`. Then, add baseline contract tests (no guard/verbosity/mapping/requires-version) and parity tests to lock current behavior. Implement each enhancement (T007–T011) in a TDD loop: write failing tests first (guard, exit code mapping, verbosity env handling, config ordering, requires-version), then implement to green. Consider inlining helpers (T004) only after tests are green. Finally, run full gates (PSSA + Pester) before merging.
 
 ## Complexity Tracking
 No deviations; table empty.

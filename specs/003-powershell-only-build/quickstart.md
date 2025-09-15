@@ -17,15 +17,15 @@ pwsh -NoLogo -Command "Install-Module PSScriptAnalyzer -Scope CurrentUser; Insta
 ## Core Commands (via make)
 | Action | Command | Notes |
 |--------|---------|-------|
-| Build | `make build` | Guarded (C1); uses relocated PowerShell script; honors C2–C5, C8–C10 |
-| Clean | `make clean` | Guarded (C1); idempotent artifact removal (C10) |
-| Show Config | `make show-config` | Guarded; emits stable keys (C7) |
-| Show Analyzers | `make show-analyzers` | Guarded; analyzer enumeration (C5,C6) |
-| Next Object Number | `pwsh overlay/scripts/next-object-number.ps1 <Type>` | Unguarded utility (C11) |
+| Build | `make build` | Uses relocated PowerShell script at `overlay/scripts/make/build.ps1`. Guarding will be added during enhancements. |
+| Clean | `make clean` | Uses `overlay/scripts/make/clean.ps1`. Guarding planned. |
+| Show Config | `make show-config` | Uses `overlay/scripts/make/show-config.ps1`. Deterministic keys planned. |
+| Show Analyzers | `make show-analyzers` | Uses `overlay/scripts/make/show-analyzers.ps1`. |
+| Next Object Number | `pwsh overlay/scripts/next-object-number.ps1 <Type>` | Direct utility. |
 
 Guarded targets MUST be invoked through `make` (C1). Direct guarded script execution returns exit code 2 with guidance (C9). The direct utility is exempt (C11). There is no longer any `linux/` or `windows/` subfolder—scripts are unified.
 
-## Help & Guard Behavior
+## Planned Guard Behavior (post-enhancements)
 Attempting to run a guarded script directly:
 ```
 pwsh overlay/scripts/make/build.ps1
@@ -38,7 +38,7 @@ pwsh overlay/scripts/make/build.ps1 -?
 ```
 Full help (after guard satisfied) TBD (implemented inside each script with standard `-? -h --help`).
 
-## Verbosity
+## Verbosity (to be standardized during enhancements)
 Set either flag or environment variable:
 ```
 make build VERBOSE=1
@@ -67,8 +67,8 @@ Missing file, invalid JSON, disabled flag, or missing DLL paths → build contin
 ## Ruleset Handling (C3)
 If `RULESET_PATH` points to an existing non-empty file it is passed to the compiler (`/ruleset:`). Otherwise a warning is emitted and the build proceeds (quality is optional not blocking). This avoids false negatives when contributors lack local copies.
 
-## Environment Guard Lifecycle
-Each make recipe sets `ALBT_VIA_MAKE=1` only for the spawned PowerShell process and unsets it immediately after. Tests verify the parent shell remains clean.
+## Environment Guard Lifecycle (planned)
+Each make recipe will set `ALBT_VIA_MAKE=1` only for the spawned PowerShell process and unset it immediately after. Tests will verify the parent shell remains clean.
 
 ## Static Analysis
 Run locally (repository contributors only – consumers typically rely on CI gate):

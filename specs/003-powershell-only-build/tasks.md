@@ -23,6 +23,11 @@
 - All paths absolute or project-relative (root = repo root)
 - Reference FR IDs, Contract Test IDs where applicable
 
+## Sequencing Note (Updated)
+- Next task: T015 Makefile minimal update (Windows-only; point to overlay/scripts/make/*.ps1).
+- Then add tests for current scripts: T017–T024 (contract) and T013 (parity), T014 (integration scaffolds as needed).
+- Then add new features in a test-driven way: T007–T011.
+
 ## Phase 1: Relocation & Baseline Capture
 - [x] T001 Inventory current Windows PowerShell scripts & helpers — FR-001
 	- DoD: List parameters, current behaviors, exit codes (implicit) for build/clean/show-*; identify helper functions in `lib/`.
@@ -34,37 +39,25 @@
 - [x] T003 Relocate scripts: move `windows/*.ps1` to `overlay/scripts/make/` root — FR-001, FR-016
 	- DoD: Files appear at new location; old `windows/` folder temporarily retained until parity tests added OR deleted if Makefile updated same commit.
 	- Validation: `Test-Path` new paths true; old references removed from docs.
-- [ ] T004 Inline required helper logic from `overlay/scripts/make/lib/*.ps1` into each relocated script — FR-001
-	- DoD: No remaining dependency on `windows/lib`; only necessary functions copied; duplication < threshold (leave as-is if small).
-	- Validation: Scripts run without dot-sourcing external helper files.
-- [ ] T005 Remove `windows/lib` and (after parity tests pass) delete `windows/` directory — FR-016
-	- DoD: Directory removed from repo; no references in docs or Makefile.
-	- Validation: Git diff shows deletion; tests green.
-- [ ] T006 Delete all Bash scripts under `linux/` directory — FR-016
-	- DoD: `overlay/scripts/make/linux/` removed completely.
+
+- [x] T005 Remove `windows/lib` and (after parity tests pass) delete `windows/` directory — FR-016
+	- DoD: Completed — `overlay/scripts/make/windows/` removed from repo; no references in docs or Makefile.
+	- Validation: Paths absent; docs updated.
+- [x] T006 Delete all Bash scripts under `linux/` directory — FR-016
+	- DoD: Completed — `overlay/scripts/make/linux/` removed completely.
 	- Validation: No lingering references in docs; Makefile no longer branches on OS.
 
-## Phase 2: Enhancements & Standardization
-- [ ] T007 Add guard (`ALBT_VIA_MAKE`) to each relocated script — FR-002..FR-004 (C1,C9)
-	- DoD: Direct invocation exits 2 with guidance; via make proceeds.
-	- Validation: Manual invocation test & future contract test placeholder.
-- [ ] T008 Add standardized exit code comment & mapping usage — FR-024
-	- DoD: Comment block present; code paths updated to use mapping.
-	- Validation: `Select-String 'Exit Codes'` finds block in all guarded scripts.
-- [ ] T009 Add verbosity env handling (VERBOSE=1) + ensure `-Verbose` still works — FR-006
-	- DoD: `$VerbosePreference='Continue'` set when env var truthy.
-	- Validation: Output includes verbose lines in env scenario.
-- [ ] T010 Normalize config output ordering & keys — FR-011, FR-025
-	- DoD: `show-config.ps1` emits deterministic ordered key=value lines (incl. Platform, PowerShellVersion).
-	- Validation: Two consecutive runs identical; baseline diff accepted.
-- [ ] T011 Ensure `next-object-number.ps1` has version directive & help stub — FR-005, FR-014
-	- DoD: `#requires -Version 7.2` at top if missing; concise help.
-	- Validation: Presence of directive + help displays.
+## Phase 2: Makefile Minimal Update (Windows-only)
+- [ ] T015 Update `Makefile` to call relocated scripts (Windows-only, minimal) — FR-016
+	- Priority: Execute this task next to align with current script locations.
+	- DoD: All targets use `pwsh -File overlay/scripts/make/<script>.ps1`; remove Bash logic branches; Windows-only (no OS conditional).
+	- Validation: Local invocation succeeds on Windows.
+
 
 ## Phase 3: Test Suite (Contract & Integration)
-- [ ] T012 Create contract tests (guard, help, exit codes, verbosity, requires-version) — FR-010, FR-024
-	- DoD: Test files under `tests/contract/` referencing contracts C1,C2,C9 etc.
-	- Validation: Initial run produces expected failures before enhancements complete.
+- [ ] T012 Create baseline contract tests for current behavior (no guard/verbosity/exit-code-mapping/requires-version yet) — FR-010, FR-025
+	- DoD: Test files under `tests/contract/` asserting existing observable behavior only.
+	- Validation: Initial run passes on current scripts; serves as safety net before enhancements.
 - [ ] T013 Create contract parity tests comparing relocated outputs to baseline snapshots — FR-025
 	- DoD: Tests load baseline files & compare normalized output.
 	- Validation: Fails if divergence introduced unintentionally.
@@ -72,10 +65,29 @@
 	- DoD: Tests under `tests/integration/` calling make targets only.
 	- Validation: Windows + Ubuntu matrix passes after implementation.
 
-## Phase 4: Makefile & CI Updates
-- [ ] T015 Update `Makefile` to call relocated scripts uniformly (remove Bash logic branches) — FR-016
-	- DoD: All targets use `pwsh -File overlay/scripts/make/<script>.ps1` with guard var set.
-	- Validation: Local invocation succeeds; no conditional on OS.
+## Phase 4: Enhancements & Standardization
+- [ ] T007 Add guard (`ALBT_VIA_MAKE`) to each relocated script — FR-002..FR-004 (C1,C9)
+	- Precede with tests: Create `tests/contract/Guard.Tests.ps1` that expects exit 2 and guidance on direct invocation; initially FAILS until implementation.
+	- DoD: Direct invocation exits 2 with guidance; via make proceeds.
+	- Validation: Guard tests pass post-implementation.
+- [ ] T008 Add standardized exit code comment & mapping usage — FR-024
+	- Precede with tests: Extend contract tests to assert documented exit codes (e.g., analysis=3, contract=4, integration=5, missing tool=6); initially FAIL until mapping implemented.
+	- DoD: Comment block present; code paths updated to use mapping.
+	- Validation: Exit code tests pass.
+- [ ] T009 Add verbosity env handling (VERBOSE=1) + ensure `-Verbose` still works — FR-006
+	- Precede with tests: Create `tests/contract/Verbosity.Tests.ps1` to assert additional verbose output under env flag and flag pass-through; initially FAIL until implemented.
+	- DoD: `$VerbosePreference='Continue'` set when env var truthy.
+	- Validation: Verbosity tests pass.
+- [ ] T010 Normalize config output ordering & keys — FR-011, FR-025
+	- Precede with tests: Add `tests/contract/ShowConfig.Tests.ps1` asserting stable key=value ordering; initially FAIL until implemented.
+	- DoD: `show-config.ps1` emits deterministic ordered key=value lines (incl. Platform, PowerShellVersion).
+	- Validation: Two consecutive runs identical; tests pass.
+- [ ] T011 Ensure `next-object-number.ps1` has version directive & help stub — FR-005, FR-014
+	- Precede with tests: Add `tests/contract/RequiresVersion.Tests.ps1` to assert `#requires -Version 7.2`; initially FAIL where missing.
+	- DoD: `#requires -Version 7.2` at top if missing; concise help.
+	- Validation: Presence of directive + help displays; tests pass.
+
+## Phase 5: CI Updates
 - [ ] T016 Add/Update GitHub Actions workflow for PSSA then Pester matrix — FR-008, FR-009
 	- DoD: YAML present with analysis job (exit 3 mapping) & contract/integration jobs.
 	- Validation: Workflow syntax valid.
@@ -83,7 +95,7 @@
 	- DoD: Pre-step in workflow or shared script ensures presence.
 	- Validation: Simulated removal triggers exit 6.
 
-## Phase 5: Documentation & Cleanup
+## Phase 6: Documentation & Cleanup
 - [ ] T018 Update spec, plan, quickstart (done in feature branch) — FR-015 (Meta)
 	- DoD: Docs contain relocation narrative; no references to linux/windows subfolders.
 	- Validation: Grep returns zero hits for `/make/linux` or `/make/windows` paths.
@@ -102,6 +114,12 @@
 - [ ] T023 Final static analysis run & clean-up unused helper remnants — FR-017
 	- DoD: No PSSA warnings of configured severities.
 	- Validation: Analyzer run returns 0 issues.
+
+## Phase 7: Optional Inlining (post-tests)
+- [ ] T004 Inline required helper logic from `overlay/scripts/make/lib/*.ps1` into each relocated script — FR-001
+	- Blocker: Execute only after contract (T012) and parity (T013) tests exist and are passing for current behavior.
+	- DoD: No remaining dependency on `overlay/scripts/make/lib`; only necessary functions copied; duplication < threshold (leave as-is if small).
+	- Validation: Scripts run without dot-sourcing external helper files; parity remains green.
 
 ## Removed / Replaced Tasks
 Original scaffold tasks (T009–T012 etc.) superseded by relocation steps (T003–T011). Any references in older planning artifacts are historical only and not to be executed.

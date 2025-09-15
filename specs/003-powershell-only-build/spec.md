@@ -4,7 +4,7 @@
 **Created**: 2025-09-14
 **Revised**: 2025-09-15 (directive change: reuse existing scripts)
 **Status**: Draft (updated)
-**Summary of Change**: The initial draft assumed net‑new PowerShell script creation. Direction is updated to RELOCATE existing Windows PowerShell scripts to a neutral location and DELETE Bash scripts, minimizing churn and preserving proven behavior while adding guard, verbosity normalization, and standardized exit codes.
+**Summary of Change**: We have RELOCATED existing Windows PowerShell scripts to the neutral `overlay/scripts/make/` location and DELETED both the former `windows/` and `linux/` subfolders. Next, we will add tests and then evolve the scripts (guard, verbosity normalization, standardized exit codes) in a test‑driven way.
 
 ## Why (Core Drivers)
 - Eliminate duplication & drift (remove Bash variants).
@@ -16,16 +16,16 @@
 ## Scope (Revised)
 | Action | Detail |
 |--------|--------|
-| Relocate | Move `overlay/scripts/make/windows/*.ps1` up one level to `overlay/scripts/make/` (flatten) keeping filenames (`build.ps1`, `clean.ps1`, etc.). |
-| Inline | Collapse any helper functions from `windows/lib/*.ps1` into each script (only small necessary portions) to avoid shipping a `lib/` directory post‑relocation. |
+| Relocate | Completed — scripts live at `overlay/scripts/make/*.ps1` (`build.ps1`, `clean.ps1`, `show-config.ps1`, `show-analyzers.ps1`). |
+| Inline | Collapse any helper functions from `windows/lib/*.ps1` into each script (only small necessary portions) to avoid shipping a `lib/` directory post‑relocation. Execute only after parity tests (T013) are authored and failing pre-change. |
 | Guard | Add `ALBT_VIA_MAKE` guard to relocated scripts (if not already present). |
-| Delete | Remove entire `overlay/scripts/make/linux/` directory and its Bash scripts in this feature branch. |
+| Delete | Completed — `overlay/scripts/make/linux/` removed. |
 | Preserve | Keep `overlay/scripts/next-object-number.ps1` unguarded (only minor consistency tweaks if needed). |
 | Enhance | Add standardized exit codes, verbosity env var support, deterministic config output ordering, help stub behavior. |
 
 Source baseline behavior is documented in [inventory-windows-scripts.md](file:///d:/repos/al-build-tools/specs/003-powershell-only-build/inventory-windows-scripts.md) to anchor relocation and parity (FR-025).
 
-## Entrypoints (Post‑Relocation, Guarded)
+## Entrypoints (Current)
 - `overlay/scripts/make/build.ps1`
 - `overlay/scripts/make/clean.ps1`
 - `overlay/scripts/make/show-config.ps1`
@@ -48,8 +48,9 @@ Source baseline behavior is documented in [inventory-windows-scripts.md](file://
 - Exit code mapping reused from original spec (guard=2, analysis=3, contract=4, integration=5, missing tool=6).
 
 ## Testing Emphasis
-- Contract tests target guard behavior, exit codes, help stub, verbosity, and parity (relocated vs baseline Windows output) executed inside a temporary fixture AL project with the overlay copied in.
-- Integration tests run from the fixture AL project and ensure cross‑platform identical (normalized) outputs and environment isolation; build parity runs only when a real AL compiler is discovered, otherwise tests are marked skipped with rationale.
+- Immediate next: make minimal Makefile change (Windows-only) to invoke current scripts from `overlay/scripts/make/`, then add baseline contract tests for current behavior and parity tests.
+- Per-feature TDD: before each enhancement (guard, exit code mapping, verbosity env handling, config ordering, requires-version), add a failing test, then implement the change to make it pass.
+- Integration tests run from the fixture AL project and ensure environment isolation; build parity runs only when a real AL compiler is discovered, otherwise tests are marked skipped with rationale.
 - Pester & PSScriptAnalyzer remain CI gates; no tests depend on removed Bash scripts.
 
 ## Success Criteria (Relocation)

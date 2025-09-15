@@ -1,5 +1,7 @@
 # Inventory: Windows PowerShell scripts and helpers (pre-relocation)
 
+Note: The `overlay/scripts/make/windows/` folder has been deleted in the current state. This inventory reflects the pre-relocation snapshot used for parity and planning.
+
 Scope: overlay/scripts/make/windows/*.ps1 and overlay/scripts/make/windows/lib/*.ps1
 Date: 2025-09-15
 
