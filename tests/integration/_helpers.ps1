@@ -224,9 +224,14 @@ function Get-HighestVersionALExtension {
 
 function Get-ALCompilerPath {
     param([string]$AppDir)
-    $alExt = Get-HighestVersionALExtension
+    $alExt = $null
+    try { $alExt = Get-HighestVersionALExtension } catch { $alExt = $null }
     if ($alExt) {
-        $alc = Get-ChildItem -Path $alExt.FullName -Recurse -Filter 'alc.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($IsWindows) {
+            $alc = Get-ChildItem -Path $alExt.FullName -Recurse -Filter 'alc.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+        } else {
+            $alc = Get-ChildItem -Path $alExt.FullName -Recurse -Filter 'alc' -ErrorAction SilentlyContinue | Where-Object { -not $_.PSIsContainer } | Select-Object -First 1
+        }
         if ($alc) { return $alc.FullName }
     }
     return $null
