@@ -20,7 +20,14 @@ function New-TempWorkDir {
 
 # Resolve repo root relative to this script
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$testsPath = Resolve-Path (Join-Path $repoRoot $Path)
+$repoRootPath = $repoRoot.Path
+$testsPath = Resolve-Path (Join-Path $repoRootPath $Path)
+
+# Ensure repo root stays clean: remove any stray previous results file
+$repoResultsPath = Join-Path $repoRootPath 'testResults.xml'
+if (Test-Path -LiteralPath $repoResultsPath) {
+    try { Remove-Item -LiteralPath $repoResultsPath -Force -ErrorAction SilentlyContinue } catch {}
+}
 
 # Decide where to place any optional test results file
 $resultsPath = $null
@@ -66,6 +73,11 @@ if ($CI) {
 } else {
     # Print where results were written if requested
     if ($resultsPath) { Write-Host "Test results: $resultsPath" }
+}
+
+# Final safety: ensure no testResults.xml was created in repo root by external tools
+if (Test-Path -LiteralPath $repoResultsPath) {
+    try { Remove-Item -LiteralPath $repoResultsPath -Force -ErrorAction SilentlyContinue } catch {}
 }
 
 

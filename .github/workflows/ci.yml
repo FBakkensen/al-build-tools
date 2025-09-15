@@ -1,0 +1,113 @@
+name: AL Build Tools CI (PSSA + Pester)
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  POWERSHELL_TELEMETRY_OPTOUT: '1'
+
+jobs:
+  analysis:
+    name: Static Analysis (PSScriptAnalyzer, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
+
+      - name: Run PSScriptAnalyzer and map exit code 3 on findings
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host 'Running PSScriptAnalyzer over repository...'
+          # Analyze repo but skip non-source folders likely to contain specs, templates, or test data
+          $include = @('.')
+          $exclude = @('.git', '.github', 'memory', 'specs', 'templates')
+          $paths = Get-ChildItem -Recurse -Force -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin $exclude } | Select-Object -ExpandProperty FullName
+          $targets = @('.') + $paths
+          $results = Invoke-ScriptAnalyzer -Path $targets -Recurse -Severity Warning,Error -ErrorAction SilentlyContinue
+          if ($results -and $results.Count -gt 0) {
+            Write-Host 'PSScriptAnalyzer found issues:'
+            $results | Sort-Object Severity, RuleName, ScriptName, Line | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+            Write-Error 'Static analysis violations detected.'
+            exit 3  # Map analysis failures to exit code 3 per spec
+          } else {
+            Write-Host 'No PSScriptAnalyzer issues found.'
+          }
+
+  contract-tests:
+    name: Contract Tests (Pester, ${{ matrix.os }})
+    needs: analysis
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -Scope CurrentUser -Force -AllowClobber
+
+      - name: Run contract tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module Pester -MinimumVersion 5.0.0
+          Invoke-Pester -CI -Path 'tests/contract'
+
+  integration-tests:
+    name: Integration Tests (Pester, ${{ matrix.os }})
+    needs: analysis
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure make is available (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            Write-Host 'Installing make via Chocolatey...'
+            choco install make -y --no-progress
+          }
+          make --version
+
+      - name: Ensure make is available (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y make
+
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -Scope CurrentUser -Force -AllowClobber
+
+      - name: Run integration tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module Pester -MinimumVersion 5.0.0
+          Invoke-Pester -CI -Path 'tests/integration'
