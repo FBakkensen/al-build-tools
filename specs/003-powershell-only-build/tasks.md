@@ -55,12 +55,9 @@
 
 
 ## Phase 3: Test Suite (Contract & Integration)
-- [ ] T012 Create baseline contract tests for current behavior (no guard/verbosity/exit-code-mapping/requires-version yet) — FR-010, FR-025
+- [x] T012 Create baseline contract tests for current behavior (no guard/verbosity/exit-code-mapping/requires-version yet) — FR-010, FR-025
 	- DoD: Test files under `tests/contract/` asserting existing observable behavior only.
 	- Validation: Initial run passes on current scripts; serves as safety net before enhancements.
-- [ ] T013 Create contract parity tests comparing relocated outputs to baseline snapshots — FR-025
-	- DoD: Tests load baseline files & compare normalized output.
-	- Validation: Fails if divergence introduced unintentionally.
 - [ ] T014 Create integration tests (build, clean idempotent, config, analyzers, env isolation, parity across OS) — FR-011, FR-013
 	- DoD: Tests under `tests/integration/` calling make targets only.
 	- Validation: Windows + Ubuntu matrix passes after implementation.
