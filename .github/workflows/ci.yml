@@ -34,12 +34,21 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Write-Host 'Running PSScriptAnalyzer over repository...'
-          # Analyze repo but skip non-source folders likely to contain specs, templates, or test data
-          $include = @('.')
-          $exclude = @('.git', '.github', 'memory', 'specs', 'templates')
-          $paths = Get-ChildItem -Recurse -Force -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin $exclude } | Select-Object -ExpandProperty FullName
-          $targets = @('.') + $paths
-          $results = Invoke-ScriptAnalyzer -Path $targets -Recurse -Severity Warning,Error -ErrorAction SilentlyContinue
+          # Build a list of PowerShell source files, excluding non-source folders
+          $excludeDirs = @('.git', '.github', 'memory', 'specs', 'templates')
+          $escaped = $excludeDirs | ForEach-Object { [regex]::Escape($_) }
+          $sep = '[\\/]'  # cross-platform path separator for regex
+          $excludePattern = "${sep}(?:" + ($escaped -join '|') + ")(?:${sep}|$)"
+          $files = Get-ChildItem -Path . -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch $excludePattern -and $_.Extension -in '.ps1','.psm1','.psd1' } |
+            Select-Object -ExpandProperty FullName
+          if (-not $files -or $files.Count -eq 0) {
+            Write-Host 'No PowerShell files found to analyze.'
+            exit 0
+          }
+          # Pass explicit string[] of files to analyzer
+          [string[]]$targets = $files
+          $results = Invoke-ScriptAnalyzer -Path $targets -Severity Warning,Error -ErrorAction SilentlyContinue
           if ($results -and $results.Count -gt 0) {
             Write-Host 'PSScriptAnalyzer found issues:'
             $results | Sort-Object Severity, RuleName, ScriptName, Line | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
