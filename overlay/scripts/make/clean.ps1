@@ -12,7 +12,9 @@ try {
     $v = $env:VERBOSE
     if ($v -and ($v -eq '1' -or $v -match '^(?i:true|yes|on)$')) { $VerbosePreference = 'Continue' }
     if ($VerbosePreference -eq 'Continue') { Write-Verbose '[albt] verbose mode enabled' }
-} catch { }
+} catch {
+    Write-Verbose "[albt] verbose env check failed: $($_.Exception.Message)"
+}
 
 # --- Exit codes (from common.ps1) ---
 function Get-ExitCodes {

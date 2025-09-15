@@ -57,8 +57,8 @@ function Get-UsedIds([string]$Root, [string]$ObjType) {
   $pattern = '\b' + [Regex]::Escape($ObjType) + '\s+(\d+)\b'
   foreach ($f in $files) {
     try {
-      $matches = Select-String -LiteralPath $f.FullName -Pattern $pattern -AllMatches -Encoding UTF8 -ErrorAction SilentlyContinue
-      foreach ($m in $matches) {
+      $selMatches = Select-String -LiteralPath $f.FullName -Pattern $pattern -AllMatches -Encoding UTF8 -ErrorAction SilentlyContinue
+      foreach ($m in $selMatches) {
         foreach ($g in $m.Matches) { [void]$ids.Add([int]$g.Groups[1].Value) }
       }
     } catch { continue }

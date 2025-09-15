@@ -12,7 +12,9 @@ try {
     $v = $env:VERBOSE
     if ($v -and ($v -eq '1' -or $v -match '^(?i:true|yes|on)$')) { $VerbosePreference = 'Continue' }
     if ($VerbosePreference -eq 'Continue') { Write-Verbose '[albt] verbose mode enabled' }
-} catch { }
+} catch {
+    Write-Verbose "[albt] verbose env check failed: $($_.Exception.Message)"
+}
 
 # --- Exit codes (from common.ps1) ---
 function Get-ExitCodes {
@@ -84,7 +86,9 @@ function Get-EnabledAnalyzerPaths { param([string]$AppDir)
                 if ($json.PSObject.Properties.Match('enableAppSourceCop').Count -gt 0 -and $json.enableAppSourceCop) { $enabled += 'AppSourceCop' }
                 if ($json.PSObject.Properties.Match('enablePerTenantExtensionCop').Count -gt 0 -and $json.enablePerTenantExtensionCop) { $enabled += 'PerTenantExtensionCop' }
             }
-        } catch { }
+        } catch {
+            Write-Verbose "[albt] settings.json parse failed: $($_.Exception.Message)"
+        }
     }
     $alExt = Get-HighestVersionALExtension
     $workspaceRoot = (Get-Location).Path

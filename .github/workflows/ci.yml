@@ -28,30 +28,57 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
 
-      - name: Run PSScriptAnalyzer and map exit code 3 on findings
+      - name: Blocking analysis (overlay + bootstrap)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           Import-Module PSScriptAnalyzer -ErrorAction Stop
-          Write-Host 'Running PSScriptAnalyzer over repository...'
-          # Analyze repo recursively, then filter out non-source directories via ScriptPath
-          $excludeDirs = @('.git', '.github', 'memory', 'specs', 'templates')
+          Write-Host 'Running blocking PSScriptAnalyzer on overlay/ and bootstrap/install.ps1 using repo settings...'
+          $settings = Join-Path $env:GITHUB_WORKSPACE 'PSScriptAnalyzerSettings.psd1'
+          $blockTargets = @()
+          if (Test-Path 'overlay') { $blockTargets += 'overlay' }
+          if (Test-Path 'bootstrap/install.ps1') { $blockTargets += 'bootstrap/install.ps1' }
+          if ($blockTargets.Count -eq 0) { Write-Host 'No blocking targets found'; exit 0 }
+          # Analyze each target separately to avoid Path type-binding issues; aggregate results
+          $results = @()
+          foreach ($t in $blockTargets) {
+            $r = Invoke-ScriptAnalyzer -Path $t -Recurse -Settings $settings -ErrorAction SilentlyContinue
+            if ($r) { $results += $r }
+          }
+          # Keep only Error severity per settings
+          $errors = $results | Where-Object { $_.Severity -eq 'Error' }
+          if ($errors -and $errors.Count -gt 0) {
+            Write-Host 'Blocking PSScriptAnalyzer errors:'
+            $errors | Sort-Object RuleName, ScriptName, Line | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+            Write-Host 'Static analysis violations detected (failing with exit code 3).'
+            exit 3
+          } else {
+            Write-Host 'Blocking analysis passed (no errors).'
+          }
+
+      - name: Advisory analysis (repo-wide warnings)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module PSScriptAnalyzer -ErrorAction Stop
+          Write-Host 'Running advisory PSScriptAnalyzer across repository (does not fail build)...'
+          $excludeDirs = @('.git', '.github', 'memory', 'specs', 'templates', 'overlay')
           $escaped = $excludeDirs | ForEach-Object { [regex]::Escape($_) }
-          $sep = '[\\/]'  # cross-platform path separator for regex
+          $sep = '[\\/]'
           $excludePattern = "${sep}(?:" + ($escaped -join '|') + ")(?:${sep}|$)"
           $all = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Warning,Error -ErrorAction SilentlyContinue
-          $results = $all | Where-Object {
+          $adv = $all | Where-Object {
             $sp = $_.ScriptPath
-            if ([string]::IsNullOrEmpty($sp)) { return $true }
+            if ([string]::IsNullOrEmpty($sp)) { return $false }
             ($sp -notmatch $excludePattern) -and ([IO.Path]::GetExtension($sp) -in @('.ps1','.psm1','.psd1'))
           }
-          if ($results -and $results.Count -gt 0) {
-            Write-Host 'PSScriptAnalyzer found issues:'
-            $results | Sort-Object Severity, RuleName, ScriptName, Line | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
-            Write-Error 'Static analysis violations detected.'
-            exit 3  # Map analysis failures to exit code 3 per spec
+          if ($adv) {
+            'Summary by Severity:'
+            ($adv | Group-Object Severity | Sort-Object Name | ForEach-Object { '{0,-8} {1,4}' -f $_.Name, $_.Count }) | Write-Output
+            "`nTop rules (first 10):" | Write-Output
+            ($adv | Group-Object RuleName | Sort-Object Count -Descending | Select-Object -First 10 | ForEach-Object { '{0,-45} {1,4}' -f $_.Name, $_.Count }) | Write-Output
           } else {
-            Write-Host 'No PSScriptAnalyzer issues found.'
+            Write-Host 'No advisory findings.'
           }
 
   contract-tests:

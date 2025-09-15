@@ -12,7 +12,9 @@ try {
     $v = $env:VERBOSE
     if ($v -and ($v -eq '1' -or $v -match '^(?i:true|yes|on)$')) { $VerbosePreference = 'Continue' }
     if ($VerbosePreference -eq 'Continue') { Write-Verbose '[albt] verbose mode enabled' }
-} catch { }
+} catch {
+    Write-Verbose "[albt] verbose env check failed: $($_.Exception.Message)"
+}
 
 # --- Exit codes (from common.ps1) ---
 function Get-ExitCodes {
@@ -82,7 +84,7 @@ function Get-HighestVersionALExtension {
     $highest = $withVersion | Sort-Object -Property Version, Insiders -Descending | Select-Object -First 1
     if ($highest) { return $highest.Ext } else { return $null }
 }
-function Get-ALCompilerPath { param([string]$AppDir)
+function Get-ALCompilerPath {
     $alExt = Get-HighestVersionALExtension
     if ($alExt) { $alc = Get-ChildItem -Path $alExt.FullName -Recurse -Filter 'alc.exe' -ErrorAction SilentlyContinue | Select-Object -First 1; if ($alc) { return $alc.FullName } }
     return $null
@@ -110,7 +112,9 @@ function Get-EnabledAnalyzerPaths { param([string]$AppDir)
                 if ($json.PSObject.Properties.Match('enableAppSourceCop').Count -gt 0 -and $json.enableAppSourceCop) { $enabled += 'AppSourceCop' }
                 if ($json.PSObject.Properties.Match('enablePerTenantExtensionCop').Count -gt 0 -and $json.enablePerTenantExtensionCop) { $enabled += 'PerTenantExtensionCop' }
             }
-        } catch { }
+        } catch {
+            Write-Verbose "[albt] settings.json parse failed: $($_.Exception.Message)"
+        }
     }
     $alExt = Get-HighestVersionALExtension
     $workspaceRoot = (Get-Location).Path
@@ -157,7 +161,7 @@ $alcShim = $env:ALBT_ALC_SHIM
 if ($alcShim) {
     $alcPath = $alcShim
 } else {
-    $alcPath = Get-ALCompilerPath $AppDir
+    $alcPath = Get-ALCompilerPath
 }
 if (-not $alcPath) {
     Write-Error "AL Compiler not found. Please ensure AL extension is installed in VS Code."
