@@ -12,8 +12,13 @@ if (-not (Get-Command Get-EnabledAnalyzerPaths -ErrorAction SilentlyContinue)) {
 }
 
 
-# Discover AL compiler
-$alcPath = Get-ALCompilerPath $AppDir
+# Discover AL compiler (allow test shim override)
+$alcShim = $env:ALBT_ALC_SHIM
+if ($alcShim) {
+    $alcPath = $alcShim
+} else {
+    $alcPath = Get-ALCompilerPath $AppDir
+}
 if (-not $alcPath) {
     Write-Error "AL Compiler not found. Please ensure AL extension is installed in VS Code."
     exit 1
