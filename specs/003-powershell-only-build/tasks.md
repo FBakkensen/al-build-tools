@@ -68,9 +68,9 @@
 			- Minimal `app.json` compatible with [`Get-OutputPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L23-L41) and optional `.vscode/settings.json` variants.
 		- T014.3 [x] Build integration (compiler detection covered)
 			- `tests/integration/Build.Tests.ps1`: If [`Get-ALCompilerPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L91-L99) returns $null, assert `make build` exits non‑zero with "AL Compiler not found" from [`build.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/build.ps1#L17-L20); else assert exit 0 and "Build completed successfully: ...".
-		- T014.4 [P] Clean idempotence
+		- T014.4 [x] Clean idempotence
 			- `tests/integration/CleanIdempotence.Tests.ps1`: Pre‑seed fake `.app` at [`Get-OutputPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L23-L41); run `make clean` twice; both exit 0; second run prints "No build artifact found" per [`clean.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/clean.ps1#L7-L15).
-		- T014.5 [P] Show-config
+		- T014.5 [x] Show-config
 			- `tests/integration/ShowConfig.Tests.ps1`: With valid `app.json`, assert headers/keys printed by [`show-config.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/show-config.ps1#L7-L13,L17-L27); with missing `app.json`, assert exit 0 and error on stderr.
 		- T014.6 [P] Show-analyzers (analyzer detection covered)
 			- `tests/integration/ShowAnalyzers.Tests.ps1`: No settings → header plus "(none)"; with workspace‑local fake DLL via `${workspaceFolder}`/`${appDir}` token and wildcard, assert it appears under "Analyzer DLL paths:" without requiring AL extension.
