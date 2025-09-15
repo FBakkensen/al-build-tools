@@ -50,16 +50,16 @@ help:
 
 # Build target - main compilation
 build:
-	$(SCRIPT_CMD) scripts/make/build.ps1 $(APP_DIR)
+	ALBT_VIA_MAKE=1 $(SCRIPT_CMD) scripts/make/build.ps1 $(APP_DIR)
 
 # Clean build artifacts
 clean:
-	$(SCRIPT_CMD) scripts/make/clean.ps1 $(APP_DIR)
+	ALBT_VIA_MAKE=1 $(SCRIPT_CMD) scripts/make/clean.ps1 $(APP_DIR)
 
 # Show current configuration
 show-config:
-	$(SCRIPT_CMD) scripts/make/show-config.ps1 $(APP_DIR)
+	ALBT_VIA_MAKE=1 $(SCRIPT_CMD) scripts/make/show-config.ps1 $(APP_DIR)
 
 # Show discovered analyzers
 show-analyzers:
-	$(SCRIPT_CMD) scripts/make/show-analyzers.ps1 $(APP_DIR)
+	ALBT_VIA_MAKE=1 $(SCRIPT_CMD) scripts/make/show-analyzers.ps1 $(APP_DIR)

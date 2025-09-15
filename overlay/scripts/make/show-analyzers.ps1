@@ -1,6 +1,13 @@
 
 # Windows Show-Analyzers Script
 param([string]$AppDir)
+
+# Guard: require invocation via make
+if (-not $env:ALBT_VIA_MAKE) {
+    Write-Output "Run via make (e.g., make show-analyzers)"
+    exit 2
+}
+
 . "$PSScriptRoot\lib\common.ps1"
 . "$PSScriptRoot\lib\json-parser.ps1"
 

@@ -1,7 +1,14 @@
 
 # Windows Build Script
 param([string]$AppDir = "app")
-# Import shared libraries (must be at the very top)
+
+# Guard: require invocation via make
+if (-not $env:ALBT_VIA_MAKE) {
+    Write-Output "Run via make (e.g., make build)"
+    exit 2
+}
+
+# Import shared libraries
 . "$PSScriptRoot\lib\common.ps1"
 . "$PSScriptRoot\lib\json-parser.ps1"
 
