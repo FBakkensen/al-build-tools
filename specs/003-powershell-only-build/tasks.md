@@ -109,7 +109,7 @@
 - [x] T016 Add/Update GitHub Actions workflow for PSSA then Pester matrix — FR-008, FR-009
 	- DoD: YAML present with analysis job (exit 3 mapping) & contract/integration jobs.
 	- Validation: Workflow syntax valid.
-- [ ] T017 Add required tools check (exit 6 on missing PSScriptAnalyzer/Pester) — FR-023
+- [x] T017 Add required tools check (exit 6 on missing PSScriptAnalyzer/Pester) — FR-023
 	- DoD: Pre-step in workflow or shared script ensures presence.
 	- Validation: Simulated removal triggers exit 6.
 
