@@ -59,8 +59,29 @@
 	- DoD: Test files under `tests/contract/` asserting existing observable behavior only.
 	- Validation: Initial run passes on current scripts; serves as safety net before enhancements.
 - [ ] T014 Create integration tests (build, clean idempotent, config, analyzers, env isolation, parity across OS) — FR-011, FR-013
-	- DoD: Tests under `tests/integration/` calling make targets only.
-	- Validation: Windows + Ubuntu matrix passes after implementation.
+	- DoD: Tests under `tests/integration/` calling make targets only; use fixture projects with the overlay copied in; no network calls.
+	- Validation: Windows + Ubuntu matrix passes after implementation; environment-dependent assertions are conditional (compiler/analyzers may be absent).
+	- Subtasks:
+		- T014.1 [P] Integration helpers module: `tests/integration/_helpers.ps1`
+			- Provides `New-Fixture`, `Install-Overlay`, `Write-AppJson`, optional `Write-SettingsJson`, `Invoke-Make`, and `_Normalize-Output` (CRLF/LF and trailing space normalization).
+		- T014.2 [P] Fixture generators
+			- Minimal `app.json` compatible with [`Get-OutputPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L23-L41) and optional `.vscode/settings.json` variants.
+		- T014.3 [P] Build integration (compiler detection covered)
+			- `tests/integration/Build.Tests.ps1`: If [`Get-ALCompilerPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L91-L99) returns $null, assert `make build` exits non‑zero with "AL Compiler not found" from [`build.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/build.ps1#L17-L20); else assert exit 0 and "Build completed successfully: ...".
+		- T014.4 [P] Clean idempotence
+			- `tests/integration/CleanIdempotence.Tests.ps1`: Pre‑seed fake `.app` at [`Get-OutputPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L23-L41); run `make clean` twice; both exit 0; second run prints "No build artifact found" per [`clean.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/clean.ps1#L7-L15).
+		- T014.5 [P] Show-config
+			- `tests/integration/ShowConfig.Tests.ps1`: With valid `app.json`, assert headers/keys printed by [`show-config.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/show-config.ps1#L7-L13,L17-L27); with missing `app.json`, assert exit 0 and error on stderr.
+		- T014.6 [P] Show-analyzers (analyzer detection covered)
+			- `tests/integration/ShowAnalyzers.Tests.ps1`: No settings → header plus "(none)"; with workspace‑local fake DLL via `${workspaceFolder}`/`${appDir}` token and wildcard, assert it appears under "Analyzer DLL paths:" without requiring AL extension.
+		- T014.7 [P] Environment isolation (skeleton)
+			- `tests/integration/EnvIsolation.Tests.ps1`: Assert no persistent env leakage before/after `make` invocations; placeholder for future `ALBT_VIA_MAKE` guard once added.
+		- T014.8 [P] Output normalization utility
+			- Implement `_Normalize-Output` in helpers; reused by parity assertions.
+		- T014.9 [P] Parity snapshot (scaffold)
+			- `tests/integration/Parity.Tests.ps1`: Collect normalized outputs from `show-config`, `show-analyzers`, and conditionally `build/clean`; compare content‑level parity, not raw formatting, to support cross‑OS.
+		- T014.10 [P] Make-level invocation contract
+			- Ensure all tests call `make <target>` (exercise [`overlay/Makefile`](file:///d:/repos/al-build-tools/overlay/Makefile#L51-L65)) rather than scripts directly.
 
 ## Phase 4: Enhancements & Standardization
 - [ ] T007 Add guard (`ALBT_VIA_MAKE`) to each relocated script — FR-002..FR-004 (C1,C9)
