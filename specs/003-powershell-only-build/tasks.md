@@ -31,10 +31,10 @@
 - [x] T002 Capture baseline outputs (Windows) for build, clean, show-config, show-analyzers — FR-025
 	- DoD: From inside a temporary fixture AL project with the overlay copied in, run each script via existing path (or via the current Makefile) and store normalized output snapshots under `tests/baselines/` (internal only). Capture clean, show-config, and show-analyzers always; capture build only when a real AL compiler is discovered, otherwise mark baseline as skipped with rationale.
 	- Validation: Files exist; normalization documented; build baseline captured (compiler present).
-- [ ] T003 Relocate scripts: move `windows/*.ps1` to `overlay/scripts/make/` root — FR-001, FR-016
+- [x] T003 Relocate scripts: move `windows/*.ps1` to `overlay/scripts/make/` root — FR-001, FR-016
 	- DoD: Files appear at new location; old `windows/` folder temporarily retained until parity tests added OR deleted if Makefile updated same commit.
 	- Validation: `Test-Path` new paths true; old references removed from docs.
-- [ ] T004 Inline required helper logic from `windows/lib/*.ps1` into each relocated script — FR-001
+- [ ] T004 Inline required helper logic from `overlay/scripts/make/lib/*.ps1` into each relocated script — FR-001
 	- DoD: No remaining dependency on `windows/lib`; only necessary functions copied; duplication < threshold (leave as-is if small).
 	- Validation: Scripts run without dot-sourcing external helper files.
 - [ ] T005 Remove `windows/lib` and (after parity tests pass) delete `windows/` directory — FR-016
