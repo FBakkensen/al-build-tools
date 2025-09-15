@@ -92,7 +92,7 @@
 	- Precede with tests: Extend contract tests to assert documented exit codes (e.g., analysis=3, contract=4, integration=5, missing tool=6); initially FAIL until mapping implemented.
 	- DoD: Comment block present; code paths updated to use mapping.
 	- Validation: Exit code tests pass.
-- [ ] T009 Add verbosity env handling (VERBOSE=1) + ensure `-Verbose` still works — FR-006
+- [x] T009 Add verbosity env handling (VERBOSE=1) + ensure `-Verbose` still works — FR-006
 	- Precede with tests: Create `tests/contract/Verbosity.Tests.ps1` to assert additional verbose output under env flag and flag pass-through; initially FAIL until implemented.
 	- DoD: `$VerbosePreference='Continue'` set when env var truthy.
 	- Validation: Verbosity tests pass.

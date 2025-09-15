@@ -3,6 +3,26 @@
 # This avoids accidentally overriding caller variables like $AppDir.
 
 # ============================================================================
+# Verbosity Handling (FR-006)
+# ----------------------------------------------------------------------------
+# Honor VERBOSE env flag across all entrypoints. When VERBOSE is truthy,
+# enable verbose output without requiring -Verbose. Using -Verbose continues
+# to work as usual; this block simply elevates preference when requested.
+# Truthy: 1, true, yes, on (case-insensitive)
+# ============================================================================
+try {
+    $v = $env:VERBOSE
+    if ($v -and ($v -eq '1' -or $v -match '^(?i:true|yes|on)$')) {
+        $VerbosePreference = 'Continue'
+    }
+    if ($VerbosePreference -eq 'Continue') {
+        Write-Verbose '[albt] verbose mode enabled'
+    }
+} catch {
+    # Non-fatal; keep scripts robust even if env access fails.
+}
+
+# ============================================================================
 # Standardized Exit Codes (FR-024)
 # ----------------------------------------------------------------------------
 # These codes are used by all public entrypoints and referenced by tests/CI.
