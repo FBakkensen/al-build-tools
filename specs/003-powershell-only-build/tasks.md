@@ -64,7 +64,7 @@
 	- Subtasks:
 		- T014.1 [x] Integration helpers module: `tests/integration/_helpers.ps1`
 			- Provides `New-Fixture`, `Install-Overlay`, `Write-AppJson`, optional `Write-SettingsJson`, `Invoke-Make`, and `_Normalize-Output` (CRLF/LF and trailing space normalization).
-		- T014.2 [P] Fixture generators
+		- T014.2 [x] Fixture generators
 			- Minimal `app.json` compatible with [`Get-OutputPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L23-L41) and optional `.vscode/settings.json` variants.
 		- T014.3 [P] Build integration (compiler detection covered)
 			- `tests/integration/Build.Tests.ps1`: If [`Get-ALCompilerPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L91-L99) returns $null, assert `make build` exits non‑zero with "AL Compiler not found" from [`build.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/build.ps1#L17-L20); else assert exit 0 and "Build completed successfully: ...".

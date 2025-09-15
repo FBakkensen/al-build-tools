@@ -11,10 +11,14 @@ $ErrorActionPreference = 'Stop'
 # - Write-SettingsJson
 # - Invoke-Make
 # - _Normalize-Output
+# - New-AppFixture               (T014.2)
+# - Get-ExpectedOutputPath       (utility for T014.4)
 
 function _Get-RepoRoot {
     # tests/integration/_helpers.ps1 -> tests -> repo root
-    return (Resolve-Path (Join-Path $PSScriptRoot '..')).Path | ForEach-Object { (Resolve-Path $_).Path }
+    $testsDir = Resolve-Path (Join-Path $PSScriptRoot '..')
+    $repoRoot = Resolve-Path (Join-Path $testsDir '..')
+    return $repoRoot.Path
 }
 
 function New-Fixture {
@@ -143,11 +147,51 @@ function _Normalize-Output {
     )
     if ($null -eq $Text) { return '' }
     # Normalize CRLF to LF, then trim trailing spaces from each line
-    $lf = ($Text -replace "\r\n?", "\n")
-    $lines = $lf -split "\n", -1
+    $lf = ($Text -replace "`r`n?", "`n")
+    $lines = $lf -split "`n", -1
     $trimmed = $lines | ForEach-Object { ($_ ?? '') -replace "[\t ]+$", '' }
     # Re-join ensuring a single trailing newline at most
-    $joined = ($trimmed -join "\n")
+    $joined = ($trimmed -join "`n")
     return $joined
 }
 
+function New-AppFixture {
+    [CmdletBinding(DefaultParameterSetName='None')]
+    param(
+        [string] $AppSubDir = 'app',
+        [string] $Name = 'SampleApp',
+        [string] $Publisher = 'FBakkensen',
+        [string] $Version = '1.0.0.0',
+        [Parameter(ParameterSetName='Analyzers')] [string[]] $Analyzers,
+        [Parameter(ParameterSetName='Raw')] [string] $RawSettingsJson
+    )
+    $fixture = New-Fixture
+    $null = Install-Overlay -FixturePath $fixture
+    $appDir = Join-Path $fixture $AppSubDir
+    $null = Write-AppJson -AppDir $appDir -Name $Name -Publisher $Publisher -Version $Version
+    switch ($PSCmdlet.ParameterSetName) {
+        'Analyzers' { $null = Write-SettingsJson -AppDir $appDir -Analyzers $Analyzers }
+        'Raw'       { $null = Write-SettingsJson -AppDir $appDir -RawJson $RawSettingsJson }
+        default     { }
+    }
+    return [pscustomobject]@{
+        FixturePath  = $fixture
+        AppDir       = $appDir
+        MakefilePath = (Join-Path $fixture 'Makefile')
+    }
+}
+
+function Get-ExpectedOutputPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $AppDir
+    )
+    $appJsonPath = Join-Path $AppDir 'app.json'
+    if (-not (Test-Path $appJsonPath)) { throw "app.json not found at $appJsonPath" }
+    $json = Get-Content -LiteralPath $appJsonPath -Raw | ConvertFrom-Json
+    $name = if ($json.name) { $json.name } else { 'CopilotAllTablesAndFields' }
+    $version = if ($json.version) { $json.version } else { '1.0.0.0' }
+    $publisher = if ($json.publisher) { $json.publisher } else { 'FBakkensen' }
+    $file = "${publisher}_${name}_${version}.app"
+    return Join-Path $AppDir $file
+}
