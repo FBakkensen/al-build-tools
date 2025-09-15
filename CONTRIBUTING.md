@@ -15,38 +15,35 @@ How to Contribute
 - Make focused changes with small, reviewable commits. Reference issues in commit messages when applicable.
 - Open a pull request against `main` with:
   - A clear description of motivation and changes.
-  - Any OS‑specific considerations (Linux/Windows) and manual verification notes.
+  - Any OS‑specific considerations (Windows/Linux under PowerShell 7.2+) and manual verification notes.
+  - Conventional Commits formatting for titles (e.g., `feat(build): add guard policy`).
 
 Development Guidelines
 ----------------------
-- Cross‑platform parity: when adding a new task, provide both a Linux (`.sh`) and Windows (PowerShell, `.ps1`) implementation with the same behavior.
-- Do not break existing entry points under `overlay/` (see `AGENTS.md`).
-- Shell (Linux):
-  - Use `#!/usr/bin/env bash` and `set -euo pipefail`.
-  - Prefer portable Bash; check for required external tools and emit helpful errors.
-- PowerShell (Windows):
-  - Require PowerShell 7+ with `#requires -Version 7.0`.
+- PowerShell‑only entrypoints: build/clean/show-* live under `overlay/scripts/make/*.ps1` and must remain self‑contained (no `lib/` folders).
+- Cross‑OS support: scripts run on Windows and Linux using PowerShell 7.2+; avoid OS‑specific assumptions.
+- Stability: do not break existing entry points under `overlay/` (see `AGENTS.md`).
+- PowerShell:
+  - Require PowerShell 7.2+ with `#requires -Version 7.2` in overlay scripts.
   - Use `Set-StrictMode -Version Latest` and `$ErrorActionPreference = 'Stop'`.
-- Logging & verbosity: support a `--verbose`/`VERBOSE` option mirrored across platforms.
-- JSON & config: reuse `overlay/scripts/make/*/lib/json-parser.*` helpers rather than duplicating parsing logic.
+- Guard policy: entrypoints are intended to run via `make` and enforce `ALBT_VIA_MAKE` (exit code 2 when missing). Keep this guard in place for consistency.
+- Logging & verbosity: support verbose output via `Write-Verbose`; honor `-Verbose` and `VERBOSE=1`.
+- JSON & config: keep parsing inline in entrypoints; avoid introducing shared helpers into the overlay.
 
 Local Checks (Recommended)
 --------------------------
-- Linux:
-  - Run: `bash overlay/scripts/make/linux/show-analyzers.sh` to see recommended analyzers.
-  - If available, run `shellcheck` on new/changed `.sh` files.
-- Windows:
-  - Run: `pwsh -File overlay/scripts/make/windows/show-analyzers.ps1`.
-  - If available, run `PSScriptAnalyzer` on new/changed `.ps1` files.
+- Show analyzers discovered for a project: `make show-analyzers` (or `ALBT_VIA_MAKE=1 pwsh -File overlay/scripts/make/show-analyzers.ps1 app`).
+- Static analysis (PowerShell):
+  - `Set-PSRepository -Name PSGallery -InstallationPolicy Trusted`
+  - `Install-Module PSScriptAnalyzer -Scope CurrentUser -Force`
+  - `Invoke-ScriptAnalyzer -Path overlay, bootstrap/install.ps1 -Recurse -Settings PSScriptAnalyzerSettings.psd1`
+- Tests (Pester):
+  - `pwsh -File scripts/run-tests.ps1 -CI`
+  - Or `Invoke-Pester -CI -Path tests/contract` and `Invoke-Pester -CI -Path tests/integration`
 
 Static Analysis Quality Gate
 ----------------------------
-Pull requests that modify files under `overlay/` or `bootstrap/` are checked by a static analysis quality gate in GitHub Actions. Findings appear as GitHub annotations and as a category summary.
-
-Run locally (Linux):
-```
-bash scripts/ci/run-static-analysis.sh
-```
+Pull requests that modify files under `overlay/` or `bootstrap/` run PSScriptAnalyzer in GitHub Actions (Windows and Ubuntu). Blocking errors fail the job with exit code 3 using the repo `PSScriptAnalyzerSettings.psd1`. Findings appear as GitHub annotations and a summary.
 
 Categories and exit behavior:
 - Blocking: Syntax, Security, Configuration, Policy
@@ -55,7 +52,7 @@ Categories and exit behavior:
 Examples:
 - Configuration (blocking): invalid JSON, duplicate JSON keys, missing PSScriptAnalyzer, timeout.
 - Policy (blocking): ruleset schema violations in `overlay/al.ruleset.json` (invalid top-level keys, duplicate rule ids, invalid actions).
-- Syntax/Security: shellcheck/PowerShell analyzer diagnostics. Note: shellcheck warnings are treated as advisory Style; PowerShell warnings map to Security and can block.
+- Syntax/Security: PowerShell analyzer diagnostics (Error severity blocks).
 
 Useful environment toggles (for development/testing):
 - TIMEOUT_SECONDS=N (default 60)
@@ -65,7 +62,7 @@ Useful environment toggles (for development/testing):
 Line Endings and Encoding
 -------------------------
 - Use UTF‑8.
-- Shell scripts (`*.sh`) use LF; PowerShell scripts (`*.ps1`) use CRLF. See `.gitattributes` in `AGENTS.md` for guidance.
+- PowerShell scripts (`*.ps1`) use CRLF. See `.gitattributes` in `AGENTS.md` for guidance.
 
 Security & Dependencies
 -----------------------
@@ -82,4 +79,3 @@ Governance
 - For large changes or design proposals, open an issue first to discuss goals and approach.
 
 Thank you for contributing!
-

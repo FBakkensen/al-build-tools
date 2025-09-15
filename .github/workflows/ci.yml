@@ -1,0 +1,161 @@
+name: AL Build Tools CI (PSSA + Pester)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  POWERSHELL_TELEMETRY_OPTOUT: '1'
+
+jobs:
+  analysis:
+    name: Static Analysis (PSScriptAnalyzer, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
+
+      - name: Verify required tools (PSScriptAnalyzer)
+        shell: pwsh
+        run: |
+          & ./scripts/ci/assert-required-tools.ps1 -Modules PSScriptAnalyzer
+
+      - name: Blocking analysis (overlay + bootstrap)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module PSScriptAnalyzer -ErrorAction Stop
+          Write-Host 'Running blocking PSScriptAnalyzer on overlay/ and bootstrap/install.ps1 using repo settings...'
+          $settings = Join-Path $env:GITHUB_WORKSPACE 'PSScriptAnalyzerSettings.psd1'
+          $blockTargets = @()
+          if (Test-Path 'overlay') { $blockTargets += 'overlay' }
+          if (Test-Path 'bootstrap/install.ps1') { $blockTargets += 'bootstrap/install.ps1' }
+          if ($blockTargets.Count -eq 0) { Write-Host 'No blocking targets found'; exit 0 }
+          # Analyze each target separately to avoid Path type-binding issues; aggregate results
+          $results = @()
+          foreach ($t in $blockTargets) {
+            $r = Invoke-ScriptAnalyzer -Path $t -Recurse -Settings $settings -ErrorAction SilentlyContinue
+            if ($r) { $results += $r }
+          }
+          # Keep only Error severity per settings
+          $errors = $results | Where-Object { $_.Severity -eq 'Error' }
+          if ($errors -and $errors.Count -gt 0) {
+            Write-Host 'Blocking PSScriptAnalyzer errors:'
+            $errors | Sort-Object RuleName, ScriptName, Line | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+            Write-Host 'Static analysis violations detected (failing with exit code 3).'
+            exit 3
+          } else {
+            Write-Host 'Blocking analysis passed (no errors).'
+          }
+
+      - name: Advisory analysis (repo-wide warnings)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module PSScriptAnalyzer -ErrorAction Stop
+          Write-Host 'Running advisory PSScriptAnalyzer across repository (does not fail build)...'
+          $excludeDirs = @('.git', '.github', 'memory', 'specs', 'templates', 'overlay')
+          $escaped = $excludeDirs | ForEach-Object { [regex]::Escape($_) }
+          $sep = '[\\/]'
+          $excludePattern = "${sep}(?:" + ($escaped -join '|') + ")(?:${sep}|$)"
+          $all = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Warning,Error -ErrorAction SilentlyContinue
+          $adv = $all | Where-Object {
+            $sp = $_.ScriptPath
+            if ([string]::IsNullOrEmpty($sp)) { return $false }
+            ($sp -notmatch $excludePattern) -and ([IO.Path]::GetExtension($sp) -in @('.ps1','.psm1','.psd1'))
+          }
+          if ($adv) {
+            'Summary by Severity:'
+            ($adv | Group-Object Severity | Sort-Object Name | ForEach-Object { '{0,-8} {1,4}' -f $_.Name, $_.Count }) | Write-Output
+            "`nTop rules (first 10):" | Write-Output
+            ($adv | Group-Object RuleName | Sort-Object Count -Descending | Select-Object -First 10 | ForEach-Object { '{0,-45} {1,4}' -f $_.Name, $_.Count }) | Write-Output
+          } else {
+            Write-Host 'No advisory findings.'
+          }
+
+  contract-tests:
+    name: Contract Tests (Pester, ${{ matrix.os }})
+    needs: analysis
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -Scope CurrentUser -Force -AllowClobber
+
+      - name: Verify required tools (Pester)
+        shell: pwsh
+        run: |
+          & ./scripts/ci/assert-required-tools.ps1 -Modules Pester
+
+      - name: Run contract tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module Pester -MinimumVersion 5.0.0
+          Invoke-Pester -CI -Path 'tests/contract'
+
+  integration-tests:
+    name: Integration Tests (Pester, ${{ matrix.os }})
+    needs: analysis
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure make is available (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            Write-Host 'Installing make via Chocolatey...'
+            choco install make -y --no-progress
+          }
+          make --version
+
+      - name: Ensure make is available (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y make
+
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -Scope CurrentUser -Force -AllowClobber
+
+      - name: Verify required tools (Pester)
+        shell: pwsh
+        run: |
+          & ./scripts/ci/assert-required-tools.ps1 -Modules Pester
+
+      - name: Run integration tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module Pester -MinimumVersion 5.0.0
+          Invoke-Pester -CI -Path 'tests/integration'

@@ -45,7 +45,9 @@ function Install-AlBuildTools {
         $p = [System.Diagnostics.Process]::Start($pinfo)
         $p.WaitForExit()
         if ($p.ExitCode -eq 0) { $gitOk = $true }
-    } catch {}
+    } catch {
+        Write-Verbose "[install] git check failed: $($_.Exception.Message)"
+    }
     if (-not $gitOk -and -not (Test-Path (Join-Path $destFull '.git'))) {
         Write-Warn2 "Destination '$destFull' does not look like a git repo. Proceeding anyway."
     }
@@ -98,7 +100,7 @@ function Install-AlBuildTools {
 
         Write-Note "Completed: $Source from $Url@$Ref into $destFull"
     } finally {
-        try { Remove-Item -Recurse -Force -LiteralPath $tmp.FullName -ErrorAction SilentlyContinue } catch {}
+        try { Remove-Item -Recurse -Force -LiteralPath $tmp.FullName -ErrorAction SilentlyContinue } catch { Write-Verbose "[install] cleanup failed: $($_.Exception.Message)" }
     }
 }
 

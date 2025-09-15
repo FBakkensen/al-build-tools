@@ -9,7 +9,7 @@ Install and update are the same: the bootstrap copies everything from this repo�
 
 ## Quick Start (Install Latest)
 
-- PowerShell 7+ (Windows, macOS, Linux)
+- PowerShell 7+ for installer (Windows, macOS, Linux)
   ```
   iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Dest .
   ```
@@ -21,11 +21,9 @@ Re-run the same command any time to update — it re-copies `overlay/*` over you
 ## What This Repo Provides
 
 - `overlay/` — the files that are copied into your project:
-  - `Makefile` — thin dispatcher to platform scripts.
-  - `scripts/make/linux/*` — build, clean, show-config, show-analyzers and helpers.
-  - `scripts/make/windows/*` — PowerShell equivalents (PowerShell 7+).
-  - `scripts/next-object-number.sh` — first free AL object id (Linux)
-  - `scripts/next-object-number.ps1` — first free AL object id (Windows)
+  - `Makefile` — thin dispatcher that invokes PowerShell entrypoints.
+  - `scripts/make/*.ps1` — PowerShell 7.2+ entrypoints: `build.ps1`, `clean.ps1`, `show-config.ps1`, `show-analyzers.ps1`.
+  - `scripts/next-object-number.ps1` — helper: print next available AL object id.
   - `.gitattributes` — recommended line-ending normalization.
   - `AGENTS.md` — contributor/agent guidance (optional to keep).
 - `bootstrap/` — the self-contained installer used by the one‑liner above:
@@ -37,48 +35,68 @@ Only the contents of `overlay/` are ever copied to your project. That keeps the 
 
 ## Requirements
 
-- PowerShell 7+ to run the installer (`Invoke-WebRequest`, `Expand-Archive` built-in)
+- Installer: PowerShell 7.0+ (`Invoke-WebRequest`, `Expand-Archive` built-in)
+- Entry scripts: PowerShell 7.2+ (`#requires -Version 7.2`)
 - Destination should be a git repo (no backups are created; git handles history and diffs)
 
 ## After Installing
 
-- Linux
-  - Build: `bash scripts/make/linux/build.sh`
-  - Clean: `bash scripts/make/linux/clean.sh`
-  - Show config: `bash scripts/make/linux/show-config.sh`
-  - Show analyzers: `bash scripts/make/linux/show-analyzers.sh`
-- Windows (PowerShell 7+)
-  - Build: `pwsh -File scripts/make/windows/build.ps1`
-  - Clean: `pwsh -File scripts/make/windows/clean.ps1`
-  - Show config: `pwsh -File scripts/make/windows/show-config.ps1`
-  - Show analyzers: `pwsh -File scripts/make/windows/show-analyzers.ps1`
-- Make (optional)
-  - If `make` is available: `make build`, `make clean`, etc., will dispatch to the platform scripts.
+- Make (recommended)
+  - `make build` — compile the AL project
+  - `make clean` — remove build artifact
+  - `make show-config` — print normalized config snapshot
+  - `make show-analyzers` — list enabled analyzers and resolved DLLs
+
+- Direct PowerShell invocation (advanced)
+  - Entry scripts are guarded and expect to run via `make`. If you must call them directly, set `ALBT_VIA_MAKE=1` and pass the app directory (default `app`):
+    - `ALBT_VIA_MAKE=1 pwsh -File scripts/make/build.ps1 app`
+    - `ALBT_VIA_MAKE=1 pwsh -File scripts/make/clean.ps1 app`
+    - `ALBT_VIA_MAKE=1 pwsh -File scripts/make/show-config.ps1 app`
+    - `ALBT_VIA_MAKE=1 pwsh -File scripts/make/show-analyzers.ps1 app`
+  - The helper `scripts/next-object-number.ps1` is safe to run without the guard.
+
+## Guard Policy
+
+To keep behavior consistent and avoid accidental misuse, the entrypoints under `scripts/make/*.ps1` refuse direct execution unless `ALBT_VIA_MAKE=1` is present in the environment (the Makefile sets this automatically). Direct calls without the guard exit with code 2 and a guidance message like “Run via make (e.g., make build)”.
+
+Exceptions: the helper `scripts/next-object-number.ps1` is not guarded.
+
+## Exit Codes
+
+Entry scripts use a standardized mapping for predictable CI behavior:
+
+- Success: 0
+- GeneralError: 1
+- Guard: 2
+- Analysis: 3
+- Contract: 4
+- Integration: 5
+- MissingTool: 6
+
+## Verbosity
+
+- Enable verbose logs with either `-Verbose` or `VERBOSE=1` in the environment. Verbose messages follow PowerShell’s `Write-Verbose` conventions.
 
 ## Static Analysis Quality Gate
 
-PRs that modify `overlay/**` or `bootstrap/**` run a static analysis quality gate (shell, PowerShell, JSON, ruleset policy). See [specs/001-feature-plan/quickstart.md](specs/001-feature-plan/quickstart.md) for details.
+PRs that modify `overlay/**` or `bootstrap/**` run a PSScriptAnalyzer quality gate in CI (Windows and Ubuntu). Blocking errors fail the job with exit code 3 using the repository `PSScriptAnalyzerSettings.psd1`.
 
-Run locally (Linux):
+Run locally (PowerShell):
 ```
-bash scripts/ci/run-static-analysis.sh
+Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+Invoke-ScriptAnalyzer -Path overlay, bootstrap/install.ps1 -Recurse -Settings PSScriptAnalyzerSettings.psd1
 ```
 
-## Contract Tests for Bootstrap Installer
+## Tests
 
-This repo includes contract tests that exercise the PowerShell installer with a consistent set of scenarios. Tests run without network by stubbing downloads to a local ZIP of `overlay/`.
+The repository includes Pester tests for contract behavior and integration flows (Makefile-driven usage). CI runs the suite on Windows and Ubuntu.
 
-- Run the suite:
-  ```
-  find tests -type f -name 'test_*.sh' -exec bash {} \;
-  ```
-- Key scenarios covered: basic install/reporting, idempotent re-run, git vs non-git warning and .git preservation, custom destination, preservation/no side effects, paths with spaces, and read-only destination failure.
-
-Note: During tests or scripted evaluation, set `ALBT_NO_AUTORUN=1` in the environment to prevent `bootstrap/install.ps1` from auto-running when dot-sourced.
-
-See specs/002-add-tests-for/quickstart.md for details about the harness and how tests are structured.
-
-<!-- Simplified intentionally: one use case — install the latest. Advanced flags exist but are omitted here for clarity. -->
+- Run all tests locally:
+  - `pwsh -File scripts/run-tests.ps1 -CI`
+- Or invoke directly with Pester:
+  - `Invoke-Pester -CI -Path tests/contract`
+  - `Invoke-Pester -CI -Path tests/integration`
 
 ## How It Works
 
@@ -90,7 +108,7 @@ See specs/002-add-tests-for/quickstart.md for details about the harness and how 
 
 - “Running scripts is disabled” on Windows: start PowerShell as Administrator and run:
   `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` or use `-ExecutionPolicy Bypass` for one-off runs.
-- Linux/macOS: ensure PowerShell 7 (`pwsh`) is installed and available in `PATH`.
+- Linux/macOS: ensure PowerShell 7.2+ (`pwsh`) and `make` are installed and available in `PATH`.
 
 ## WSL Development Setup (Ubuntu 22.04/24.04)
 
@@ -100,7 +118,7 @@ Set up the tools needed to run local analysis and tests when developing inside W
   - `. /etc/os-release && echo "$ID $VERSION_ID $VERSION_CODENAME"`
 
 - Install base packages
-  - `sudo apt-get update && sudo apt-get install -y curl gpg jq python3 shellcheck`
+  - `sudo apt-get update && sudo apt-get install -y curl gpg jq make`
 
 - Add Microsoft package repo (required for PowerShell 7)
   - `sudo mkdir -p /etc/apt/keyrings`
@@ -109,27 +127,20 @@ Set up the tools needed to run local analysis and tests when developing inside W
   - `echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/${VERSION_ID}/prod ${VERSION_CODENAME} main" | sudo tee /etc/apt/sources.list.d/microsoft-prod.list >/dev/null`
   - `sudo apt-get update && sudo apt-get install -y powershell`
 
-- Install PSScriptAnalyzer in PowerShell
-  - `pwsh -NoLogo -NoProfile -Command "Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; Install-Module PSScriptAnalyzer -Scope CurrentUser -Force"`
+- Install PSScriptAnalyzer and Pester in PowerShell
+  - `pwsh -NoLogo -NoProfile -Command "Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; Install-Module PSScriptAnalyzer,Pester -Scope CurrentUser -Force"`
 
 - Verify tools
-  - `shellcheck -V`
   - `pwsh --version`
+  - `make --version`
   - `pwsh -NoLogo -NoProfile -Command "Get-Module PSScriptAnalyzer -ListAvailable | Select Name,Version"`
 
 - Run repository tests
-  - `for t in tests/contract/*.sh tests/integration/*.sh; do echo "--- $t"; bash "$t" || break; done`
-
-Troubleshooting WSL apt sources
-- Remove stale/unsigned repos (example: Warp):
-  - `sudo rm -f /etc/apt/sources.list.d/warp*.list /etc/apt/trusted.gpg.d/warp*.gpg /etc/apt/keyrings/warp*.gpg 2>/dev/null || true`
-  - `sudo apt-get update`
-- If Microsoft repo 404s for your `${VERSION_ID}`, temporarily pin to jammy (22.04):
-  - `echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" | sudo tee /etc/apt/sources.list.d/microsoft-prod.list >/dev/null && sudo apt-get update`
+  - `pwsh -File scripts/run-tests.ps1 -CI`
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, cross‑platform parity rules, and analyzer tips. In short: keep Linux and Windows behavior in parity, update both `overlay/scripts/make/linux` and `overlay/scripts/make/windows`, and keep the Makefile thin.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for workflow, coding style, and analyzer tips. In short: entrypoints are PowerShell-only under `overlay/scripts/make`, guarded for Makefile use, and should remain self‑contained and stable.
 
 ## License
 
