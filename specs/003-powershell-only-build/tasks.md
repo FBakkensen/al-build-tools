@@ -72,7 +72,7 @@
 			- `tests/integration/CleanIdempotence.Tests.ps1`: Pre‑seed fake `.app` at [`Get-OutputPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L23-L41); run `make clean` twice; both exit 0; second run prints "No build artifact found" per [`clean.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/clean.ps1#L7-L15).
 		- T014.5 [x] Show-config
 			- `tests/integration/ShowConfig.Tests.ps1`: With valid `app.json`, assert headers/keys printed by [`show-config.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/show-config.ps1#L7-L13,L17-L27); with missing `app.json`, assert exit 0 and error on stderr.
-		- T014.6 [P] Show-analyzers (analyzer detection covered)
+		- T014.6 [x] Show-analyzers (analyzer detection covered)
 			- `tests/integration/ShowAnalyzers.Tests.ps1`: No settings → header plus "(none)"; with workspace‑local fake DLL via `${workspaceFolder}`/`${appDir}` token and wildcard, assert it appears under "Analyzer DLL paths:" without requiring AL extension.
 		- T014.7 [P] Environment isolation (skeleton)
 			- `tests/integration/EnvIsolation.Tests.ps1`: Assert no persistent env leakage before/after `make` invocations; placeholder for future `ALBT_VIA_MAKE` guard once added.
