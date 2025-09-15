@@ -24,13 +24,13 @@
 - Reference FR IDs, Contract Test IDs where applicable
 
 ## Phase 1: Relocation & Baseline Capture
-- [ ] T001 Inventory current Windows PowerShell scripts & helpers — FR-001
+- [x] T001 Inventory current Windows PowerShell scripts & helpers — FR-001
 	- DoD: List parameters, current behaviors, exit codes (implicit) for build/clean/show-*; identify helper functions in `lib/`.
 	- Validation: Document stored in planning notes (not shipped) summarizing each script.
 	- Deliverable: See inventory note at [inventory-windows-scripts.md](file:///d:/repos/al-build-tools/specs/003-powershell-only-build/inventory-windows-scripts.md)
-- [ ] T002 Capture baseline outputs (Windows) for build, clean, show-config, show-analyzers — FR-025
+- [x] T002 Capture baseline outputs (Windows) for build, clean, show-config, show-analyzers — FR-025
 	- DoD: From inside a temporary fixture AL project with the overlay copied in, run each script via existing path (or via the current Makefile) and store normalized output snapshots under `tests/baselines/` (internal only). Capture clean, show-config, and show-analyzers always; capture build only when a real AL compiler is discovered, otherwise mark baseline as skipped with rationale.
-	- Validation: Files exist; normalization documented; build baseline marked skipped when compiler is unavailable.
+	- Validation: Files exist; normalization documented; build baseline captured (compiler present).
 - [ ] T003 Relocate scripts: move `windows/*.ps1` to `overlay/scripts/make/` root — FR-001, FR-016
 	- DoD: Files appear at new location; old `windows/` folder temporarily retained until parity tests added OR deleted if Makefile updated same commit.
 	- Validation: `Test-Path` new paths true; old references removed from docs.

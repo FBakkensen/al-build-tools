@@ -96,3 +96,9 @@ No global state; each `make` spawn sets var, runs child, unsets. Tests will spaw
 
 ## Conclusion
 All foundational design decisions selected with emphasis on simplicity, deterministic testing, and minimal surface area. Proceed to Phase 1 artifact generation.
+
+## Baseline capture and normalization
+- Fixture location: system temporary directory; overlay is copied into a fresh fixture per run.
+- Snapshots are written under `tests/baselines/` inside the fixture. Nothing is added to this repository.
+- Normalization rule: replace any absolute fixture root path with the token `<ROOT>` to stabilize diffs across machines and runs.
+- Capture policy: always capture clean, show-config, and show-analyzers; capture build when a real AL compiler is discovered (present on this system). If absent, record `build.skipped.txt` with a one-line rationale instead of failing.
