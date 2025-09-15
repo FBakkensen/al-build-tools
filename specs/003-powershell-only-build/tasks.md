@@ -76,7 +76,7 @@
 			- `tests/integration/ShowAnalyzers.Tests.ps1`: No settings → header plus "(none)"; with workspace‑local fake DLL via `${workspaceFolder}`/`${appDir}` token and wildcard, assert it appears under "Analyzer DLL paths:" without requiring AL extension.
 		- T014.7 [x] Environment isolation (skeleton)
 			- `tests/integration/EnvIsolation.Tests.ps1`: Assert no persistent env leakage before/after `make` invocations; placeholder for future `ALBT_VIA_MAKE` guard once added.
-		- T014.8 [P] Output normalization utility
+		- T014.8 [x] Output normalization utility
 			- Implement `_Normalize-Output` in helpers; reused by parity assertions.
 		- T014.9 [P] Parity snapshot (scaffold)
 			- `tests/integration/Parity.Tests.ps1`: Collect normalized outputs from `show-config`, `show-analyzers`, and conditionally `build/clean`; compare content‑level parity, not raw formatting, to support cross‑OS.
