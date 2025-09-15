@@ -1,10 +1,34 @@
-#requires -Version 7.0
+#requires -Version 7.2
 [CmdletBinding()]
 param(
   [Parameter(Mandatory=$true, Position=0)]
   [ValidateNotNullOrEmpty()]
   [string]$ObjectType
 )
+
+<#
+.SYNOPSIS
+Returns the next available AL object number for a given object type.
+
+.DESCRIPTION
+Scans the 'app' directory for existing object IDs and reads allowed idRanges
+from 'app/app.json'. Emits the first unused number within any defined range for
+the specified object type. Exits 0 with the number on success, 2 if no number
+is available, and 1 on error.
+
+.PARAMETER ObjectType
+The AL object type to search for (for example: Table, Page, Codeunit, Report,
+Query, Enum). Case-sensitive matching is not required; the script treats the
+value as a literal token in source.
+
+.EXAMPLE
+pwsh -File overlay/scripts/next-object-number.ps1 Table
+Returns the next available Table object number.
+
+.NOTES
+PowerShell 7.2+ required. This script is self-contained and performs no
+network calls. It is safe to run outside of 'make'.
+#>
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
