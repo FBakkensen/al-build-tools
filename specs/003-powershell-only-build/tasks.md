@@ -62,7 +62,7 @@
 	- DoD: Tests under `tests/integration/` calling make targets only; use fixture projects with the overlay copied in; no network calls.
 	- Validation: Windows + Ubuntu matrix passes after implementation; environment-dependent assertions are conditional (compiler/analyzers may be absent).
 	- Subtasks:
-		- T014.1 [P] Integration helpers module: `tests/integration/_helpers.ps1`
+		- T014.1 [x] Integration helpers module: `tests/integration/_helpers.ps1`
 			- Provides `New-Fixture`, `Install-Overlay`, `Write-AppJson`, optional `Write-SettingsJson`, `Invoke-Make`, and `_Normalize-Output` (CRLF/LF and trailing space normalization).
 		- T014.2 [P] Fixture generators
 			- Minimal `app.json` compatible with [`Get-OutputPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L23-L41) and optional `.vscode/settings.json` variants.
