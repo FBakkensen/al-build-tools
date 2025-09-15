@@ -52,12 +52,16 @@ function Get-EnabledAnalyzers { param([string]$AppDir)
 
 # --- AL extension + analyzer resolution (from common.ps1) ---
 function Get-HighestVersionALExtension {
-    $roots = @(
-        (Join-Path $env:USERPROFILE '.vscode\\extensions'),
-        (Join-Path $env:USERPROFILE '.vscode-insiders\\extensions'),
-        (Join-Path $env:USERPROFILE '.vscode-server\\extensions'),
-        (Join-Path $env:USERPROFILE '.vscode-server-insiders\\extensions')
-    )
+    $userHome = if ($env:USERPROFILE) { $env:USERPROFILE } elseif ($env:HOME) { $env:HOME } else { $null }
+    $roots = @()
+    if ($userHome) {
+        $roots = @(
+            (Join-Path $userHome (Join-Path '.vscode' 'extensions')),
+            (Join-Path $userHome (Join-Path '.vscode-insiders' 'extensions')),
+            (Join-Path $userHome (Join-Path '.vscode-server' 'extensions')),
+            (Join-Path $userHome (Join-Path '.vscode-server-insiders' 'extensions'))
+        )
+    }
     $candidates = @()
     foreach ($root in $roots) { if (Test-Path $root) { $items = Get-ChildItem -Path $root -Filter 'ms-dynamics-smb.al-*' -ErrorAction SilentlyContinue; if ($items) { $candidates += $items } } }
     if (-not $candidates -or $candidates.Count -eq 0) { return $null }
