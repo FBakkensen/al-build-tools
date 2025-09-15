@@ -28,6 +28,11 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
 
+      - name: Verify required tools (PSScriptAnalyzer)
+        shell: pwsh
+        run: |
+          & ./scripts/ci/assert-required-tools.ps1 -Modules PSScriptAnalyzer
+
       - name: Blocking analysis (overlay + bootstrap)
         shell: pwsh
         run: |
@@ -99,6 +104,11 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module Pester -Scope CurrentUser -Force -AllowClobber
 
+      - name: Verify required tools (Pester)
+        shell: pwsh
+        run: |
+          & ./scripts/ci/assert-required-tools.ps1 -Modules Pester
+
       - name: Run contract tests
         shell: pwsh
         run: |
@@ -137,6 +147,11 @@ jobs:
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module Pester -Scope CurrentUser -Force -AllowClobber
+
+      - name: Verify required tools (Pester)
+        shell: pwsh
+        run: |
+          & ./scripts/ci/assert-required-tools.ps1 -Modules Pester
 
       - name: Run integration tests
         shell: pwsh

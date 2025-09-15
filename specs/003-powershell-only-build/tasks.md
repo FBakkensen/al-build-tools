@@ -106,7 +106,7 @@
 	- Validation: Presence of directive + help displays; tests pass.
 
 ## Phase 5: CI Updates
-- [ ] T016 Add/Update GitHub Actions workflow for PSSA then Pester matrix — FR-008, FR-009
+- [x] T016 Add/Update GitHub Actions workflow for PSSA then Pester matrix — FR-008, FR-009
 	- DoD: YAML present with analysis job (exit 3 mapping) & contract/integration jobs.
 	- Validation: Workflow syntax valid.
 - [ ] T017 Add required tools check (exit 6 on missing PSScriptAnalyzer/Pester) — FR-023
