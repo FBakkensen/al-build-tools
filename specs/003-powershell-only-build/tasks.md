@@ -74,7 +74,7 @@
 			- `tests/integration/ShowConfig.Tests.ps1`: With valid `app.json`, assert headers/keys printed by [`show-config.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/show-config.ps1#L7-L13,L17-L27); with missing `app.json`, assert exit 0 and error on stderr.
 		- T014.6 [x] Show-analyzers (analyzer detection covered)
 			- `tests/integration/ShowAnalyzers.Tests.ps1`: No settings → header plus "(none)"; with workspace‑local fake DLL via `${workspaceFolder}`/`${appDir}` token and wildcard, assert it appears under "Analyzer DLL paths:" without requiring AL extension.
-		- T014.7 [P] Environment isolation (skeleton)
+		- T014.7 [x] Environment isolation (skeleton)
 			- `tests/integration/EnvIsolation.Tests.ps1`: Assert no persistent env leakage before/after `make` invocations; placeholder for future `ALBT_VIA_MAKE` guard once added.
 		- T014.8 [P] Output normalization utility
 			- Implement `_Normalize-Output` in helpers; reused by parity assertions.
