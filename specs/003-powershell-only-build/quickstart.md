@@ -1,6 +1,6 @@
 # Quickstart: PowerShell-Only Build Toolkit (Relocated Scripts)
 
-This guide shows how to use the consolidated PowerShell build scripts guarded by `make`. Existing Windows PowerShell scripts were RELOCATED to a neutral folder and Bash scripts were REMOVED—there are no per‑OS script variants now. Only the minimal script set under `overlay/scripts` is copied into consumer projects; internal tests and analyzer configuration remain in this repository.
+This guide shows how to use the consolidated PowerShell build scripts guarded by `make`. Existing Windows PowerShell scripts were RELOCATED to a neutral folder and Bash scripts were REMOVED—there are no per‑OS script variants now. Only the minimal script set under `overlay/scripts` is copied into consumer projects; internal tests and analyzer configuration remain in this repository. All commands must be run from within a valid AL project where the overlay has been installed; do not run scripts from this toolkit repo root.
 
 ## Prerequisites
 - PowerShell 7.2+ available as `pwsh`
@@ -87,7 +87,7 @@ Integration tests:
 ```
 pwsh -NoLogo -Command "Invoke-Pester -Path tests/integration -CI"
 ```
-Ensure static analysis passes first.
+Ensure static analysis passes first. Tests run in a temporary fixture AL project with the overlay copied in; build parity is executed only when the AL compiler is discovered, otherwise scenarios are marked skipped.
 
 ## Expected Exit Codes
 | Code | Meaning |

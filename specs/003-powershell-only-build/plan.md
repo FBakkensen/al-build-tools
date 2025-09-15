@@ -38,7 +38,7 @@ Contracts C1–C14 still define authoritative externally observable behavior. Re
 **Direct Tool (unguarded)**: `overlay/scripts/next-object-number.ps1`
 **Guard Variable**: `ALBT_VIA_MAKE` (process-scoped, must not persist)
 **Static Analysis**: PSScriptAnalyzer (Recommended + selected style rules via `.config/ScriptAnalyzerSettings.psd1`)
-**Testing Framework**: Pester v5 (contract + integration)
+**Testing Framework**: Pester v5 (contract + integration) in a temporary fixture AL project (overlay copied in)
 **CI**: GitHub Actions matrix (`ubuntu-latest`, `windows-latest`), order: PSSA → Contract tests → Integration tests → Publish results
 **Exit Codes**: 0 success, 2 guard violation, 3 static analysis failure, 4 contract test failure, 5 integration failure, 6 missing required tooling, >6 unexpected.
 **Non-Goals**: Modify analyzers, bundling binaries, changing bootstrap UX beyond doc updates.

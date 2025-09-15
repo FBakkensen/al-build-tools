@@ -29,8 +29,8 @@
 	- Validation: Document stored in planning notes (not shipped) summarizing each script.
 	- Deliverable: See inventory note at [inventory-windows-scripts.md](file:///d:/repos/al-build-tools/specs/003-powershell-only-build/inventory-windows-scripts.md)
 - [ ] T002 Capture baseline outputs (Windows) for build, clean, show-config, show-analyzers — FR-025
-	- DoD: Run each script via existing path (or via current Makefile) and store normalized output snapshots under `tests/baselines/` (internal only).
-	- Validation: Files exist; normalization documented.
+	- DoD: From inside a temporary fixture AL project with the overlay copied in, run each script via existing path (or via the current Makefile) and store normalized output snapshots under `tests/baselines/` (internal only). Capture clean, show-config, and show-analyzers always; capture build only when a real AL compiler is discovered, otherwise mark baseline as skipped with rationale.
+	- Validation: Files exist; normalization documented; build baseline marked skipped when compiler is unavailable.
 - [ ] T003 Relocate scripts: move `windows/*.ps1` to `overlay/scripts/make/` root — FR-001, FR-016
 	- DoD: Files appear at new location; old `windows/` folder temporarily retained until parity tests added OR deleted if Makefile updated same commit.
 	- Validation: `Test-Path` new paths true; old references removed from docs.
@@ -173,7 +173,7 @@ Contract tests (each file independent → [P]) map contracts C1–C14.
 	- DoD: Enumerates target scripts and asserts first non-comment line matches directive.
 	- Validation: Fails if any script missing directive; passes when all have it.
 
-Integration tests (invoke via make; skeletons assert expected behaviors; each file independent → [P]).
+Integration tests (run inside a temporary fixture AL project with the overlay copied in; invoke via make; skeletons assert expected behaviors; each file independent → [P]).
 - [ ] T025 [P] Create integration test `tests/integration/BuildParity.Tests.ps1` (INT-BUILD, cross-platform placeholder) — FR-001, FR-011 (C1,C10,C13)
 	- DoD: Invokes `make build` capturing output; asserts 0 exit and presence of expected build markers.
 	- Validation: Both OS CI logs show identical (normalized) essential lines.

@@ -19,6 +19,7 @@ Date: 2025-09-15
   - Supports `WARN_AS_ERROR` env to append `/warnaserror+`.
   - Invokes `alc.exe` with: `/project:$AppDir /out:<output> /packagecachepath:<cache> /parallel+` plus any analyzers and ruleset.
   - Emits success/failure message; returns compiler exit code transparently.
+- Constraints: Requires AL compiler (VS Code AL extension) and a valid AL project workspace.
 - Exit codes (implicit):
   - 0 on successful compilation.
   - Non-zero passthrough from `alc.exe` on compilation errors.
@@ -30,6 +31,7 @@ Date: 2025-09-15
 - Imports: `lib/common.ps1`, `lib/json-parser.ps1`
 - Behavior:
   - Computes output `.app` path from `app.json` and removes it if present; prints status either way.
+- Constraints: Requires a valid `app.json` to resolve the output path.
 - Exit codes (implicit):
   - Always exits 0 (both when artifact removed and when nothing to clean).
 
@@ -40,6 +42,7 @@ Date: 2025-09-15
 - Behavior:
   - Reads `app.json`; prints Name, Publisher, Version. If missing/invalid, writes an error message.
   - Reads `.vscode/settings.json`; prints analyzer entries or `(none)`; warns if settings file missing.
+- Constraints: Valid within an AL project with a readable `app.json` for metadata.
 - Exit codes (implicit):
   - Script ends with `exit 0`, even if an error was written when `app.json` is missing/invalid.
 
@@ -50,6 +53,7 @@ Date: 2025-09-15
 - Behavior:
   - Prints enabled analyzer IDs from settings.
   - Resolves and prints analyzer DLL paths (token and wildcard resolution); warns if none found.
+- Constraints: Reads `.vscode/settings.json` (if present) and resolves analyzer paths; intended to run within an AL project.
 - Exit codes (implicit):
   - Always exits 0.
 

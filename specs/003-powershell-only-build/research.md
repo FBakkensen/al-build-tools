@@ -40,7 +40,7 @@ Environment variable chosen for simplicity and zero dependency. Alternative (fil
 Baseline: PSScriptAnalyzer Recommended. Add style rules: PSUseConsistentIndentation, PSUseConsistentWhitespace, PSAlignAssignmentStatement. Defer additional rules until noise assessed. Suppress with `[Diagnostics.CodeAnalysis.SuppressMessage()]` only when rationale documented inline.
 
 ## Testing Strategy Justification
-Contract tests: immediate feedback on guard, help, exit codes, verbosity. Integration tests: parity across OS via `make`. No unit tests initially—scripts are thin orchestrations; complexity does not justify. Future unit test insertion possible if logic extracted into helper functions.
+Contract tests: immediate feedback on guard, help, exit codes, verbosity, executed within a temporary fixture AL project with the overlay copied in. Integration tests: parity across OS via `make` from the same fixture; build parity is conditional on AL compiler discovery and otherwise skipped with rationale. No unit tests initially—scripts are thin orchestrations; complexity does not justify. Future unit test insertion possible if logic is extracted into helper functions.
 
 ## Help Experience
 Unguarded: <=5 lines, includes phrase "Run via make" and an example `make build`. Guarded: full usage with parameters, exit codes summary. Ensures enforcement signal consistent (FR-003/FR-024) and discoverable (FR-025).

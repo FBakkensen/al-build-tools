@@ -48,8 +48,8 @@ Source baseline behavior is documented in [inventory-windows-scripts.md](file://
 - Exit code mapping reused from original spec (guard=2, analysis=3, contract=4, integration=5, missing tool=6).
 
 ## Testing Emphasis
-- Contract tests target guard behavior, exit codes, help stub, verbosity, parity (relocated vs baseline Windows output snapshot where feasible).
-- Integration tests ensure cross‑platform identical (normalized) outputs and environment isolation.
+- Contract tests target guard behavior, exit codes, help stub, verbosity, and parity (relocated vs baseline Windows output) executed inside a temporary fixture AL project with the overlay copied in.
+- Integration tests run from the fixture AL project and ensure cross‑platform identical (normalized) outputs and environment isolation; build parity runs only when a real AL compiler is discovered, otherwise tests are marked skipped with rationale.
 - Pester & PSScriptAnalyzer remain CI gates; no tests depend on removed Bash scripts.
 
 ## Success Criteria (Relocation)
@@ -67,14 +67,14 @@ Source baseline behavior is documented in [inventory-windows-scripts.md](file://
 As a build maintainer, I want a single cross‑platform build toolkit invoked uniformly through `make` so that I reduce maintenance effort, ensure identical behavior on Windows and Linux, and gain higher confidence through static analysis and automated tests before releasing updates.
 
 ### Acceptance Scenarios
-1. Given a developer runs `make build` without having set any special environment variables, When `make` invokes the PowerShell build entrypoint, Then the script executes successfully provided PowerShell 7.2+ is available and sets and clears the guard variable internally.
+1. Given a developer runs `make build` from within a valid AL project without having set any special environment variables, When `make` invokes the PowerShell build entrypoint, Then the script executes successfully provided PowerShell 7.2+ is available and sets and clears the guard variable internally.
 2. Given a user tries to execute a guarded script directly (e.g., build script) in a PowerShell session without `ALBT_VIA_MAKE`, When they run it, Then it exits with code 2 and a concise message directing them to invoke via `make`.
 3. Given a user invokes a guarded script requesting help (e.g., `-h`), When `ALBT_VIA_MAKE` is absent, Then the same guard enforcement occurs (exit code 2) with guidance.
 4. Given the direct‑use utility script (object number helper), When a user executes it directly, Then it runs without requiring the guard variable.
 5. Given static analysis violations exist, When CI runs, Then the pipeline fails before executing any contract or integration tests.
 6. Given contract tests and integration tests pass on both supported operating systems, When CI completes, Then the feature is considered validated for removing Bash scripts.
 7. Given verbosity is requested via `-Verbose` flag or `VERBOSE` environment variable, When scripts run, Then additional diagnostic output is emitted consistently across relocated commands.
-8. Given previously functioning Windows scripts, When the relocated versions execute via `make`, Then normalized outputs (ignoring line endings) match prior behavior (parity) for core targets (build, clean, show-config, show-analyzers).
+8. Given previously functioning Windows scripts, When the relocated versions execute via `make`, Then normalized outputs (ignoring line endings) match prior behavior (parity) for core targets (build, clean, show-config, show-analyzers). Build parity is executed only when the AL compiler is discovered; otherwise the scenario is marked skipped with rationale.
 
 ### Edge Cases
 - PowerShell version below 7.2 encountered → script aborts immediately via `#requires -Version 7.2` (no custom runtime duplication); documented behavior and test expectations detailed in Version Enforcement Strategy section.
@@ -97,8 +97,8 @@ As a build maintainer, I want a single cross‑platform build toolkit invoked un
 - **FR-008**: The system SHALL provide a static analysis gate (CI-only) that must pass before executing any Pester test phase.
 - **FR-009**: The CI pipeline SHALL run on Windows and Linux using a supported PowerShell version ≥ 7.2.
 - **FR-010**: Contract tests SHALL validate command surfaces, guard behavior, exit codes, and help output.
-- **FR-011**: Integration tests SHALL exercise commands exclusively via `make` and confirm guard isolation.
-- **FR-012**: Tests SHALL be hermetic, using temporary isolated workspaces and mocks for external tool presence.
+- **FR-011**: Integration tests SHALL execute inside a temporary fixture AL project (overlay copied in) and exercise commands exclusively via `make`, confirming guard isolation.
+- **FR-012**: Tests SHALL be hermetic, using temporary isolated workspaces; external tool presence (e.g., AL compiler) is not required, and build parity is conditional on discovery.
 - **FR-013**: The build system SHALL guarantee `ALBT_VIA_MAKE` scope is limited to the lifetime of a single guarded invocation (no persistence in parent shell; parallel invocations isolated).
 - **FR-014**: On unsupported PowerShell versions, scripts SHALL terminate before any user logic via `#requires -Version 7.2`, producing the native PowerShell error message (this satisfies the “clear message” requirement; no secondary runtime check implemented to avoid redundancy).
 - **FR-015**: Documentation SHALL clearly communicate PowerShell‑only support, guard policy, and the minimum version requirement.

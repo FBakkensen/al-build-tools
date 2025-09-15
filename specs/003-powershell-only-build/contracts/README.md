@@ -3,7 +3,7 @@
 This document defines normative externally observable contracts (C1–C14). Each contract is independently testable. Implementation MAY refactor internals provided these behaviors and exit semantics remain stable. As of the relocation update, legacy Bash scripts have been removed and Windows PowerShell scripts were relocated to a neutral path; FR-025 introduces a parity requirement: relocated outputs must match pre‑relocation Windows baselines (normalized) unless an enhancement is explicitly documented. For a detailed inventory of the pre‑relocation Windows scripts and behaviors, see [inventory-windows-scripts.md](file:///d:/repos/al-build-tools/specs/003-powershell-only-build/inventory-windows-scripts.md).
 
 ## Scope
-Applies to guarded make targets (`build`, `clean`, `show-config`, `show-analyzers`) and the unguarded utility `next-object-number.ps1`. Internal helper functions, CI scripts, and analyzer configuration are explicitly out-of-scope.
+Applies to guarded make targets (`build`, `clean`, `show-config`, `show-analyzers`) and the unguarded utility `next-object-number.ps1`. Internal helper functions, CI scripts, and analyzer configuration are explicitly out-of-scope. These contracts apply when run inside a valid AL project with the overlay installed.
 
 ## Contract Index
 | ID | Name | Summary |
@@ -69,6 +69,7 @@ Applies to guarded make targets (`build`, `clean`, `show-config`, `show-analyzer
 | >6 | Unexpected | Yes (semantic) | EXIT-UNEXPECTED |
 
 ## Integration Contract
+Precondition: Tests run inside a temporary fixture AL project with the overlay copied in. Build parity scenarios are executed only if the AL compiler is discovered; otherwise marked skipped.
 | Scenario | Assertions | Test ID |
 |----------|-----------|---------|
 | Build parity | Build target produces expected artifacts (placeholder for future AL outputs) | INT-BUILD |
