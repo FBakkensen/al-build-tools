@@ -6,8 +6,6 @@ Describe 'Parity snapshot (scaffold) across targets (via make)' {
     BeforeAll {
         . "$PSScriptRoot/_helpers.ps1"
         # Determine if an AL compiler is available to decide whether to include build output
-        $RepoRoot = (& { _Get-RepoRoot })
-        . (Join-Path $RepoRoot 'overlay/scripts/make/lib/common.ps1')
         $Script:HasCompiler = ($null -ne (Get-ALCompilerPath '.'))
 
         function New-ParitySignature {

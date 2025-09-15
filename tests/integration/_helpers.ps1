@@ -195,3 +195,39 @@ function Get-ExpectedOutputPath {
     $file = "${publisher}_${name}_${version}.app"
     return Join-Path $AppDir $file
 }
+
+# Minimal replicas of overlay helper functions used by integration tests
+function Get-PackageCachePath {
+    param([string]$AppDir)
+    return Join-Path -Path $AppDir -ChildPath '.alpackages'
+}
+
+function Get-HighestVersionALExtension {
+    $roots = @(
+        (Join-Path $env:USERPROFILE '.vscode\extensions'),
+        (Join-Path $env:USERPROFILE '.vscode-insiders\extensions'),
+        (Join-Path $env:USERPROFILE '.vscode-server\extensions'),
+        (Join-Path $env:USERPROFILE '.vscode-server-insiders\extensions')
+    )
+    $candidates = @()
+    foreach ($root in $roots) {
+        if (-not (Test-Path $root)) { continue }
+        $items = Get-ChildItem -Path $root -Filter 'ms-dynamics-smb.al-*' -ErrorAction SilentlyContinue
+        if ($items) { $candidates += $items }
+    }
+    if (-not $candidates -or $candidates.Count -eq 0) { return $null }
+    $parseVersion = { param($name) if ($name -match 'ms-dynamics-smb\.al-([0-9]+(\.[0-9]+)*)') { [version]$matches[1] } else { [version]'0.0.0' } }
+    $withVersion = $candidates | ForEach-Object { $ver = & $parseVersion $_.Name; $isInsiders = if ($_.FullName -match 'insiders') { 1 } else { 0 }; [PSCustomObject]@{ Ext = $_; Version = $ver; Insiders = $isInsiders } }
+    $highest = $withVersion | Sort-Object -Property Version, Insiders -Descending | Select-Object -First 1
+    if ($highest) { return $highest.Ext } else { return $null }
+}
+
+function Get-ALCompilerPath {
+    param([string]$AppDir)
+    $alExt = Get-HighestVersionALExtension
+    if ($alExt) {
+        $alc = Get-ChildItem -Path $alExt.FullName -Recurse -Filter 'alc.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($alc) { return $alc.FullName }
+    }
+    return $null
+}

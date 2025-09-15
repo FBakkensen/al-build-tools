@@ -5,8 +5,6 @@
 Describe 'Build integration (via make)' {
     BeforeAll {
         . "$PSScriptRoot/_helpers.ps1"  # ensure helpers available at run-time in Pester 5
-        $RepoRoot = (& { _Get-RepoRoot })
-        . (Join-Path $RepoRoot 'overlay/scripts/make/lib/common.ps1')
         $Script:HasCompiler = ($null -ne (Get-ALCompilerPath '.'))
         $Script:ShimPath = Join-Path $PSScriptRoot '_alc-shim.ps1'
     }

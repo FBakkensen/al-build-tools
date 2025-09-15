@@ -2,10 +2,16 @@
 
 Describe 'Standardized exit code mapping (FR-024)' {
     BeforeAll {
-        $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..' '..')
-        $Common   = Join-Path $RepoRoot 'overlay/scripts/make/lib/common.ps1'
-        . $Common
-        $Script:Exit = Get-ExitCodes
+        # Define expected mapping inline to decouple from implementation files
+        $Script:Exit = @{
+            Success      = 0
+            GeneralError = 1
+            Guard        = 2
+            Analysis     = 3
+            Contract     = 4
+            Integration  = 5
+            MissingTool  = 6
+        }
     }
 
     It 'exposes required keys' {

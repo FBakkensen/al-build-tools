@@ -1,26 +1,154 @@
+#requires -Version 7.2
 
 # Windows Build Script
-# Exit codes: uses mapping from lib/common.ps1 (FR-024)
+# Inlined helpers (formerly from lib/) to make this entrypoint self-contained.
 param([string]$AppDir = "app")
 
-# Guard: require invocation via make
-if (-not $env:ALBT_VIA_MAKE) {
-    . "$PSScriptRoot\lib\common.ps1"
-    $Exit = Get-ExitCodes
-    Write-Output "Run via make (e.g., make build)"
-    exit $Exit.Guard
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+# --- Verbosity (from common.ps1) ---
+try {
+    $v = $env:VERBOSE
+    if ($v -and ($v -eq '1' -or $v -match '^(?i:true|yes|on)$')) { $VerbosePreference = 'Continue' }
+    if ($VerbosePreference -eq 'Continue') { Write-Verbose '[albt] verbose mode enabled' }
+} catch { }
+
+# --- Exit codes (from common.ps1) ---
+function Get-ExitCodes {
+    return @{
+        Success      = 0
+        GeneralError = 1
+        Guard        = 2
+        Analysis     = 3
+        Contract     = 4
+        Integration  = 5
+        MissingTool  = 6
+    }
 }
 
-# Import shared libraries
-. "$PSScriptRoot\lib\common.ps1"
-. "$PSScriptRoot\lib\json-parser.ps1"
+# --- Paths and JSON helpers (from common.ps1/json-parser.ps1) ---
+function Get-AppJsonPath { param([string]$AppDir)
+    $p1 = Join-Path -Path $AppDir -ChildPath 'app.json'
+    $p2 = 'app.json'
+    if (Test-Path $p1) { return $p1 } elseif (Test-Path $p2) { return $p2 } else { return $null }
+}
+function Get-SettingsJsonPath { param([string]$AppDir)
+    $p1 = Join-Path -Path $AppDir -ChildPath '.vscode/settings.json'
+    if (Test-Path $p1) { return $p1 }
+    $p2 = '.vscode/settings.json'
+    if (Test-Path $p2) { return $p2 }
+    return $null
+}
+function Get-AppJsonObject { param([string]$AppDir)
+    $appJson = Get-AppJsonPath $AppDir
+    if (-not $appJson) { return $null }
+    try { Get-Content $appJson -Raw | ConvertFrom-Json } catch { $null }
+}
+function Get-SettingsJsonObject { param([string]$AppDir)
+    $path = Get-SettingsJsonPath $AppDir
+    if (-not $path) { return $null }
+    try { Get-Content $path -Raw | ConvertFrom-Json } catch { $null }
+}
+function Get-OutputPath { param([string]$AppDir)
+    $appJson = Get-AppJsonPath $AppDir
+    if (-not $appJson) { return $null }
+    try {
+        $json = Get-Content $appJson -Raw | ConvertFrom-Json
+        $name = if ($json.name) { $json.name } else { 'CopilotAllTablesAndFields' }
+        $version = if ($json.version) { $json.version } else { '1.0.0.0' }
+        $publisher = if ($json.publisher) { $json.publisher } else { 'FBakkensen' }
+        $file = "${publisher}_${name}_${version}.app"
+        return Join-Path -Path $AppDir -ChildPath $file
+    } catch { return $null }
+}
+function Get-PackageCachePath { param([string]$AppDir) (Join-Path -Path $AppDir -ChildPath '.alpackages') }
+
+# --- AL compiler discovery (from common.ps1) ---
+function Get-HighestVersionALExtension {
+    $roots = @(
+        (Join-Path $env:USERPROFILE '.vscode\extensions'),
+        (Join-Path $env:USERPROFILE '.vscode-insiders\extensions'),
+        (Join-Path $env:USERPROFILE '.vscode-server\extensions'),
+        (Join-Path $env:USERPROFILE '.vscode-server-insiders\extensions')
+    )
+    $candidates = @()
+    foreach ($root in $roots) { if (Test-Path $root) { $items = Get-ChildItem -Path $root -Filter 'ms-dynamics-smb.al-*' -ErrorAction SilentlyContinue; if ($items) { $candidates += $items } } }
+    if (-not $candidates -or $candidates.Count -eq 0) { return $null }
+    $parseVersion = { param($name)
+        if ($name -match 'ms-dynamics-smb\.al-([0-9]+(\.[0-9]+)*)') { return [version]$matches[1] } else { return [version]'0.0.0' }
+    }
+    $withVersion = $candidates | ForEach-Object { $ver = & $parseVersion $_.Name; $isInsiders = if ($_.FullName -match 'insiders') { 1 } else { 0 }; [PSCustomObject]@{ Ext = $_; Version = $ver; Insiders = $isInsiders } }
+    $highest = $withVersion | Sort-Object -Property Version, Insiders -Descending | Select-Object -First 1
+    if ($highest) { return $highest.Ext } else { return $null }
+}
+function Get-ALCompilerPath { param([string]$AppDir)
+    $alExt = Get-HighestVersionALExtension
+    if ($alExt) { $alc = Get-ChildItem -Path $alExt.FullName -Recurse -Filter 'alc.exe' -ErrorAction SilentlyContinue | Select-Object -First 1; if ($alc) { return $alc.FullName } }
+    return $null
+}
+
+# --- Analyzer paths (from common.ps1 + json helpers) ---
+function Get-EnabledAnalyzerPaths { param([string]$AppDir)
+    $settingsPath = Get-SettingsJsonPath $AppDir
+    $dllMap = @{ 'CodeCop'='Microsoft.Dynamics.Nav.CodeCop.dll'; 'UICop'='Microsoft.Dynamics.Nav.UICop.dll'; 'AppSourceCop'='Microsoft.Dynamics.Nav.AppSourceCop.dll'; 'PerTenantExtensionCop'='Microsoft.Dynamics.Nav.PerTenantExtensionCop.dll' }
+    $supported = @('CodeCop','UICop','AppSourceCop','PerTenantExtensionCop')
+    $enabled = @()
+    if ($settingsPath -and (Test-Path $settingsPath)) {
+        try {
+            $json = Get-Content $settingsPath -Raw | ConvertFrom-Json
+            if ($json -and ($json.PSObject.Properties.Match('al.codeAnalyzers').Count -gt 0) -and $json.'al.codeAnalyzers') {
+                $enabled = @($json.'al.codeAnalyzers')
+            } elseif ($json -and (
+                ($json.PSObject.Properties.Match('enableCodeCop').Count -gt 0 -and $json.enableCodeCop) -or
+                ($json.PSObject.Properties.Match('enableUICop').Count -gt 0 -and $json.enableUICop) -or
+                ($json.PSObject.Properties.Match('enableAppSourceCop').Count -gt 0 -and $json.enableAppSourceCop) -or
+                ($json.PSObject.Properties.Match('enablePerTenantExtensionCop').Count -gt 0 -and $json.enablePerTenantExtensionCop)
+            )) {
+                if ($json.PSObject.Properties.Match('enableCodeCop').Count -gt 0 -and $json.enableCodeCop) { $enabled += 'CodeCop' }
+                if ($json.PSObject.Properties.Match('enableUICop').Count -gt 0 -and $json.enableUICop) { $enabled += 'UICop' }
+                if ($json.PSObject.Properties.Match('enableAppSourceCop').Count -gt 0 -and $json.enableAppSourceCop) { $enabled += 'AppSourceCop' }
+                if ($json.PSObject.Properties.Match('enablePerTenantExtensionCop').Count -gt 0 -and $json.enablePerTenantExtensionCop) { $enabled += 'PerTenantExtensionCop' }
+            }
+        } catch { }
+    }
+    $alExt = Get-HighestVersionALExtension
+    $workspaceRoot = (Get-Location).Path
+    $appFull = try { (Resolve-Path $AppDir -ErrorAction Stop).Path } catch { Join-Path $workspaceRoot $AppDir }
+    $analyzersDir = if ($alExt) { Join-Path $alExt.FullName 'bin/Analyzers' } else { $null }
+    function Resolve-AnalyzerEntry { param([string]$Entry)
+        $val = $Entry; if ($null -eq $val) { return @() }
+        if ($val -match '^\$\{analyzerFolder\}(.*)$' -and $analyzersDir) { $tail = $matches[1]; if ($tail -and $tail[0] -notin @('\\','/')) { $val = Join-Path $analyzersDir $tail } else { $val = "$analyzersDir$tail" } }
+        if ($val -match '^\$\{alExtensionPath\}(.*)$' -and $alExt) { $tail2 = $matches[1]; if ($tail2 -and $tail2[0] -notin @('\\','/')) { $val = Join-Path $alExt.FullName $tail2 } else { $val = "$($alExt.FullName)$tail2" } }
+        if ($alExt) { $val = $val.Replace('${alExtensionPath}', $alExt.FullName); $val = $val.Replace('${analyzerFolder}', $analyzersDir) }
+        $val = $val.Replace('${workspaceFolder}', $workspaceRoot).Replace('${workspaceRoot}', $workspaceRoot).Replace('${appDir}', $appFull)
+        $val = [regex]::Replace($val, '\$\{([^}]+)\}', '$1')
+        $val = [Environment]::ExpandEnvironmentVariables($val); if ($val.StartsWith('~')) { $val = $val -replace '^~', $env:USERPROFILE }
+        if (-not [IO.Path]::IsPathRooted($val)) { $val = Join-Path $workspaceRoot $val }
+        if (Test-Path $val -PathType Container) { return Get-ChildItem -Path $val -Filter '*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName } }
+        if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($val)) { return Get-ChildItem -Path $val -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName } }
+        if (Test-Path $val -PathType Leaf) { return @($val) }
+        return @()
+    }
+    $dllPaths = New-Object System.Collections.Generic.List[string]
+    foreach ($item in $enabled) {
+        $name = ($item | Out-String).Trim()
+        if ($name -match '^\$\{([A-Za-z]+)\}$') { $name = $matches[1] }
+        if ($supported -contains $name) {
+            if ($alExt) { $dll = $dllMap[$name]; if ($dll) { $found = Get-ChildItem -Path $alExt.FullName -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1; if ($found) { $dllPaths.Add($found.FullName) } } }
+        } else {
+            (Resolve-AnalyzerEntry -Entry $name) | ForEach-Object { if ($_ -and -not $dllPaths.Contains($_)) { $dllPaths.Add($_) } }
+        }
+    }
+    return $dllPaths
+}
 
 $Exit = Get-ExitCodes
 
-# Diagnostic: Confirm function availability
-if (-not (Get-Command Get-EnabledAnalyzerPaths -ErrorAction SilentlyContinue)) {
-    Write-Error "ERROR: Get-EnabledAnalyzerPaths is not available after import!"
-    exit 1
+# Guard: require invocation via make
+if (-not $env:ALBT_VIA_MAKE) {
+    Write-Output "Run via make (e.g., make build)"
+    exit $Exit.Guard
 }
 
 

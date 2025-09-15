@@ -65,11 +65,11 @@
 		- T014.1 [x] Integration helpers module: `tests/integration/_helpers.ps1`
 			- Provides `New-Fixture`, `Install-Overlay`, `Write-AppJson`, optional `Write-SettingsJson`, `Invoke-Make`, and `_Normalize-Output` (CRLF/LF and trailing space normalization).
 		- T014.2 [x] Fixture generators
-			- Minimal `app.json` compatible with [`Get-OutputPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L23-L41) and optional `.vscode/settings.json` variants.
+			- Minimal `app.json` compatible with the `Get-OutputPath` helper (now inlined in the entry scripts) and optional `.vscode/settings.json` variants.
 		- T014.3 [x] Build integration (compiler detection covered)
-			- `tests/integration/Build.Tests.ps1`: If [`Get-ALCompilerPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L91-L99) returns $null, assert `make build` exits non‑zero with "AL Compiler not found" from [`build.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/build.ps1#L17-L20); else assert exit 0 and "Build completed successfully: ...".
+			- `tests/integration/Build.Tests.ps1`: If the environment lacks an AL compiler, assert `make build` exits non-zero with "AL Compiler not found" from `build.ps1`; else assert exit 0 and "Build completed successfully: ...".
 		- T014.4 [x] Clean idempotence
-			- `tests/integration/CleanIdempotence.Tests.ps1`: Pre‑seed fake `.app` at [`Get-OutputPath`](file:///d:/repos/al-build-tools/overlay/scripts/make/lib/common.ps1#L23-L41); run `make clean` twice; both exit 0; second run prints "No build artifact found" per [`clean.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/clean.ps1#L7-L15).
+			- `tests/integration/CleanIdempotence.Tests.ps1`: Pre-seed a fake `.app` at the expected output path; run `make clean` twice; both exit 0; second run prints "No build artifact found" per `clean.ps1`.
 		- T014.5 [x] Show-config
 			- `tests/integration/ShowConfig.Tests.ps1`: With valid `app.json`, assert headers/keys printed by [`show-config.ps1`](file:///d:/repos/al-build-tools/overlay/scripts/make/show-config.ps1#L7-L13,L17-L27); with missing `app.json`, assert exit 0 and error on stderr.
 		- T014.6 [x] Show-analyzers (analyzer detection covered)
@@ -100,7 +100,7 @@
 	- Precede with tests: Add `tests/contract/ShowConfig.Tests.ps1` asserting stable key=value ordering; initially FAIL until implemented.
 	- DoD: `show-config.ps1` emits deterministic ordered key=value lines (incl. Platform, PowerShellVersion).
 	- Validation: Two consecutive runs identical; tests pass.
-- [ ] T011 Ensure `next-object-number.ps1` has version directive & help stub — FR-005, FR-014
+- [x] T011 Ensure `next-object-number.ps1` has version directive & help stub — FR-005, FR-014
 	- Precede with tests: Add `tests/contract/RequiresVersion.Tests.ps1` to assert `#requires -Version 7.2`; initially FAIL where missing.
 	- DoD: `#requires -Version 7.2` at top if missing; concise help.
 	- Validation: Presence of directive + help displays; tests pass.
@@ -134,10 +134,10 @@
 	- Validation: Analyzer run returns 0 issues.
 
 ## Phase 7: Optional Inlining (post-tests)
-- [ ] T004 Inline required helper logic from `overlay/scripts/make/lib/*.ps1` into each relocated script — FR-001
+- [x] T004 Inline required helper logic from `overlay/scripts/make/lib/*.ps1` into each relocated script - FR-001
 	- Blocker: Execute only after contract (T012) and parity (T013) tests exist and are passing for current behavior.
 	- DoD: No remaining dependency on `overlay/scripts/make/lib`; only necessary functions copied; duplication < threshold (leave as-is if small).
-	- Validation: Scripts run without dot-sourcing external helper files; parity remains green.
+	- Validation: Scripts run without dot-sourcing external helper files; parity remains green. Completed 2025-09-15.
 
 ## Removed / Replaced Tasks
 Original scaffold tasks (T009–T012 etc.) superseded by relocation steps (T003–T011). Any references in older planning artifacts are historical only and not to be executed.
@@ -293,9 +293,9 @@ Make & CI integration:
 - [ ] T055 Create follow-up issue template for Bash script removal (post-parity release) — FR-016
 	- DoD: `.github/ISSUE_TEMPLATE/remove-bash.yml` created outlining validation checklist.
 	- Validation: GitHub UI shows new template option.
-- [ ] T056 Draft migration note (CHANGELOG / MIGRATION.md) for consumers — FR-016, FR-015
+- [x] T056 Draft migration note (CHANGELOG / MIGRATION.md) for consumers - FR-016, FR-015
 	- DoD: MIGRATION or CHANGELOG entry with steps, deprecated paths, cutover guidance.
-	- Validation: Mentions guard, PS version, new commands; peer review sign-off.
+	- Validation: Mentions guard, PS version, new commands; peer review sign-off. Completed 2025-09-15 in `CHANGELOG.md`.
 - [ ] T057 Remove any unused placeholder code & ensure zero PSSA warnings — FR-017
 	- DoD: All placeholder comments replaced or deleted; `Invoke-ScriptAnalyzer` returns 0 findings of configured severities.
 	- Validation: Analyzer run clean across overlay + internal scripts.
@@ -376,4 +376,3 @@ Run in parallel: T036 T037 T038 T039 (distinct scripts; all use inline patterns)
 
 ---
 All tasks are atomic and executable by an agent with repository context. Adjust numbering ONLY by appending new IDs (do not renumber) once execution begins.
-
