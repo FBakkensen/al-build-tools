@@ -1,4 +1,4 @@
-# Implementation Plan: PowerShell-Only Build Script Consolidation
+# Implementation Plan: PowerShell-Only Build Script Consolidation (Relocation & Reuse)
 
 **Branch**: `003-powershell-only-build` | **Date**: 2025-09-14 | **Spec**: `d:/repos/al-build-tools/specs/003-powershell-only-build/spec.md`
 **Input**: Feature specification from `/specs/003-powershell-only-build/spec.md`
@@ -26,12 +26,15 @@
 
 **IMPORTANT**: This feature's planning includes generating `tasks.md` (Phase 2) to accelerate implementation (repository prompt adaptation). Implementation & validation follow after plan artifacts.
 
-## Summary
-Consolidate build-related scripts to a single cross-platform PowerShell implementation guarded by a transient environment variable (`ALBT_VIA_MAKE`) to enforce invocation exclusively through `make`. Provide contract + integration Pester tests and a mandatory PSScriptAnalyzer quality gate. Achieve functional parity with existing Bash scripts, enabling their deprecation and later removal without user-visible regressions.
+## Summary (Updated)
+This plan no longer creates net‑new PowerShell scripts; instead it RELOCATES the already functional Windows PowerShell scripts (`overlay/scripts/make/windows/*.ps1`) into the neutral `overlay/scripts/make/` directory, DELETES all Bash scripts under `overlay/scripts/make/linux/`, and ENHANCES the relocated scripts (guard, verbosity normalization, deterministic config output, standardized exit codes). We preserve proven logic, reducing risk versus rewrite while achieving a single cross‑platform surface. Parity with prior Windows behavior and replacement of Bash scripts are validated through contract & integration tests.
+
+Contracts C1–C14 still define authoritative externally observable behavior. Relocation adds a new implicit objective: baseline parity (FR-025) between pre‑relocation Windows outputs and post‑relocation unified scripts.
 
 ## Technical Context
 **Languages**: PowerShell 7.2+ (single source for Windows & Linux)
-**Entrypoints (guarded)**: `overlay/scripts/make/build.ps1`, `clean.ps1`, `show-config.ps1`, `show-analyzers.ps1`
+**Entrypoints (guarded, after relocation)**: `overlay/scripts/make/build.ps1`, `clean.ps1`, `show-config.ps1`, `show-analyzers.ps1` (moved from windows/ subfolder)
+**Removed**: All Bash scripts previously in `overlay/scripts/make/linux/`
 **Direct Tool (unguarded)**: `overlay/scripts/next-object-number.ps1`
 **Guard Variable**: `ALBT_VIA_MAKE` (process-scoped, must not persist)
 **Static Analysis**: PSScriptAnalyzer (Recommended + selected style rules via `.config/ScriptAnalyzerSettings.psd1`)
@@ -48,39 +51,45 @@ Observability: Verbose mode unified; minimal additional logging.
 Versioning: No outward behavioral change except enforced invocation path; documented.
 Result: PASS (initial). Re-check after Phase 1 expected PASS.
 
-## Project Structure (Target Changes)
+## Project Structure (Target End State)
 ```
 overlay/
-  scripts/
-    make/
-      build.ps1
-      clean.ps1
-      show-config.ps1
-      show-analyzers.ps1
-      lib/
-        Guard.ps1
-        Common.ps1 (logging, verbosity, path helpers)
-    next-object-number.ps1 (unchanged, unguarded)
+   scripts/
+      make/
+         build.ps1              # relocated from windows/, now guarded & cross-platform
+         clean.ps1              # relocated
+         show-config.ps1        # relocated
+         show-analyzers.ps1     # relocated
+      next-object-number.ps1   # unchanged (unguarded)
 
-.config/
-  ScriptAnalyzerSettings.psd1
+# Removed in this feature: overlay/scripts/make/linux/* (all Bash)
+# Removed after relocation: overlay/scripts/make/windows/ (folder deleted once scripts moved)
 
-tests/
-  contract/*.Tests.ps1
-  integration/*.Tests.ps1
+# Internal only (not shipped)
+.config/ScriptAnalyzerSettings.psd1
+tests/contract/*.Tests.ps1
+tests/integration/*.Tests.ps1
+tests/helpers/*.ps1 (normalization, spawn, optional)
 ```
 
-## Phase 0: Outline & Research (see research.md)
-Focus: Evaluate guard enforcement patterns, PSSA rule selection, parallel invocation isolation, help strategy (stub vs full under guard), exit code mapping, required module presence detection. All unknowns resolved via Decisions in spec.
+Inline Implementation Notes:
+- Guard logic: a few lines at top of each guarded script; no shared overlay module required.
+- Exit codes: documented as a comment table + `switch` usage inside scripts; central constant file kept internal only if needed for tests.
+- Tool detection & static analysis: performed in CI (repository context). Consumers do not receive these helper functions—scripts fail fast only on guard violations in normal use.
+- Duplication threshold: if any shared logic grows beyond ~20 lines duplicated across ≥3 scripts, reconsider introducing a single small shared helper (but only if clearly justified and still minimal for consumers).
 
-## Phase 1: Design & Contracts
-Artifacts: `data-model.md` (conceptual entities, guard interaction), `contracts/README.md` (script behavior contracts + exit code table), `quickstart.md` (user workflow). No external API; internal CLI surface only.
+## Phase 0: Outline & Research (Completed)
+Focus remains valid; added confirmation that existing Windows scripts are suitable for direct relocation with minimal path normalization.
 
-## Phase 2: Task Planning Approach
-Each functional requirement (FR-001..FR-025) maps to one or more tasks. Group tasks by phases: scaffolding, guard implementation, analysis gate, tests, CI, documentation, deprecation. `tasks.md` enumerates atomic actionable steps with acceptance criteria and references to FR IDs.
+## Phase 1: Design & Contracts (Adjusted)
+Artifacts updated to replace "create new scripts" language with "relocate & enhance". Contracts unchanged; add parity note referencing FR-025.
+
+## Phase 2: Task Planning Approach (Adjusted)
+Task list revised to: (a) Inventory existing Windows scripts, (b) Relocate & inline helpers, (c) Delete Bash & windows folders, (d) Add guard + enhancements, (e) Establish parity baselines, (f) Implement tests, (g) Update Makefile & docs, (h) CI adjustments.
+`tasks.md` will be rewritten to drop greenfield scaffold tasks and replace them with relocation + enhancement steps.
 
 ## Phase 3+: Implementation & Validation
-Out of scope for this planning artifact; will execute tasks ensuring green PSSA + tests across matrix.
+Execute relocation first (copy then delete) in a single commit set to avoid a transient broken state. Follow with enhancements and parity verification tests prior to final Bash removal commit if staged. PSSA + Pester green required before merging.
 
 ## Complexity Tracking
 No deviations; table empty.

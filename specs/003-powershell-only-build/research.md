@@ -10,12 +10,28 @@
 | Verbosity Control | Custom flag / Standard -Verbose / Both | Standard + VERBOSE env | Familiar, low code | Env variable ambiguity | Normalize env→-Verbose mapping |
 | Static Analysis Scope | Off / Basic / Strict | Strict recommended + style | Early defect surfacing | False positives | Scoped suppressions |
 | Exit Codes | Single non-zero / Minimal / Rich mapping | Rich mapping table | Clear CI diagnostics | Slight complexity | Centralize constants |
+| Implementation Strategy | Greenfield new PS scripts / Relocate existing | Relocate existing | Lower risk, preserves proven logic, faster delivery | Hidden technical debt in old scripts | Add parity tests & incremental refactor |
 | Required Tool Detection | Lazy runtime errors / Pre-flight check | Pre-flight check | Fast fail | Redundant checks | Single guard function |
 | Parallel Invocation Isolation | Random token / Env var only | Env var only | Simplicity | Hypothetical collision | Process isolation sufficient |
 | Test Types | Integration only / Contract + Integration | Both | Faster failure localization | More scripts | Lean assertions |
 | CI Order | Tests then PSSA / PSSA then tests | PSSA first | Fail faster cheaper | Over-reliance on static | Tests still run locally |
 
 ## Guard Mechanism Evaluation
+## Reuse vs Rewrite Justification
+Existing Windows PowerShell scripts already encapsulate the core build, clean, configuration, and analyzer listing behaviors. Rewriting would:
+- Introduce regression risk (logic drift during translation)
+- Delay consolidation (duplicate testing effort)
+- Inflate diff size reducing review clarity
+
+Relocation with minimal targeted enhancement keeps:
+- Smaller, auditable changes (path + guard + exit code additions)
+- Proven functional semantics (validated via parity baselines)
+- Focused refactors only where cross-platform path joins or verbosity inconsistencies exist
+
+Risk of inheriting suboptimal patterns is mitigated through:
+- ScriptAnalyzer strict rules post-relocation
+- Parity tests ensuring modifications are intentional
+- Follow-up targeted refactors rather than wholesale rewrite
 Environment variable chosen for simplicity and zero dependency. Alternative (filesystem lock) unnecessary; no shared mutability beyond process boundaries. Exit code 2 reserved for clear semantic mapping.
 
 ## Static Analysis Rules
@@ -33,8 +49,33 @@ One pre-flight function `Assert-RequiredTools` enumerates required modules (PSSc
 ## Exit Code Mapping Validation
 Mapping chosen avoids 1 (commonly ambiguous) and keeps distinct contiguous small integers for CI branching. >6 delegated to unexpected errors to avoid infinite categorization expansion.
 
-## Performance Considerations
-PowerShell startup overhead minimal vs Bash on both OS given small script count. Avoid costly reflection or module imports; keep helper modules (Guard, Common) lightweight. Target median build orchestration < 1s excluding underlying AL compiler (out of this feature scope).
+## Compiler Discovery Rationale (C8)
+Strategy: Enumerate AL extension install roots (VS Code extension directory), choose highest semantic version folder containing the compiler executable. Reject alternative strategies (hard-coded path, PATH search) due to brittleness and user-specific layouts. Highest-version selection guarantees deterministic upgrades without manual configuration. Absence is treated as a hard build error (clear remediation: install AL extension) because compilation cannot proceed meaningfully.
+
+Edge Cases Considered:
+- Multiple preview and stable versions → Choose numerically highest (preview suffix ignored for ordering; fallback lexical tie-break documented in test harness if needed).
+- Permission issues → Surface native PowerShell error; do not mask with generic message.
+
+## Analyzer Settings Parsing (C5, C6)
+Source of truth: `.vscode/settings.json` keys:
+- `al.enableCodeAnalysis` (boolean) – if false/absent treat as no analyzers.
+- `al.codeAnalyzers` (array of string paths) – each path validated for existence before inclusion.
+
+Design Choices:
+- Missing or invalid JSON → return empty set (not failure) to keep build path resilient (ruleset and warnings-as-errors already cover quality gates).
+- Non-existent DLL path → warn (optional) or silently skip; DO NOT stop build.
+
+Rejected Option: Failing the build on any invalid analyzer path (too fragile for cross-developer environment differences).
+
+## Variable Precedence (C2) Justification
+Environment variables supplied by `make` define the authoritative runtime configuration because they are visible to both scripts and any nested tooling. In-script overrides risk divergence and complicate reproducibility. Therefore scripts only read (never mutate) `WARN_AS_ERROR`, `RULESET_PATH`, and future build toggles.
+
+## Ruleset Handling (C3)
+Optional quality augmentation—not a correctness dependency. Skipping silently with a warning prevents false negatives when developers lack the referenced file locally. Tests assert presence OR documented skip message; both outcomes considered compliant.
+
+## Next Object Number Exit Code Reuse (C11)
+Reuse of exit code 2 (already meaning guard violation elsewhere) for id range exhaustion intentionally keeps the mapping compact. Disambiguation achieved via message content pattern (`No available <Type> number`). Tests assert both exit code and message substring. Alternate mapping (dedicated code 7) rejected to avoid expanding the reserved numeric set.
+
 
 ## Parallel Invocation
 No global state; each `make` spawn sets var, runs child, unsets. Tests will spawn two concurrent builds (mock mode) to ensure no leakage / collision conditions.
