@@ -48,7 +48,7 @@
 	- Validation: No lingering references in docs; Makefile no longer branches on OS.
 
 ## Phase 2: Makefile Minimal Update (Windows-only)
-- [ ] T015 Update `Makefile` to call relocated scripts (Windows-only, minimal) — FR-016
+- [x] T015 Update `Makefile` to call relocated scripts (Windows-only, minimal) — FR-016
 	- Priority: Execute this task next to align with current script locations.
 	- DoD: All targets use `pwsh -File overlay/scripts/make/<script>.ps1`; remove Bash logic branches; Windows-only (no OS conditional).
 	- Validation: Local invocation succeeds on Windows.
