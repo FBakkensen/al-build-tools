@@ -22,7 +22,7 @@ Sequential tasks omit [P] when they touch same file or depend on prior tasks.
 Guard rails & early failures first, then success/idempotence, then diagnostics categories, then performance & parity.
 
 ### Guard Rail Contract Tests (fail-fast scenarios)
-- [ ] T005 Create `tests/contract/Install.GitRepoRequired.Tests.ps1` (FR-023) – run installer in dir without `.git` expect non-zero exit & `[install] guard GitRepoRequired` (will initially fail; implementation currently warns and proceeds).
+- [x] T005 Create `tests/contract/Install.GitRepoRequired.Tests.ps1` (FR-023) – run installer in dir without `.git` expect non-zero exit & `[install] guard GitRepoRequired` (will initially fail; implementation currently warns and proceeds).
 - [ ] T006 Create `tests/contract/Install.WorkingTreeNotClean.Tests.ps1` (FR-024, FR-015 edge) – simulate dirty repo (add untracked + modified file) expect abort & `[install] guard WorkingTreeNotClean`.
 - [ ] T007 Create `tests/contract/Install.PowerShellVersionUnsupported.Tests.ps1` (FR-004) – simulate version check via wrapper (may require implementing guard later; mark pending if version already >=7) expect guarded failure pattern.
 - [ ] T008 [P] Create `tests/contract/Install.UnknownParameter.Tests.ps1` (FR-008) – call with `-Nope123` expect rejection & usage guidance.
