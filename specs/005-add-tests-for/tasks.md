@@ -35,24 +35,24 @@ Guard rails & early failures first, then success/idempotence, then diagnostics c
 
 ### Download Failure Categories & Diagnostics
 - [x] T013 Create `tests/contract/Install.DownloadFailure.NetworkUnavailable.Tests.ps1` (FR-014) – simulate network unreachable (e.g., set URL to reserved RFC1918 unreachable) expect single `[install] download failure` line with `category=NetworkUnavailable`.
-- [ ] T014 [P] Create `tests/contract/Install.DownloadFailure.NotFound.Tests.ps1` (FR-014) – bogus ref expect `category=NotFound`.
-- [ ] T015 [P] Create `tests/contract/Install.DownloadFailure.CorruptArchive.Tests.ps1` (FR-014) – serve/point to corrupt zip (may need local temp zip creation) expect `category=CorruptArchive`.
-- [ ] T016 [P] Create `tests/contract/Install.DownloadFailure.Timeout.Tests.ps1` (FR-014) – simulate timeout via extremely slow endpoint stub or injected delay harness (may start as Pending if infra not ready) expect `category=Timeout`.
-- [ ] T017 Add `tests/contract/Install.Diagnostics.Stability.Tests.ps1` (FR-009) – assert regex patterns for guard lines, success line, download failure line all anchored.^
+- [x] T014 [P] Create `tests/contract/Install.DownloadFailure.NotFound.Tests.ps1` (FR-014) – bogus ref expect `category=NotFound`.
+- [x] T015 [P] Create `tests/contract/Install.DownloadFailure.CorruptArchive.Tests.ps1` (FR-014) – serve/point to corrupt zip (may need local temp zip creation) expect `category=CorruptArchive`.
+- [x] T016 [P] Create `tests/contract/Install.DownloadFailure.Timeout.Tests.ps1` (FR-014) – simulate timeout via extremely slow endpoint stub or injected delay harness (may start as Pending if infra not ready) expect `category=Timeout`.
+- [x] T017 Add `tests/contract/Install.Diagnostics.Stability.Tests.ps1` (FR-009) – assert regex patterns for guard lines, success line, download failure line all anchored.^
 
 ### Temp Workspace & Ephemeral Behavior
-- [ ] T018 Create `tests/integration/Install.TempWorkspaceLifecycle.Tests.ps1` (FR-019, FR-001) – capture temp path from added `[install] temp` line (test will initially force addition) assert removed post-run.
-- [ ] T019 [P] Create `tests/integration/Install.PermissionDenied.Tests.ps1` (FR-020) – create read-only target file causing copy failure expect permission diagnostic & non-zero exit.
+- [x] T018 Create `tests/integration/Install.TempWorkspaceLifecycle.Tests.ps1` (FR-019, FR-001) – capture temp path from added `[install] temp` line (test will initially force addition) assert removed post-run.
+- [x] T019 [P] Create `tests/integration/Install.PermissionDenied.Tests.ps1` (FR-020) – create read-only target file causing copy failure expect permission diagnostic & non-zero exit.
 
 ### Performance & Isolation
-- [ ] T020 Create `tests/integration/Install.PerformanceBudget.Tests.ps1` (FR-010) – measure duration; warn >25s, fail ≥30s.
-- [ ] T021 [P] Create `tests/integration/Install.EnvironmentIsolation.Tests.ps1` (FR-011) – run two sequential installs in fresh clones ensuring no cross contamination.
+- [x] T020 Create `tests/integration/Install.PerformanceBudget.Tests.ps1` (FR-010) – measure duration; warn >25s, fail ≥30s.
+- [x] T021 [P] Create `tests/integration/Install.EnvironmentIsolation.Tests.ps1` (FR-011) – run two sequential installs in fresh clones ensuring no cross contamination.
 
 ### Cross-Platform Parity (Structure Assertions)
-- [ ] T022 Create `tests/integration/Install.Parity.Structure.Tests.ps1` (FR-016, FR-017, FR-018, FR-022) – assert consistent step numbering & messages subset independent of OS (path regex differences allowed).
+- [x] T022 Create `tests/integration/Install.Parity.Structure.Tests.ps1` (FR-016, FR-017, FR-018, FR-022) – assert consistent step numbering & messages subset independent of OS (path regex differences allowed).
 
 ### Safety / Security Boundaries
-- [ ] T023 Create `tests/contract/Install.RestrictedWrites.Tests.ps1` (FR-007) – verify no writes outside overlay path by snapshotting root before & after.
+- [x] T023 Create `tests/contract/Install.RestrictedWrites.Tests.ps1` (FR-007) – verify no writes outside overlay path by snapshotting root before & after.
 
 ## Phase 3.3: Core Adjustments (Implementation to Satisfy Failing Tests)
 (Execute only after all above tests committed & initially failing where behavior absent.)
