@@ -23,6 +23,29 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $repoRootPath = $repoRoot.Path
 $testsPath = Resolve-Path (Join-Path $repoRootPath $Path)
 
+# Ensure installer helper modules under tests/_install are discoverable
+$installHelperPath = Join-Path $testsPath.Path '_install'
+$originalPSModulePath = $env:PSModulePath
+$psModulePathChanged = $false
+
+if (Test-Path -LiteralPath $installHelperPath) {
+    $resolvedInstallHelperPath = (Resolve-Path -LiteralPath $installHelperPath).Path
+    $pathSeparator = [IO.Path]::PathSeparator
+    $currentModulePaths = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:PSModulePath)) {
+        $currentModulePaths = $env:PSModulePath.Split($pathSeparator) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    }
+    if (-not ($currentModulePaths | Where-Object { $_ -ieq $resolvedInstallHelperPath })) {
+        if ([string]::IsNullOrWhiteSpace($env:PSModulePath)) {
+            $env:PSModulePath = $resolvedInstallHelperPath
+        } else {
+            $env:PSModulePath = $resolvedInstallHelperPath + $pathSeparator + $env:PSModulePath
+        }
+        $psModulePathChanged = $true
+    }
+}
+
+
 # Ensure repo root stays clean: remove any stray previous results file
 $repoResultsPath = Join-Path $repoRootPath 'testResults.xml'
 if (Test-Path -LiteralPath $repoResultsPath) {
@@ -64,6 +87,13 @@ try {
     $res = Invoke-Pester -Configuration $config
 } finally {
     Pop-Location
+    if ($psModulePathChanged) {
+        if ($null -eq $originalPSModulePath) {
+            Remove-Item Env:PSModulePath -ErrorAction SilentlyContinue
+        } else {
+            $env:PSModulePath = $originalPSModulePath
+        }
+    }
     # Best-effort cleanup of the temp working dir
     try { Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue } catch {}
 }

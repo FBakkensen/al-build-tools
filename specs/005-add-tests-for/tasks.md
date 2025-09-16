@@ -14,8 +14,8 @@ Sequential tasks omit [P] when they touch same file or depend on prior tasks.
 
 ## Phase 3.1: Setup (Foundation)
 - [x] T001 Create test helper module `tests/_install/Assert-Install.psm1` with shared assertions (temp path pattern, diagnostic line matchers, hash utilities).
-- [ ] T002 [P] Add test data directory `tests/_install/data/` with minimal fixture (dummy file) for hash/idempotence utilities.
-- [ ] T003 Ensure Pester configuration update (if needed) in existing `scripts/run-tests.ps1` to auto-discover new `_install` helpers (skip if already globbing all tests).
+- [x] T002 [P] Add test data directory `tests/_install/data/` with minimal fixture (dummy file) for hash/idempotence utilities.
+- [x] T003 Ensure Pester configuration update (if needed) in existing `scripts/run-tests.ps1` to auto-discover new `_install` helpers (skip if already globbing all tests).
 - [ ] T004 Add documentation traceability stub `specs/005-add-tests-for/traceability.md` mapping FR-001..FR-025 → test file IDs (filled as tests added).
 
 ## Phase 3.2: Tests First (TDD) – Contract & Integration (Must fail initially where behavior absent)
