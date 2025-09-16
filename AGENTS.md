@@ -55,5 +55,3 @@ When contributing: If you are about to add a new file under `overlay/`, ask: (a)
 ## Security & Configuration Tips
 - Never hardcode secrets; read from environment variables. On Windows, use `-ExecutionPolicy Bypass` only for one-off local runs.
 
-## Agent Behavior (Codex CLI)
-- Do not run repository-changing Git operations or create PRs without explicit user instruction. Follow the paths/commands above and ask when uncertain.
