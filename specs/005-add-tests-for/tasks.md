@@ -29,12 +29,12 @@ Guard rails & early failures first, then success/idempotence, then diagnostics c
 - [x] T009 [P] Create `tests/contract/Install.NonCleanAfterPartialFailure.Tests.ps1` (FR-015) – induce simulated partial copy (manually place one overlay file) then run installer expect abort & same clean working tree guidance.
 
 ### Success & Idempotence
-- [ ] T010 Create `tests/integration/Install.Success.Basic.Tests.ps1` (FR-001, FR-006) – assert success summary line placeholder `[install] success ref=` (will fail until added), expected overlay files present, no extraneous writes.
-- [ ] T011 [P] Create `tests/integration/Install.IdempotentOverwrite.Tests.ps1` (FR-002, FR-025) – modify file inside overlay between runs; second run restores hash.
-- [ ] T012 [P] Create `tests/integration/Install.NoWritesOnFailure.Tests.ps1` (FR-005, FR-014 precondition) – force download failure (invalid ref) assert no overlay file changes.
+- [x] T010 Create `tests/integration/Install.Success.Basic.Tests.ps1` (FR-001, FR-006) – assert success summary line placeholder `[install] success ref=` (will fail until added), expected overlay files present, no extraneous writes.
+- [x] T011 [P] Create `tests/integration/Install.IdempotentOverwrite.Tests.ps1` (FR-002, FR-025) – modify file inside overlay between runs; second run restores hash.
+- [x] T012 [P] Create `tests/integration/Install.NoWritesOnFailure.Tests.ps1` (FR-005, FR-014 precondition) – force download failure (invalid ref) assert no overlay file changes.
 
 ### Download Failure Categories & Diagnostics
-- [ ] T013 Create `tests/contract/Install.DownloadFailure.NetworkUnavailable.Tests.ps1` (FR-014) – simulate network unreachable (e.g., set URL to reserved RFC1918 unreachable) expect single `[install] download failure` line with `category=NetworkUnavailable`.
+- [x] T013 Create `tests/contract/Install.DownloadFailure.NetworkUnavailable.Tests.ps1` (FR-014) – simulate network unreachable (e.g., set URL to reserved RFC1918 unreachable) expect single `[install] download failure` line with `category=NetworkUnavailable`.
 - [ ] T014 [P] Create `tests/contract/Install.DownloadFailure.NotFound.Tests.ps1` (FR-014) – bogus ref expect `category=NotFound`.
 - [ ] T015 [P] Create `tests/contract/Install.DownloadFailure.CorruptArchive.Tests.ps1` (FR-014) – serve/point to corrupt zip (may need local temp zip creation) expect `category=CorruptArchive`.
 - [ ] T016 [P] Create `tests/contract/Install.DownloadFailure.Timeout.Tests.ps1` (FR-014) – simulate timeout via extremely slow endpoint stub or injected delay harness (may start as Pending if infra not ready) expect `category=Timeout`.
