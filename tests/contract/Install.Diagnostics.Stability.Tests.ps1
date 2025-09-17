@@ -33,7 +33,7 @@ Describe 'Installer diagnostics stability' {
             $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }
             $guardLine | Should -Not -BeNullOrEmpty
 
-            $parsed = Assert-InstallGuardLine -Line $guardLine[0]
+            $parsed = Assert-InstallGuardLine -Line $guardLine
             $parsed.RawLine.StartsWith('[install] guard') | Should -BeTrue
         }
         finally {
@@ -64,7 +64,7 @@ Describe 'Installer diagnostics stability' {
             $successLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+success\s+' }
             $successLine | Should -Not -BeNullOrEmpty
 
-            $parsed = Assert-InstallSuccessLine -Line $successLine[0] -ExpectedRef 'main' -ExpectedOverlay 'overlay' -MaxDurationSeconds 300
+            $parsed = Assert-InstallSuccessLine -Line $successLine -ExpectedRef 'main' -ExpectedOverlay 'overlay' -MaxDurationSeconds 300
             $parsed.RawLine.StartsWith('[install] success') | Should -BeTrue
         }
         finally {
@@ -97,7 +97,7 @@ Describe 'Installer diagnostics stability' {
             $failureLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+download\s+failure\s+' }
             $failureLine | Should -Not -BeNullOrEmpty
 
-            $parsed = Assert-InstallDownloadFailureLine -Line $failureLine[-1] -ExpectedRef $missingRef
+            $parsed = Assert-InstallDownloadFailureLine -Line $failureLine -ExpectedRef $missingRef
             $parsed.RawLine.StartsWith('[install] download failure') | Should -BeTrue
         }
         finally {

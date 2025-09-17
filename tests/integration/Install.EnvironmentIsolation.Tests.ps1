@@ -43,7 +43,7 @@ Describe 'Installer environment isolation' {
                 $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
                 $successLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+success\s+' }
                 $successLine | Should -Not -BeNullOrEmpty
-                $success = Assert-InstallSuccessLine -Line $successLine[0] -ExpectedRef 'main' -ExpectedOverlay 'overlay'
+                $success = Assert-InstallSuccessLine -Line $successLine -ExpectedRef 'main' -ExpectedOverlay 'overlay'
 
                 $tempLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+temp\s+' }
                 $tempLine | Should -Not -BeNullOrEmpty

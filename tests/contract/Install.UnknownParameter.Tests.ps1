@@ -29,7 +29,7 @@ Describe 'Installer guard: unknown parameters must be rejected with guidance' {
             $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }
             $guardLine | Should -Not -BeNullOrEmpty
 
-            $guard = Assert-InstallGuardLine -Line $guardLine[0] -ExpectedGuard 'UnknownParameter'
+            $guard = Assert-InstallGuardLine -Line $guardLine -ExpectedGuard 'UnknownParameter'
             $guard.Guard | Should -Be 'UnknownParameter'
             $guard.Pairs.Contains('argument') | Should -BeTrue
             $guard.Pairs['argument'] | Should -Be 'Nope123'

@@ -42,7 +42,7 @@ Describe 'Installer success path: basic overlay install' {
             $successLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+success\s+' }
             $successLine | Should -Not -BeNullOrEmpty
 
-            $null = Assert-InstallSuccessLine -Line $successLine[0] -ExpectedRef 'main' -ExpectedOverlay 'overlay' -MaxDurationSeconds 120
+            $null = Assert-InstallSuccessLine -Line $successLine -ExpectedRef 'main' -ExpectedOverlay 'overlay' -MaxDurationSeconds 120
 
             $after = Get-InstallDirectorySnapshot -Path $dest -BasePath $dest
             $expectedPaths = $script:OverlaySnapshot | ForEach-Object { $_.Path }

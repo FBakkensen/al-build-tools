@@ -40,7 +40,7 @@ Describe 'Installer performance budget' {
             $successLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+success\s+' }
             $successLine | Should -Not -BeNullOrEmpty
 
-            $success = Assert-InstallSuccessLine -Line $successLine[0] -ExpectedRef 'main' -ExpectedOverlay 'overlay'
+            $success = Assert-InstallSuccessLine -Line $successLine -ExpectedRef 'main' -ExpectedOverlay 'overlay'
             $duration = $success.DurationSeconds
             $duration | Should -BeGreaterThanOrEqual 0
 

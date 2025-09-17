@@ -41,7 +41,7 @@ Describe 'Installer success path: idempotent overwrite' {
             $firstLines = Get-InstallOutputLines -StdOut $first.StdOut -StdErr $first.StdErr
             $firstSuccess = $firstLines | Where-Object { $_ -match '^[[]install[]]\s+success\s+' }
             $firstSuccess | Should -Not -BeNullOrEmpty
-            $null = Assert-InstallSuccessLine -Line $firstSuccess[0] -ExpectedRef 'main' -ExpectedOverlay 'overlay' -MaxDurationSeconds 120
+            $null = Assert-InstallSuccessLine -Line $firstSuccess -ExpectedRef 'main' -ExpectedOverlay 'overlay' -MaxDurationSeconds 120
 
             $afterFirst = Get-InstallDirectorySnapshot -Path $dest -BasePath $dest
             $expectedPaths = $script:OverlaySnapshot | ForEach-Object { $_.Path }
@@ -57,7 +57,7 @@ Describe 'Installer success path: idempotent overwrite' {
             $secondLines = Get-InstallOutputLines -StdOut $second.StdOut -StdErr $second.StdErr
             $secondSuccess = $secondLines | Where-Object { $_ -match '^[[]install[]]\s+success\s+' }
             $secondSuccess | Should -Not -BeNullOrEmpty
-            $null = Assert-InstallSuccessLine -Line $secondSuccess[0] -ExpectedRef 'main' -ExpectedOverlay 'overlay' -MaxDurationSeconds 120
+            $null = Assert-InstallSuccessLine -Line $secondSuccess -ExpectedRef 'main' -ExpectedOverlay 'overlay' -MaxDurationSeconds 120
 
             $afterSecond = Get-InstallDirectorySnapshot -Path $dest -BasePath $dest
             $actualOverlaySecond = $afterSecond | Where-Object { $expectedPaths -contains $_.Path }

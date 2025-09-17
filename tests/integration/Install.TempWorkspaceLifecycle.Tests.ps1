@@ -38,7 +38,7 @@ Describe 'Installer temp workspace lifecycle' {
             $tempLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+temp\s+' }
             $tempLine | Should -Not -BeNullOrEmpty
 
-            $tempInfo = Assert-InstallTempLine -Line $tempLine[-1]
+            $tempInfo = Assert-InstallTempLine -Line $tempLine
             $tempInfo.Workspace | Should -Not -BeNullOrEmpty
 
             Test-Path -LiteralPath $tempInfo.Workspace | Should -BeFalse

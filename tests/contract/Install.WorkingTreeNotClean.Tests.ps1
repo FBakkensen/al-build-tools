@@ -35,7 +35,7 @@ Describe 'Installer guard: Working tree must be clean' {
             $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }
             $guardLine | Should -Not -BeNullOrEmpty
 
-            $guard = Assert-InstallGuardLine -Line $guardLine[0] -ExpectedGuard 'WorkingTreeNotClean'
+            $guard = Assert-InstallGuardLine -Line $guardLine -ExpectedGuard 'WorkingTreeNotClean'
             $guard.Guard | Should -Be 'WorkingTreeNotClean'
         }
         finally {

@@ -54,7 +54,7 @@ Describe 'Installer guard: permission denied protection' {
                 $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }
                 $guardLine | Should -Not -BeNullOrEmpty
 
-                $guard = Assert-InstallGuardLine -Line $guardLine[0] -ExpectedGuard 'PermissionDenied'
+                $guard = Assert-InstallGuardLine -Line $guardLine -ExpectedGuard 'PermissionDenied'
                 $guard.Guard | Should -Be 'PermissionDenied'
 
                 ($lines | Where-Object { $_ -match '^[[]install[]]\s+success\s+' }) | Should -BeNullOrEmpty

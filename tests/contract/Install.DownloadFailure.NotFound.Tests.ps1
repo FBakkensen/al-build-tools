@@ -40,7 +40,7 @@ Describe 'Installer download failure categorization: not found' {
             $failureLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+download\s+failure\s+' }
             $failureLine | Should -Not -BeNullOrEmpty
 
-            $failure = Assert-InstallDownloadFailureLine -Line $failureLine[-1] -ExpectedRef $missingRef -ExpectedCategory 'NotFound'
+            $failure = Assert-InstallDownloadFailureLine -Line $failureLine -ExpectedRef $missingRef -ExpectedCategory 'NotFound'
             $failure.Category | Should -Be 'NotFound'
         }
         finally {
