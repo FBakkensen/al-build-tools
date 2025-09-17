@@ -255,7 +255,7 @@ function Get-InstallDirectorySnapshot {
     foreach ($file in $files) {
         $hash = Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256
         $relative = [IO.Path]::GetRelativePath($rootPath, $file.FullName)
-        $normalized = $relative -replace '\', '/'
+        $normalized = $relative -replace '\\', '/'
         $snapshot += [pscustomobject]@{
             Path = $normalized
             Hash = $hash.Hash.ToLowerInvariant()

@@ -33,7 +33,7 @@ Describe 'Installer guard: refuse rerun when working tree dirty after partial fa
             $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }
             $guardLine | Should -Not -BeNullOrEmpty
 
-            $guard = Assert-InstallGuardLine -Line $guardLine[0] -ExpectedGuard 'WorkingTreeNotClean'
+            $guard = Assert-InstallGuardLine -Line $guardLine -ExpectedGuard 'WorkingTreeNotClean'
             $guard.Guard | Should -Be 'WorkingTreeNotClean'
         }
         finally {

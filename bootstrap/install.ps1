@@ -196,7 +196,7 @@ function Install-AlBuildTools {
 
         $endTime = Get-Date
         $durationSeconds = ($endTime - $startTime).TotalSeconds
-        Write-Host "[install] success ref=`"$Ref`" overlay=`"$destFull`" duration=$($durationSeconds.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture))"
+        Write-Host "[install] success ref=`"$Ref`" overlay=`"$Source`" duration=$($durationSeconds.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture))"
         Write-Note "Completed: $Source from $Url@$Ref into $destFull"
     } finally {
         try { Remove-Item -Recurse -Force -LiteralPath $tmp.FullName -ErrorAction SilentlyContinue } catch { Write-Verbose "[install] cleanup failed: $($_.Exception.Message)" }

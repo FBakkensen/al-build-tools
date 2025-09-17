@@ -30,7 +30,7 @@ Describe 'Installer guard: PowerShell version must be supported' {
             $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }
             $guardLine | Should -Not -BeNullOrEmpty
 
-            $guard = Assert-InstallGuardLine -Line $guardLine[0] -ExpectedGuard 'PowerShellVersionUnsupported'
+            $guard = Assert-InstallGuardLine -Line $guardLine -ExpectedGuard 'PowerShellVersionUnsupported'
             $guard.Guard | Should -Be 'PowerShellVersionUnsupported'
         }
         finally {
