@@ -72,7 +72,7 @@ Describe 'Installer guard: Git repository required' {
             $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }
             $guardLine | Should -Not -BeNullOrEmpty
 
-            $null = Assert-InstallGuardLine -Line $guardLine[0] -ExpectedGuard 'GitRepoRequired'
+            $null = Assert-InstallGuardLine -Line $guardLine -ExpectedGuard 'GitRepoRequired'
         }
         finally {
             if (Test-Path $dest) {
