@@ -98,6 +98,18 @@ The repository includes Pester tests for contract behavior and integration flows
   - `Invoke-Pester -CI -Path tests/contract`
   - `Invoke-Pester -CI -Path tests/integration`
 
+### Installer Test Contract
+
+The installer contract (FR-012) documents the behaviors enforced by the automated suites so contributors know what must remain stable:
+
+- Guard rails: rejects non-git destinations, dirty working trees, unsupported PowerShell, unknown parameters, and restricted/denied writes. Each failure emits `[install] guard <Reason>` and exits 10 (guards) or 30 (permission scope); tests assert these diagnostics.
+- Temp workspace: emits `[install] temp workspace="..."`, which must live under the system temp root and be cleaned up after every run.
+- Download diagnostics: acquisition failures log `[install] download failure ... category=<NetworkUnavailable|NotFound|CorruptArchive|Timeout|Unknown>` and must leave the destination unchanged.
+- Success path: success logs `[install] success ref="..." overlay="..." duration=<seconds>` and a second run must restore overlay file hashes (idempotence).
+- Step telemetry: `[install] step index=... name=...` stays stable to keep parity and performance checks meaningful across platforms.
+
+Run `pwsh -File scripts/run-tests.ps1 -CI` before modifying `bootstrap/install.ps1`; CI replays the same contract on Windows and Ubuntu.
+
 ## How It Works
 
 1. Downloads a ZIP of this repo at the specified ref (default `main`).
