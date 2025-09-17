@@ -1,6 +1,120 @@
 #requires -Version 7.0
 Set-StrictMode -Version Latest
 
+# Cache install archives per repo/ref to avoid repeated overlay packaging during test runs.
+
+$script:InstallArchiveCache = [hashtable]::Synchronized(@{})
+$script:InstallArchiveCacheRoot = $null
+
+function Get-InstallArchiveCacheRoot {
+    if (-not $script:InstallArchiveCacheRoot) {
+        $base = Join-Path ([IO.Path]::GetTempPath()) 'albt-install-archive-cache'
+        $sessionRoot = Join-Path $base ([System.Diagnostics.Process]::GetCurrentProcess().Id.ToString())
+        if (-not (Test-Path -LiteralPath $sessionRoot)) {
+            New-Item -ItemType Directory -Path $sessionRoot -Force | Out-Null
+        }
+        $script:InstallArchiveCacheRoot = (Resolve-Path -LiteralPath $sessionRoot).Path
+    }
+    return $script:InstallArchiveCacheRoot
+}
+
+function Get-InstallArchiveCacheKey {
+    param(
+        [Parameter(Mandatory)] [string] $RepoRoot,
+        [Parameter(Mandatory)] [string] $Ref
+    )
+
+    $normalizedRepo = [IO.Path]::GetFullPath($RepoRoot)
+    return '{0}|{1}' -f $normalizedRepo, $Ref
+}
+
+function Get-InstallArchiveCacheHash {
+    param(
+        [Parameter(Mandatory)] [string] $Key
+    )
+
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Key)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha.ComputeHash($bytes)
+    } finally {
+        $sha.Dispose()
+    }
+
+    return ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').Substring(0, 32)
+}
+
+function Get-InstallArchiveCacheEntry {
+    param(
+        [Parameter(Mandatory)] [string] $RepoRoot,
+        [Parameter(Mandatory)] [string] $Ref,
+        [Parameter(Mandatory)] [string] $Key
+    )
+
+    if ($script:InstallArchiveCache.ContainsKey($Key)) {
+        $cached = $script:InstallArchiveCache[$Key]
+        if ($cached -and (Test-Path -LiteralPath $cached.ZipPath)) {
+            return $cached
+        }
+    }
+
+    $entry = New-InstallArchiveCacheEntry -RepoRoot $RepoRoot -Ref $Ref -Key $Key
+    $script:InstallArchiveCache[$Key] = $entry
+    return $entry
+}
+
+
+function New-InstallArchiveCacheEntry {
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
+    param(
+        [Parameter(Mandatory)] [string] $RepoRoot,
+        [Parameter(Mandatory)] [string] $Ref,
+        [Parameter(Mandatory)] [string] $Key
+    )
+
+    $target = '{0} (ref {1})' -f $RepoRoot, $Ref
+    if (-not $PSCmdlet.ShouldProcess($target, 'Prepare install archive cache entry')) {
+        return
+    }
+
+    $hash = Get-InstallArchiveCacheHash -Key $Key
+    $entryRoot = Join-Path (Get-InstallArchiveCacheRoot) $hash
+
+    if (Test-Path -LiteralPath $entryRoot) {
+        Remove-Item -LiteralPath $entryRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    New-Item -ItemType Directory -Path $entryRoot -Force | Out-Null
+
+    $packageRoot = Join-Path $entryRoot 'archive'
+    New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+
+    $topName = "al-build-tools-$Ref"
+    $topRoot = Join-Path $packageRoot $topName
+    New-Item -ItemType Directory -Path $topRoot -Force | Out-Null
+
+    $overlaySource = Join-Path $RepoRoot 'overlay'
+    Copy-Item -LiteralPath $overlaySource -Destination $topRoot -Recurse -Force
+
+    $zipPath = Join-Path $entryRoot 'overlay-package.zip'
+    if (Test-Path -LiteralPath $zipPath) {
+        Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+    }
+    Compress-Archive -Path (Join-Path $packageRoot '*') -DestinationPath $zipPath -Force
+
+    try {
+        Remove-Item -LiteralPath $packageRoot -Recurse -Force -ErrorAction Stop
+    } catch {
+        Write-Verbose "[InstallArchiveCache] Failed to remove staging directory '$packageRoot': $($_.Exception.Message)"
+    }
+
+    return [pscustomobject]@{
+        ZipPath  = (Resolve-Path -LiteralPath $zipPath).Path
+        RootName = $topName
+    }
+}
+
+
+
 function New-InstallArchive {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
     param(
@@ -19,30 +133,22 @@ function New-InstallArchive {
         return
     }
 
-    $packageRoot = Join-Path $resolvedWorkspace 'archive'
-    if (Test-Path -LiteralPath $packageRoot) {
-        Remove-Item -LiteralPath $packageRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    New-Item -ItemType Directory -Path $packageRoot | Out-Null
-
-    $topName = "al-build-tools-$Ref"
-    $topRoot = Join-Path $packageRoot $topName
-    New-Item -ItemType Directory -Path $topRoot | Out-Null
-
-    $overlaySource = Join-Path $resolvedRepo 'overlay'
-    Copy-Item -LiteralPath $overlaySource -Destination $topRoot -Recurse -Force
+    $cacheKey = Get-InstallArchiveCacheKey -RepoRoot $resolvedRepo -Ref $Ref
+    $cacheEntry = Get-InstallArchiveCacheEntry -RepoRoot $resolvedRepo -Ref $Ref -Key $cacheKey
 
     $zipPath = Join-Path $resolvedWorkspace 'overlay-package.zip'
     if (Test-Path -LiteralPath $zipPath) {
         Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
     }
-    Compress-Archive -Path (Join-Path $packageRoot '*') -DestinationPath $zipPath -Force
+
+    Copy-Item -LiteralPath $cacheEntry.ZipPath -Destination $zipPath -Force
 
     return [pscustomobject]@{
         ZipPath  = (Resolve-Path -LiteralPath $zipPath).Path
-        RootName = $topName
+        RootName = $cacheEntry.RootName
     }
 }
+
 
 function Start-InstallArchiveServer {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]

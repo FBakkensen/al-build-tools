@@ -100,15 +100,19 @@ The repository includes Pester tests for contract behavior and integration flows
 
 ### Installer Test Contract
 
-The installer contract (FR-012) documents the behaviors enforced by the automated suites so contributors know what must remain stable:
+The installer contract (FR-012) documents the behaviors enforced by the automated suites so contributors know what must remain stable. Coverage lives in:
+- `tests/contract/Install.*.Tests.ps1` — guard rails and download diagnostics (FR-003, FR-004, FR-008, FR-014, FR-015, FR-020, FR-023, FR-024).
+- `tests/integration/Install.*.Tests.ps1` — success, idempotence, parity, and performance flows (FR-001, FR-002, FR-005, FR-006, FR-010, FR-017-FR-019, FR-022, FR-025).
+- `tests/_install/Assert-Install.psm1` — shared helpers that lock diagnostic formats and hash verification (FR-009, FR-021).
 
-- Guard rails: rejects non-git destinations, dirty working trees, unsupported PowerShell, unknown parameters, and restricted/denied writes. Each failure emits `[install] guard <Reason>` and exits 10 (guards) or 30 (permission scope); tests assert these diagnostics.
+Key expectations that must stay stable:
+- Guard rails: rejects non-git destinations, dirty working trees, unsupported PowerShell, unknown parameters, and restricted/denied writes. Each failure emits `[install] guard <Reason>` and exits 10 (guards) or 30 (permission scope).
+- Download diagnostics: acquisition failures log a single `[install] download failure ... category=<NetworkUnavailable|NotFound|CorruptArchive|Timeout|Unknown>` line, exit 20, and must leave the destination unchanged.
 - Temp workspace: emits `[install] temp workspace="..."`, which must live under the system temp root and be cleaned up after every run.
-- Download diagnostics: acquisition failures log `[install] download failure ... category=<NetworkUnavailable|NotFound|CorruptArchive|Timeout|Unknown>` and must leave the destination unchanged.
 - Success path: success logs `[install] success ref="..." overlay="..." duration=<seconds>` and a second run must restore overlay file hashes (idempotence).
 - Step telemetry: `[install] step index=... name=...` stays stable to keep parity and performance checks meaningful across platforms.
 
-Run `pwsh -File scripts/run-tests.ps1 -CI` before modifying `bootstrap/install.ps1`; CI replays the same contract on Windows and Ubuntu.
+When updating `bootstrap/install.ps1`, adjust `specs/005-add-tests-for/traceability.md` if coverage moves and run `pwsh -File scripts/run-tests.ps1 -CI`; CI replays the same contract on Windows and Ubuntu.
 
 ## How It Works
 

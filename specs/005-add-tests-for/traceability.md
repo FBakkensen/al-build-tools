@@ -15,7 +15,7 @@ This matrix captures the definitive mapping between functional requirements FR-0
 | FR-009 | `tests/contract/Install.Diagnostics.Stability.Tests.ps1` | Locks guard, success, and failure diagnostic formats. |
 | FR-010 | `tests/integration/Install.PerformanceBudget.Tests.ps1` | Enforces sub-30s performance budget via parsed duration. |
 | FR-011 | `tests/integration/Install.EnvironmentIsolation.Tests.ps1` | Runs sequential installs in isolated repos to prevent cross-run contamination. |
-| FR-012 | _(pending: update `README.md` contributor guidance via T040)_ | Documentation gate remains to be authored. |
+| FR-012 | `README.md` (Installer Test Contract)<br>`tests/contract/Install.*.Tests.ps1`<br>`tests/integration/Install.*.Tests.ps1` | Contributor guidance summarizes enforced behaviors and points to suites; update when coverage shifts. |
 | FR-013 | `specs/005-add-tests-for/traceability.md` | This document provides the maintained FR ↔ coverage mapping. |
 | FR-014 | `tests/integration/Install.NoWritesOnFailure.Tests.ps1`<br>`tests/contract/Install.DownloadFailure.NetworkUnavailable.Tests.ps1`<br>`tests/contract/Install.DownloadFailure.NotFound.Tests.ps1`<br>`tests/contract/Install.DownloadFailure.CorruptArchive.Tests.ps1`<br>`tests/contract/Install.DownloadFailure.Timeout.Tests.ps1` | Verifies single-line diagnostics, categorized failures, and no side-effects on acquisition errors. |
 | FR-015 | `tests/contract/Install.NonCleanAfterPartialFailure.Tests.ps1` | Treats residue from partial copy as dirty working tree. |
@@ -30,4 +30,4 @@ This matrix captures the definitive mapping between functional requirements FR-0
 | FR-024 | `tests/contract/Install.WorkingTreeNotClean.Tests.ps1` | Blocks execution when working tree is dirty. |
 | FR-025 | `tests/integration/Install.IdempotentOverwrite.Tests.ps1` | Confirms single-command install/update flow realigns overlay exactly. |
 
-_Last updated: 2025-09-17 — T038 complete; FR-012 remains pending until README guidance ships._
+_Last updated: 2025-09-17 — T040 complete; README Installer Test Contract documents FR-012._

@@ -76,8 +76,8 @@ Guard rails & early failures first, then success/idempotence, then diagnostics c
 
 ## Phase 3.5: Polish
 - [x] T039 [P] Add inline documentation comments in `bootstrap/install.ps1` for new guard sections referencing FR IDs (limited; avoid noise).
-- [ ] T040 [P] Add contributor guide snippet to `README.md` summarizing installer test contract (FR-012).
-- [ ] T041 [P] Optimize any slow test setup (cache clone for repeated parity checks without altering overwrite semantics).
+- [x] T040 [P] Add contributor guide snippet to `README.md` summarizing installer test contract (FR-012).
+- [x] T041 [P] Optimize any slow test setup (cache clone for repeated parity checks without altering overwrite semantics).
 - [ ] T042 Final consistency pass: run entire test suite locally (both categories). Capture runtime metrics.
 
 ## Dependencies
