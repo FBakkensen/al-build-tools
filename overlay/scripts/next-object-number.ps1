@@ -1,9 +1,12 @@
 #requires -Version 7.2
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory=$true, Position=0)]
+  [Parameter(Mandatory=$false, Position=0)]
   [ValidateNotNullOrEmpty()]
-  [string]$ObjectType
+  [string]$ObjectType,
+  
+  [Alias('h')]
+  [switch]$Help
 )
 
 <#
@@ -32,6 +35,18 @@ network calls. It is safe to run outside of 'make'.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Handle help flag
+if ($Help) {
+    Get-Help $MyInvocation.MyCommand.Path -Full
+    exit 0
+}
+
+# Ensure ObjectType is provided if not asking for help
+if (-not $ObjectType) {
+    Write-Error "ObjectType parameter is required. Use -Help or -h for usage information."
+    exit 1
+}
 
 function Get-IdRanges([string]$AppJsonPath) {
   if (-not (Test-Path -LiteralPath $AppJsonPath -PathType Leaf)) {

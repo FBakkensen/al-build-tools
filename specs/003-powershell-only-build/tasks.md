@@ -205,44 +205,44 @@ Contract tests (each file independent → [P]) map contracts C1–C14.
 - [ ] T023 [P] Create contract test `tests/contract/Utility.Tests.ps1` (UTIL-NOGUARD, UTIL-HELP, UTIL-ARGS) — FR-005 (C11)
 	- DoD: Covers unguarded tool direct invocation and help output; arg handling minimal.
 	- Validation: Running test yields all passes with no guard enforcement failure.
-- [ ] T024 [P] Create contract test `tests/contract/RequiresVersion.Tests.ps1` (presence of `#requires -Version 7.2` in all scripts) — FR-014, FR-021 (C9 implicit safety)
+- [x] T024 [P] Create contract test `tests/contract/RequiresVersion.Tests.ps1` (presence of `#requires -Version 7.2` in all scripts) — FR-014, FR-021 (C9 implicit safety)
 	- DoD: Enumerates target scripts and asserts first non-comment line matches directive.
 	- Validation: Fails if any script missing directive; passes when all have it.
 
 Integration tests (run inside a temporary fixture AL project with the overlay copied in; invoke via make; skeletons assert expected behaviors; each file independent → [P]).
-- [ ] T025 [P] Create integration test `tests/integration/BuildParity.Tests.ps1` (INT-BUILD, cross-platform placeholder) — FR-001, FR-011 (C1,C10,C13)
+- [x] T025 [P] Create integration test `tests/integration/BuildParity.Tests.ps1` (INT-BUILD, cross-platform placeholder) — FR-001, FR-011 (C1,C10,C13)
 	- DoD: Invokes `make build` capturing output; asserts 0 exit and presence of expected build markers.
 	- Validation: Both OS CI logs show identical (normalized) essential lines.
-- [ ] T026 [P] Create integration test `tests/integration/CleanIdempotence.Tests.ps1` (INT-CLEAN) — FR-001 (C1,C10)
+- [x] T026 [P] Create integration test `tests/integration/CleanIdempotence.Tests.ps1` (INT-CLEAN) — FR-001 (C1,C10)
 	- DoD: Runs clean twice and asserts both exit codes 0; optional artifact existence check between runs.
 	- Validation: Pester test green; no residual error output.
-- [ ] T027 [P] Create integration test `tests/integration/ShowConfig.Tests.ps1` (INT-CONFIG, INT-PARITY partial) — FR-011, FR-022 (C7,C13)
+- [x] T027 [P] Create integration test `tests/integration/ShowConfig.Tests.ps1` (INT-CONFIG, INT-PARITY partial) — FR-011, FR-022 (C7,C13)
 	- DoD: Captures config output; asserts required keys present and format stable.
 	- Validation: Cross-run diff identical; newline normalization only difference across OS.
-- [ ] T028 [P] Create integration test `tests/integration/ShowAnalyzers.Tests.ps1` (INT-ANALYZERS) — FR-011 (C5,C6)
+- [x] T028 [P] Create integration test `tests/integration/ShowAnalyzers.Tests.ps1` (INT-ANALYZERS) — FR-011 (C5,C6)
 	- DoD: Asserts analyzer listing script exits 0 and outputs either list or 'None found'.
 	- Validation: Test passes when no analyzers installed and when one installed (mock case).
-- [ ] T029 [P] Create integration test `tests/integration/EnvIsolation.Tests.ps1` (INT-ENV-ISO) — FR-013 (C2,C14)
+- [x] T029 [P] Create integration test `tests/integration/EnvIsolation.Tests.ps1` (INT-ENV-ISO) — FR-013 (C2,C14)
 	- DoD: Verifies ALBT_VIA_MAKE not present before/after; present only during invocation (captured via wrapper logging).
 	- Validation: Test passes demonstrating absence outside execution scope.
-- [ ] T030 [P] Create integration test `tests/integration/Parity.Tests.ps1` (INT-PARITY final normalization) — FR-009, FR-016, FR-022 (C13)
+- [x] T030 [P] Create integration test `tests/integration/Parity.Tests.ps1` (INT-PARITY final normalization) — FR-009, FR-016, FR-022 (C13)
 	- DoD: Aggregates outputs from prior targets, normalizes line endings/whitespace, asserts equivalence across OS snapshots.
 	- Validation: CI artifacts comparison yields no diff.
 
 ## Phase 3: Core Implementation (After tests exist & initially fail)
-- [ ] T031 Implement guarded `build.ps1` behavior (inline guard, inline verbosity, exit code comments) — FR-001..FR-004, FR-006 (C1,C2,C3,C4,C5,C6,C8,C9,C10,C12,C13,C14)
+- [x] T031 Implement guarded `build.ps1` behavior (inline guard, inline verbosity, exit code comments) — FR-001..FR-004, FR-006 (C1,C2,C3,C4,C5,C6,C8,C9,C10,C12,C13,C14)
 	- DoD: Build script performs real build steps; returns 0 on success; structured logging present.
 	- Validation: Contract + integration build tests green; analyzer clean.
-- [ ] T032 Implement guarded `clean.ps1` behavior (artifact removal placeholder) — FR-001..FR-004
+- [x] T032 Implement guarded `clean.ps1` behavior (artifact removal placeholder) — FR-001..FR-004
 	- DoD: Removes artifacts deterministically; safe when artifacts absent.
 	- Validation: Idempotence test passes; no errors on missing paths.
-- [ ] T033 Implement guarded `show-config.ps1` (inline guard; emit normalized key/value lines) — FR-011, FR-016 (C7,C13)
+- [x] T033 Implement guarded `show-config.ps1` (inline guard; emit normalized key/value lines) — FR-011, FR-016 (C7,C13)
 	- DoD: Outputs stable ordered list including required keys and any extended keys per FR-049.
 	- Validation: Parity tests confirm consistent ordering/content.
-- [ ] T034 Implement guarded `show-analyzers.ps1` (list installed analyzers or 'None found') — FR-011 (C5,C6)
+- [x] T034 Implement guarded `show-analyzers.ps1` (list installed analyzers or 'None found') — FR-011 (C5,C6)
 	- DoD: Handles no analyzers gracefully; optionally supports `--json` extension (if added later) behind tests.
 	- Validation: Integration analyzer test green.
-- [ ] T035 Update `next-object-number.ps1` help/verbosity alignment (ensure no guard) — FR-005, FR-006 (C11,C12)
+- [x] T035 Update `next-object-number.ps1` help/verbosity alignment (ensure no guard) — FR-005, FR-006 (C11,C12)
 	- DoD: Script prints usage with -h, supports -Verbose, retains existing behavior.
 	- Validation: Utility contract tests pass; direct run unaffected by guard.
 
