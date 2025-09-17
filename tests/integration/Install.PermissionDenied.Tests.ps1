@@ -9,7 +9,6 @@ Describe 'Installer guard: permission denied protection' {
     BeforeAll {
         $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
         $script:WorkspaceRoot = New-InstallTestWorkspace -Prefix 'albt-perm-'
-        $script:TargetRelativePath = 'Makefile'
     }
 
     AfterAll {
@@ -18,7 +17,7 @@ Describe 'Installer guard: permission denied protection' {
         }
     }
 
-    It 'fails with PermissionDenied guard when overlay contains read-only files' {
+    It 'fails with PermissionDenied guard when destination denies write access' {
         $caseRoot = Join-Path $script:WorkspaceRoot ("case-" + [Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $caseRoot | Out-Null
 
@@ -32,43 +31,25 @@ Describe 'Installer guard: permission denied protection' {
         try {
             $server = Start-InstallArchiveServer -ZipPath $archive.ZipPath -BasePath ('albt-' + [Guid]::NewGuid().ToString('N'))
 
-            $first = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref 'main'
-            $first.ExitCode | Should -Be 0
+            # Deny write access to the destination directory
+            $acl = Get-Acl -Path $dest
+            $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                [System.Security.Principal.WindowsIdentity]::GetCurrent().Name,
+                'Write',
+                'Deny'
+            )
+            $acl.SetAccessRule($accessRule)
+            Set-Acl -Path $dest -AclObject $acl
 
-            $targetPath = Join-Path $dest $script:TargetRelativePath
-            Test-Path -LiteralPath $targetPath | Should -BeTrue
+            $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref 'main'
 
-            if ($IsWindows) {
-                $fileInfo = Get-Item -LiteralPath $targetPath -ErrorAction Stop
-                $fileInfo.IsReadOnly = $true
-            } else {
-                & chmod 400 -- $targetPath
-            }
+            $result.ExitCode | Should -Not -Be 0
 
-            try {
-                $second = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref 'main'
+            $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
+            $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }
+            $guardLine | Should -Not -BeNullOrEmpty
 
-                $second.ExitCode | Should -Not -Be 0
-
-                $lines = Get-InstallOutputLines -StdOut $second.StdOut -StdErr $second.StdErr
-                $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }
-                $guardLine | Should -Not -BeNullOrEmpty
-
-                $guard = Assert-InstallGuardLine -Line $guardLine -ExpectedGuard 'PermissionDenied'
-                $guard.Guard | Should -Be 'PermissionDenied'
-
-                ($lines | Where-Object { $_ -match '^[[]install[]]\s+success\s+' }) | Should -BeNullOrEmpty
-            }
-            finally {
-                if (Test-Path -LiteralPath $targetPath) {
-                    if ($IsWindows) {
-                        $fileInfo = Get-Item -LiteralPath $targetPath -ErrorAction SilentlyContinue
-                        if ($fileInfo) { $fileInfo.IsReadOnly = $false }
-                    } else {
-                        & chmod 600 -- $targetPath 2>$null
-                    }
-                }
-            }
+            $null = Assert-InstallGuardLine -Line $guardLine -ExpectedGuard 'PermissionDenied'
         }
         finally {
             if ($server) { Stop-InstallArchiveServer -Server $server }

@@ -26,8 +26,8 @@ This living stub aligns functional requirements (FR-001..FR-025) with the test f
 | FR-020 | T019 - `tests/integration/Install.PermissionDenied.Tests.ps1` | Simulates permission-denied copy failure. |
 | FR-021 | T001 - `tests/_install/Assert-Install.psm1` helpers<br>T022 - `tests/integration/Install.Parity.Structure.Tests.ps1` | Shared helpers keep assertions platform-neutral; parity test enforces no OS-specific drift. |
 | FR-022 | T022 - `tests/integration/Install.Parity.Structure.Tests.ps1` | Single suite expected to pass on Windows & Ubuntu. |
-| FR-023 | T005 - `tests/contract/Install.GitRepoRequired.Tests.ps1` | Guard for missing git repository. |
+| FR-023 | T005 - `tests/contract/Install.GitRepoRequired.Tests.ps1`<br>T024 - Implementation complete | Guard for missing git repository. Implementation verified working. |
 | FR-024 | T006 - `tests/contract/Install.WorkingTreeNotClean.Tests.ps1` | Guard for dirty git state. |
 | FR-025 | T011 - `tests/integration/Install.IdempotentOverwrite.Tests.ps1` | One-command install/update idempotence enforcement. |
 
-_Last updated: 2025-09-16 - T006-T009 contract tests added._
+_Last updated: 2025-09-17 - T024 implementation verified complete (git repo guard logic already implemented and tested)._

@@ -8,6 +8,8 @@ Describe 'Installer download failure categorization: timeout' {
     BeforeAll {
         $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
         $script:WorkspaceRoot = New-InstallTestWorkspace -Prefix 'albt-timeout-'
+        $script:BaseUrl = 'http://192.0.2.1'
+        $script:Ref = 'main'
     }
 
     AfterAll {
@@ -16,7 +18,26 @@ Describe 'Installer download failure categorization: timeout' {
         }
     }
 
-    It 'emits Timeout category when download stalls beyond configured threshold' -Pending {
-        # Placeholder until timeout harness exists (FR-014).
+    It 'emits Timeout category when download times out' {
+        $destRoot = Join-Path $script:WorkspaceRoot ("repo-" + [Guid]::NewGuid().ToString('N'))
+        $dest = Initialize-InstallTestRepo -Path $destRoot
+
+        try {
+            $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $script:BaseUrl -Ref $script:Ref
+
+            $result.ExitCode | Should -Not -Be 0
+
+            $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
+            $failureLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+download\s+failure\s+' }
+            $failureLine | Should -Not -BeNullOrEmpty
+
+            $failure = Assert-InstallDownloadFailureLine -Line $failureLine -ExpectedRef $script:Ref -ExpectedCategory 'Timeout'
+            $failure.Category | Should -Be 'Timeout'
+        }
+        finally {
+            if (Test-Path -LiteralPath $dest) {
+                Remove-Item -LiteralPath $dest -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 }

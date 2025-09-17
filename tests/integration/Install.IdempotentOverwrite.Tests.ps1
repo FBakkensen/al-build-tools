@@ -51,6 +51,10 @@ Describe 'Installer success path: idempotent overwrite' {
             $tamperPath = Join-Path $dest $script:TamperTarget
             Test-Path -LiteralPath $tamperPath | Should -BeTrue
             Set-Content -LiteralPath $tamperPath -Value 'tampered content' -NoNewline
+            
+            # Commit the tampered file to keep working tree clean for second install
+            & git -C $dest add .
+            & git -C $dest commit -m 'Tamper with overlay file for idempotence test' | Out-Null
 
             $second = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref 'main'
             $second.ExitCode | Should -Be 0

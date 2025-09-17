@@ -263,7 +263,8 @@ function Get-InstallDirectorySnapshot {
         }
     }
 
-    return $snapshot
+    # Always return an array, even if empty or single item
+    return ,$snapshot
 }
 
 function Compare-InstallSnapshots {

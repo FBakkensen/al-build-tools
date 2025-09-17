@@ -84,8 +84,54 @@ Describe 'Installer parity structure' {
             $stepLines = $lines | Where-Object { $_ -match '^[[]install[]]\s+step\s+' }
             $stepLines | Should -Not -BeNullOrEmpty
 
-            $parsed = $stepLines | ForEach-Object { Parse-InstallStepLine -Line $_ }
-            ($parsed | Measure-Object).Count | Should -BeGreaterThanOrEqual 4
+            $parsed = @()
+            foreach ($line in $stepLines) {
+                $pattern = '^[[]install[]]\s+step\s+(?<Pairs>.+)$'
+                $match = [regex]::Match($line, $pattern)
+                if (-not $match.Success) {
+                    throw "Line '$line' does not match '[install] step' pattern."
+                }
+
+                $pairsText = $match.Groups['Pairs'].Value
+                $pairs = @{}
+                foreach ($segment in $pairsText -split '\s+') {
+                    if ([string]::IsNullOrWhiteSpace($segment)) { continue }
+                    if ($segment -notmatch '^(?<Key>[A-Za-z0-9_-]+)=(?<Value>.+)$') {
+                        throw "Segment '$segment' from '$line' is not in key=value format."
+                    }
+
+                    $key = $Matches['Key']
+                    $value = $Matches['Value']
+                    $pairs[$key] = $value
+                }
+
+                foreach ($required in @('index','name')) {
+                    if (-not $pairs.ContainsKey($required)) {
+                        throw "Step diagnostic '$line' missing required token '$required'."
+                    }
+                }
+
+                $index = 0
+                if (-not [int]::TryParse($pairs['index'], [ref]$index)) {
+                    throw "Step index '$($pairs['index'])' from '$line' is not an integer."
+                }
+
+                $name = $pairs['name']
+                if ($name -notmatch '^[A-Za-z0-9_-]+$') {
+                    throw "Step name '$name' contains invalid characters for parity expectations."
+                }
+
+                $parsed += [pscustomobject]@{
+                    Index = $index
+                    Name = $name
+                    Pairs = $pairs
+                    RawLine = $line
+                }
+            }
+            
+            if ($parsed.Count -lt 4) {
+                throw "Expected at least 4 step diagnostics, but found $($parsed.Count)"
+            }
 
             $ordered = $parsed | Sort-Object -Property Index
             for ($i = 0; $i -lt $ordered.Count; $i++) {

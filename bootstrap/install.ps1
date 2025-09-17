@@ -20,7 +20,12 @@ if ($args.Count -gt 0) {
 function Write-Note($msg) { Write-Host "[al-build-tools] $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "[ok] $msg" -ForegroundColor Green }
 function Write-Warn2($m)  { Write-Warning $m }
-function Write-Step($n, $msg) { Write-Host ("[{0}] {1}" -f $n, $msg) }
+function Write-Step($n, $msg) { 
+    Write-Host ("[{0}] {1}" -f $n, $msg) 
+    # Emit standardized step diagnostic for cross-platform parity testing
+    $stepName = $msg -replace '[^\w\s]', '' -replace '\s+', '_' -replace '^_|_$', ''
+    Write-Host ("[install] step index={0} name={1}" -f $n, $stepName)
+}
 
 function Install-AlBuildTools {
     [CmdletBinding()]
@@ -32,9 +37,14 @@ function Install-AlBuildTools {
     )
 
     # Check PowerShell version requirement
-    if ($PSVersionTable.PSVersion -lt [System.Version]'7.0') {
+    $psVersion = if ($env:ALBT_TEST_FORCE_PSVERSION) { 
+        [System.Version]$env:ALBT_TEST_FORCE_PSVERSION 
+    } else { 
+        $PSVersionTable.PSVersion 
+    }
+    if ($psVersion -lt [System.Version]'7.0') {
         Write-Host "[install] guard PowerShellVersionUnsupported"
-        throw "PowerShell 7.0 or higher required. Current version: $($PSVersionTable.PSVersion)"
+        throw "PowerShell 7.0 or higher required. Current version: $psVersion"
     }
 
     $startTime = Get-Date
@@ -71,24 +81,20 @@ function Install-AlBuildTools {
     
     # Check working tree cleanliness if this is a git repo
     if ($gitOk -or (Test-Path (Join-Path $destFull '.git'))) {
-        try {
-            $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-            $pinfo.FileName = 'git'
-            $pinfo.Arguments = "-C `"$destFull`" status --porcelain"
-            $pinfo.RedirectStandardOutput = $true
-            $pinfo.RedirectStandardError = $true
-            $pinfo.UseShellExecute = $false
-            $p = [System.Diagnostics.Process]::Start($pinfo)
-            $p.WaitForExit()
-            if ($p.ExitCode -eq 0) {
-                $statusOutput = $p.StandardOutput.ReadToEnd().Trim()
-                if (-not [string]::IsNullOrEmpty($statusOutput)) {
-                    Write-Host "[install] guard WorkingTreeNotClean"
-                    throw "Working tree must be clean. Commit or stash changes first."
-                }
+        $pinfo = New-Object System.Diagnostics.ProcessStartInfo
+        $pinfo.FileName = 'git'
+        $pinfo.Arguments = "-C `"$destFull`" status --porcelain"
+        $pinfo.RedirectStandardOutput = $true
+        $pinfo.RedirectStandardError = $true
+        $pinfo.UseShellExecute = $false
+        $p = [System.Diagnostics.Process]::Start($pinfo)
+        $p.WaitForExit()
+        if ($p.ExitCode -eq 0) {
+            $statusOutput = $p.StandardOutput.ReadToEnd().Trim()
+            if (-not [string]::IsNullOrEmpty($statusOutput)) {
+                Write-Host "[install] guard WorkingTreeNotClean"
+                throw "Working tree must be clean. Commit or stash changes first."
             }
-        } catch {
-            Write-Verbose "[install] working tree check failed: $($_.Exception.Message)"
         }
     }
     Write-Ok "Working in: $destFull"
@@ -124,15 +130,15 @@ function Install-AlBuildTools {
             $hint = 'Check network connectivity and repository URL'
             if ($lastError) {
                 $errorMessage = $lastError.Exception.Message.ToLower()
-                if ($errorMessage -match 'network|connection|timeout|unreachable') {
+                if ($errorMessage -match 'timeout') {
+                    $category = 'Timeout'
+                    $hint = 'Request timed out'
+                } elseif ($errorMessage -match 'network|connection|unreachable') {
                     $category = 'NetworkUnavailable'
                     $hint = 'Network connectivity issues'
                 } elseif ($errorMessage -match '404|not found') {
                     $category = 'NotFound'
                     $hint = 'Repository or reference does not exist'
-                } elseif ($errorMessage -match 'timeout') {
-                    $category = 'Timeout'
-                    $hint = 'Request timed out'
                 } elseif ($errorMessage -match 'corrupt|invalid|archive') {
                     $category = 'CorruptArchive'
                     $hint = 'Archive file is corrupted or invalid'

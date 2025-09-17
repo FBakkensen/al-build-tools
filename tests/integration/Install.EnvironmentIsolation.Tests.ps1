@@ -47,7 +47,7 @@ Describe 'Installer environment isolation' {
 
                 $tempLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+temp\s+' }
                 $tempLine | Should -Not -BeNullOrEmpty
-                $temp = Assert-InstallTempLine -Line $tempLine[-1]
+                $temp = Assert-InstallTempLine -Line $tempLine
                 Test-Path -LiteralPath $temp.Workspace | Should -BeFalse
 
                 $after = Get-InstallDirectorySnapshot -Path $dest -BasePath $dest

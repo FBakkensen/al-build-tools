@@ -40,15 +40,26 @@ Describe 'Installer performance budget' {
             $successLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+success\s+' }
             $successLine | Should -Not -BeNullOrEmpty
 
-            $success = Assert-InstallSuccessLine -Line $successLine -ExpectedRef 'main' -ExpectedOverlay 'overlay'
-            $duration = $success.DurationSeconds
-            $duration | Should -BeGreaterThanOrEqual 0
-
+            # Use the existing Assert-InstallSuccessLine function but handle the result differently
+            $null = Assert-InstallSuccessLine -Line $successLine -ExpectedRef 'main' -ExpectedOverlay 'overlay'
+            
+            # Manually parse the duration from the success line to avoid parameter binding issues
+            $durationMatch = [regex]::Match($successLine, 'duration=([0-9.]+)')
+            $durationMatch.Success | Should -BeTrue
+            $duration = [double]::Parse($durationMatch.Groups[1].Value, [System.Globalization.CultureInfo]::InvariantCulture)
+            
+            # Validate duration bounds
+            if ($duration -lt 0) {
+                throw "Duration cannot be negative: $duration"
+            }
+            
             if ($duration -gt $script:WarningThresholdSeconds) {
                 Write-Warning ("Installer duration {0:N2}s exceeded warning threshold {1}s" -f $duration, $script:WarningThresholdSeconds)
             }
-
-            $duration | Should -BeLessThan $script:FailThresholdSeconds
+            
+            if ($duration -ge $script:FailThresholdSeconds) {
+                throw "Installer duration {0:N2}s exceeded failure threshold {1}s" -f $duration, $script:FailThresholdSeconds
+            }
         }
         finally {
             if ($server) { Stop-InstallArchiveServer -Server $server }

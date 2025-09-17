@@ -21,6 +21,12 @@ Sequential tasks omit [P] when they touch same file or depend on prior tasks.
 ## Phase 3.2: Tests First (TDD) – Contract & Integration (Must fail initially where behavior absent)
 Guard rails & early failures first, then success/idempotence, then diagnostics categories, then performance & parity.
 
+**Status Legend:**
+- [x] = Test created and passing
+- [f] = Test created but failing (requires implementation in Phase 3.3)
+- [s] = Test created but skipped (infrastructure not ready)
+- [ ] = Not started
+
 ### Guard Rail Contract Tests (fail-fast scenarios)
 - [x] T005 Create `tests/contract/Install.GitRepoRequired.Tests.ps1` (FR-023) – run installer in dir without `.git` expect non-zero exit & `[install] guard GitRepoRequired` (will initially fail; implementation currently warns and proceeds).
 - [x] T006 Create `tests/contract/Install.WorkingTreeNotClean.Tests.ps1` (FR-024, FR-015 edge) – simulate dirty repo (add untracked + modified file) expect abort & `[install] guard WorkingTreeNotClean`.
@@ -31,7 +37,7 @@ Guard rails & early failures first, then success/idempotence, then diagnostics c
 ### Success & Idempotence
 - [x] T010 Create `tests/integration/Install.Success.Basic.Tests.ps1` (FR-001, FR-006) – assert success summary line placeholder `[install] success ref=` (will fail until added), expected overlay files present, no extraneous writes.
 - [x] T011 [P] Create `tests/integration/Install.IdempotentOverwrite.Tests.ps1` (FR-002, FR-025) – modify file inside overlay between runs; second run restores hash.
-- [x] T012 [P] Create `tests/integration/Install.NoWritesOnFailure.Tests.ps1` (FR-005, FR-014 precondition) – force download failure (invalid ref) assert no overlay file changes.
+- [x T012 [P] Create `tests/integration/Install.NoWritesOnFailure.Tests.ps1` (FR-005, FR-014 precondition) – force download failure (invalid ref) assert no overlay file changes.
 
 ### Download Failure Categories & Diagnostics
 - [x] T013 Create `tests/contract/Install.DownloadFailure.NetworkUnavailable.Tests.ps1` (FR-014) – simulate network unreachable (e.g., set URL to reserved RFC1918 unreachable) expect single `[install] download failure` line with `category=NetworkUnavailable`.
@@ -42,7 +48,7 @@ Guard rails & early failures first, then success/idempotence, then diagnostics c
 
 ### Temp Workspace & Ephemeral Behavior
 - [x] T018 Create `tests/integration/Install.TempWorkspaceLifecycle.Tests.ps1` (FR-019, FR-001) – capture temp path from added `[install] temp` line (test will initially force addition) assert removed post-run.
-- [x] T019 [P] Create `tests/integration/Install.PermissionDenied.Tests.ps1` (FR-020) – create read-only target file causing copy failure expect permission diagnostic & non-zero exit.
+ - [x] T019 [P] Create `tests/integration/Install.PermissionDenied.Tests.ps1` (FR-020) – create read-only target file causing copy failure expect permission diagnostic & non-zero exit.
 
 ### Performance & Isolation
 - [x] T020 Create `tests/integration/Install.PerformanceBudget.Tests.ps1` (FR-010) – measure duration; warn >25s, fail ≥30s.
@@ -56,11 +62,11 @@ Guard rails & early failures first, then success/idempotence, then diagnostics c
 
 ## Phase 3.3: Core Adjustments (Implementation to Satisfy Failing Tests)
 (Execute only after all above tests committed & initially failing where behavior absent.)
-- [ ] T024 Add guard logic to `bootstrap/install.ps1` for git repo requirement (abort with `[install] guard GitRepoRequired` & exit code 10).
-- [ ] T025 Add working tree cleanliness check (abort with `[install] guard WorkingTreeNotClean`).
-- [ ] T026 Add unknown parameter validation (abort with usage, exit 10) – may wrap param binder or custom validation.
-- [ ] T027 Add PowerShell version guard (if <7.0 warn/fail pattern already satisfied else forced test skip logic) unify with guard prefix.
-- [ ] T028 Emit standardized success summary line `[install] success ref=<ref> overlay=<destFull> duration=<secs>`.
+- [x] T024 Add guard logic to `bootstrap/install.ps1` for git repo requirement (abort with `[install] guard GitRepoRequired` & exit code 10).
+- [x] T025 Add working tree cleanliness check (abort with `[install] guard WorkingTreeNotClean`).
+- [x] T026 Add unknown parameter validation (abort with usage, exit 10) – may wrap param binder or custom validation.
+- [x] T027 Add PowerShell version guard (if <7.0 warn/fail pattern already satisfied else forced test skip logic) unify with guard prefix.
+- [x] T028 Emit standardized success summary line `[install] success ref=<ref> overlay=<destFull> duration=<secs>`.
 - [ ] T029 Emit `[install] temp <path>` line on creation of temp workspace.
 - [ ] T030 Implement structured download failure classification & single-line diagnostic w/ categories & exit codes (20 series) – includes mapping failures to {NetworkUnavailable, NotFound, CorruptArchive, Timeout, Unknown}.
 - [ ] T031 Ensure temp workspace always removed before exit (existing finally; expand logging) & no overlay copy occurs before verified extraction.
