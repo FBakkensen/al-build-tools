@@ -31,15 +31,24 @@ Describe 'Installer guard: permission denied protection' {
         try {
             $server = Start-InstallArchiveServer -ZipPath $archive.ZipPath -BasePath ('albt-' + [Guid]::NewGuid().ToString('N'))
 
+            $originalAclSddl = $null
+            $unixWriteRemoved = $false
+
             # Deny write access to the destination directory
-            $acl = Get-Acl -Path $dest
-            $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-                [System.Security.Principal.WindowsIdentity]::GetCurrent().Name,
-                'Write',
-                'Deny'
-            )
-            $acl.SetAccessRule($accessRule)
-            Set-Acl -Path $dest -AclObject $acl
+            if ($IsWindows) {
+                $originalAclSddl = (Get-Acl -Path $dest).GetSecurityDescriptorSddlForm('All')
+                $acl = Get-Acl -Path $dest
+                $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                    [System.Security.Principal.WindowsIdentity]::GetCurrent().Name,
+                    'Write',
+                    'Deny'
+                )
+                $acl.SetAccessRule($accessRule)
+                Set-Acl -Path $dest -AclObject $acl
+            } else {
+                & chmod 'u-w' $dest | Out-Null
+                $unixWriteRemoved = $true
+            }
 
             $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref 'main'
 
@@ -53,6 +62,17 @@ Describe 'Installer guard: permission denied protection' {
         }
         finally {
             if ($server) { Stop-InstallArchiveServer -Server $server }
+
+            if (Test-Path -LiteralPath $dest) {
+                if ($IsWindows -and $originalAclSddl) {
+                    $restoreAcl = New-Object System.Security.AccessControl.DirectorySecurity
+                    $restoreAcl.SetSecurityDescriptorSddlForm($originalAclSddl)
+                    Set-Acl -Path $dest -AclObject $restoreAcl
+                } elseif (-not $IsWindows -and $unixWriteRemoved) {
+                    & chmod 'u+w' $dest | Out-Null
+                }
+            }
+
             if (Test-Path -LiteralPath $caseRoot) {
                 Remove-Item -LiteralPath $caseRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
