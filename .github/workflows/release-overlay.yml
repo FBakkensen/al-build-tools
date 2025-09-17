@@ -1,0 +1,32 @@
+# ==============================================================================
+# Repository Safety Warning
+# This workflow performs manual release packaging for overlay artifacts.
+# Execute only from trusted automation contexts; avoid running release scripts
+# inside local source clones or invoking bootstrap/install.ps1 within this repo.
+# ==============================================================================
+
+name: Manual Overlay Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (semantic version, e.g., 1.2.3)'
+        required: true
+      summary:
+        description: 'Maintainer-provided summary for release notes'
+        required: true
+      dry_run:
+        description: 'Generate artifacts without publishing release'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Manual overlay release
+    runs-on: ubuntu-latest
+    steps: []

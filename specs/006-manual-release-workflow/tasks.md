@@ -26,8 +26,8 @@ Path Conventions: Helper scripts live under `scripts/release/` (internal, NOT co
 
 ---
 Phase 3.1: Setup
-- [ ] T001 Create initial workflow skeleton `.github/workflows/release-overlay.yml` with `workflow_dispatch` inputs (`version`, `summary`, `dry_run`) and minimal job scaffold (no steps yet).
-- [ ] T002 Add repository safety comment block & required permissions (contents: write) to `.github/workflows/release-overlay.yml`.
+- [x] T001 Create initial workflow skeleton `.github/workflows/release-overlay.yml` with `workflow_dispatch` inputs (`version`, `summary`, `dry_run`) and minimal job scaffold (no steps yet).
+- [x] T002 Add repository safety comment block & required permissions (contents: write) to `.github/workflows/release-overlay.yml`.
 
 Phase 3.2: Tests First (TDD)  (All must exist & fail before implementation)
 - [ ] T003 [P] Contract test for acceptance criteria in `tests/contract/ReleaseWorkflow.AcceptanceCriteria.Tests.ps1` validating presence of planned steps / required inputs (stub assertions initially failing).
