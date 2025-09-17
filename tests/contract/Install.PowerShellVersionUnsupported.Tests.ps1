@@ -24,7 +24,7 @@ Describe 'Installer guard: PowerShell version must be supported' {
             $envVars = @{ 'ALBT_TEST_FORCE_PSVERSION' = '5.1.0' }
             $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Environment $envVars
 
-            $result.ExitCode | Should -Not -Be 0
+            $result.ExitCode | Should -Be 10
 
             $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
             $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }

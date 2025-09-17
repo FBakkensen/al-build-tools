@@ -27,7 +27,7 @@ Describe 'Installer guard: refuse rerun when working tree dirty after partial fa
         try {
             $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest
 
-            $result.ExitCode | Should -Not -Be 0
+            $result.ExitCode | Should -Be 10
 
             $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
             $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }

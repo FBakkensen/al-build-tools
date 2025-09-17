@@ -35,7 +35,7 @@ Describe 'Installer failure isolation: no writes when download fails' {
             $invalidRef = 'missing-ref-' + [Guid]::NewGuid().ToString('N')
             $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref $invalidRef
 
-            $result.ExitCode | Should -Not -Be 0
+            $result.ExitCode | Should -Be 20
 
             $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
             ($lines | Where-Object { $_ -match '^[[]install[]]\s+success\s+' }) | Should -BeNullOrEmpty

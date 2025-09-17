@@ -36,7 +36,7 @@ Describe 'Installer download failure categorization: corrupt archive' {
 
             $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref 'main'
 
-            $result.ExitCode | Should -Not -Be 0
+            $result.ExitCode | Should -Be 20
 
             $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
             $failureLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+download\s+failure\s+' }

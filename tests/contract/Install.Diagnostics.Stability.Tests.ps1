@@ -27,7 +27,7 @@ Describe 'Installer diagnostics stability' {
         try {
             $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest
 
-            $result.ExitCode | Should -Not -Be 0
+            $result.ExitCode | Should -Be 10
 
             $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
             $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }
@@ -91,7 +91,7 @@ Describe 'Installer diagnostics stability' {
             $missingRef = 'missing-' + [Guid]::NewGuid().ToString('N')
             $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref $missingRef
 
-            $result.ExitCode | Should -Not -Be 0
+            $result.ExitCode | Should -Be 20
 
             $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
             $failureLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+download\s+failure\s+' }

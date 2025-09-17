@@ -91,6 +91,46 @@ function Invoke-InstallScript {
     }
 }
 
+function Invoke-ChildPwsh {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $ScriptPath,
+        [string] $Arguments,
+        [string] $WorkingDirectory,
+        [hashtable] $Env,
+        [switch] $EngineVerbose
+    )
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = 'pwsh'
+    
+    if ($EngineVerbose) {
+        # Use -Command to force verbose preference on in child scope for better compatibility
+        $cmd = "& { `$VerbosePreference = 'Continue'; & `"$ScriptPath`" $Arguments }"
+        $psi.Arguments = "-NoLogo -NoProfile -Command $cmd"
+    } else {
+        $psi.Arguments = "-NoLogo -NoProfile -File `"$ScriptPath`" $Arguments"
+    }
+    
+    if ($WorkingDirectory) { $psi.WorkingDirectory = $WorkingDirectory }
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    
+    if ($Env) {
+        foreach ($key in $Env.Keys) { $psi.Environment[$key] = [string]$Env[$key] }
+    }
+    
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $proc.WaitForExit()
+    
+    return [pscustomobject]@{
+        ExitCode = $proc.ExitCode
+        StdOut   = $proc.StandardOutput.ReadToEnd()
+        StdErr   = $proc.StandardError.ReadToEnd()
+    }
+}
+
 function Get-InstallOutputLines {
     [CmdletBinding()]
     param(
@@ -108,4 +148,5 @@ Export-ModuleMember -Function `
     New-InstallTestWorkspace, `
     Initialize-InstallTestRepo, `
     Invoke-InstallScript, `
+    Invoke-ChildPwsh, `
     Get-InstallOutputLines

@@ -23,7 +23,7 @@ Describe 'Installer guard: unknown parameters must be rejected with guidance' {
         try {
             $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -AdditionalArguments @('-Nope123')
 
-            $result.ExitCode | Should -Not -Be 0
+            $result.ExitCode | Should -Be 10
 
             $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
             $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }

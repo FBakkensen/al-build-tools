@@ -62,7 +62,7 @@ Describe 'Installer guard: Git repository required' {
         try {
             $result = Invoke-TestInstall -Dest $dest
 
-            $result.ExitCode | Should -Not -Be 0
+            $result.ExitCode | Should -Be 10
 
             $lines = @()
             if ($result.StdOut) { $lines += $result.StdOut -split "(`r`n|`n)" }

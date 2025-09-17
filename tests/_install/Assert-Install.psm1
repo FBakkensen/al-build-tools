@@ -6,6 +6,7 @@ $script:InstallTempLinePattern = '^\[install\]\s+temp\s+(?<Pairs>.+)$'
 $script:InstallSuccessLinePattern = '^\[install\]\s+success\s+(?<Pairs>.+)$'
 $script:InstallGuardLinePattern = '^\[install\]\s+guard\s+(?<Guard>[A-Za-z0-9]+)(?<Pairs>(?:\s+[A-Za-z0-9_-]+=.*)*)$'
 $script:InstallDownloadFailurePattern = '^\[install\]\s+download\s+failure\s+(?<Pairs>.+)$'
+$script:InstallStepLinePattern = '^\[install\]\s+step\s+(?<Pairs>.+)$'
 $script:InstallDownloadCategories = @('NetworkUnavailable','NotFound','CorruptArchive','Timeout','Unknown')
 
 function ConvertFrom-InstallQuotedValue {
@@ -234,6 +235,42 @@ function Assert-InstallDownloadFailureLine {
     }
 }
 
+function Assert-InstallStepLine {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Line
+    )
+
+    $match = [regex]::Match($Line, $script:InstallStepLinePattern)
+    if (-not $match.Success) {
+        throw "Line '$Line' does not match expected '[install] step' diagnostic pattern."
+    }
+
+    $pairs = Get-InstallKeyValueMap -Text $match.Groups['Pairs'].Value
+    foreach ($required in @('index','name')) {
+        if (-not $pairs.Contains($required)) {
+            throw "Step diagnostic line '$Line' is missing required token '$required'."
+        }
+    }
+
+    $index = 0
+    if (-not [int]::TryParse($pairs['index'], [ref]$index)) {
+        throw "Step index '$($pairs['index'])' from line '$Line' is not an integer."
+    }
+
+    $name = $pairs['name']
+    if ($name -notmatch '^[A-Za-z0-9_-]+$') {
+        throw "Step name '$name' contains invalid characters for parity expectations."
+    }
+
+    return [pscustomobject]@{
+        Index = $index
+        Name = $name
+        Pairs = $pairs
+        RawLine = $Line
+    }
+}
+
 function Get-InstallDirectorySnapshot {
     [CmdletBinding()]
     param(
@@ -358,6 +395,7 @@ Export-ModuleMember -Function `
     Assert-InstallSuccessLine, `
     Assert-InstallGuardLine, `
     Assert-InstallDownloadFailureLine, `
+    Assert-InstallStepLine, `
     Get-InstallDirectorySnapshot, `
     Compare-InstallSnapshots, `
     Assert-InstallSnapshotsEqual

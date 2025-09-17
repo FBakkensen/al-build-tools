@@ -21,12 +21,6 @@ Sequential tasks omit [P] when they touch same file or depend on prior tasks.
 ## Phase 3.2: Tests First (TDD) – Contract & Integration (Must fail initially where behavior absent)
 Guard rails & early failures first, then success/idempotence, then diagnostics categories, then performance & parity.
 
-**Status Legend:**
-- [x] = Test created and passing
-- [f] = Test created but failing (requires implementation in Phase 3.3)
-- [s] = Test created but skipped (infrastructure not ready)
-- [ ] = Not started
-
 ### Guard Rail Contract Tests (fail-fast scenarios)
 - [x] T005 Create `tests/contract/Install.GitRepoRequired.Tests.ps1` (FR-023) – run installer in dir without `.git` expect non-zero exit & `[install] guard GitRepoRequired` (will initially fail; implementation currently warns and proceeds).
 - [x] T006 Create `tests/contract/Install.WorkingTreeNotClean.Tests.ps1` (FR-024, FR-015 edge) – simulate dirty repo (add untracked + modified file) expect abort & `[install] guard WorkingTreeNotClean`.
@@ -37,7 +31,7 @@ Guard rails & early failures first, then success/idempotence, then diagnostics c
 ### Success & Idempotence
 - [x] T010 Create `tests/integration/Install.Success.Basic.Tests.ps1` (FR-001, FR-006) – assert success summary line placeholder `[install] success ref=` (will fail until added), expected overlay files present, no extraneous writes.
 - [x] T011 [P] Create `tests/integration/Install.IdempotentOverwrite.Tests.ps1` (FR-002, FR-025) – modify file inside overlay between runs; second run restores hash.
-- [x T012 [P] Create `tests/integration/Install.NoWritesOnFailure.Tests.ps1` (FR-005, FR-014 precondition) – force download failure (invalid ref) assert no overlay file changes.
+- [x] T012 [P] Create `tests/integration/Install.NoWritesOnFailure.Tests.ps1` (FR-005, FR-014 precondition) – force download failure (invalid ref) assert no overlay file changes.
 
 ### Download Failure Categories & Diagnostics
 - [x] T013 Create `tests/contract/Install.DownloadFailure.NetworkUnavailable.Tests.ps1` (FR-014) – simulate network unreachable (e.g., set URL to reserved RFC1918 unreachable) expect single `[install] download failure` line with `category=NetworkUnavailable`.
@@ -48,7 +42,7 @@ Guard rails & early failures first, then success/idempotence, then diagnostics c
 
 ### Temp Workspace & Ephemeral Behavior
 - [x] T018 Create `tests/integration/Install.TempWorkspaceLifecycle.Tests.ps1` (FR-019, FR-001) – capture temp path from added `[install] temp` line (test will initially force addition) assert removed post-run.
- - [x] T019 [P] Create `tests/integration/Install.PermissionDenied.Tests.ps1` (FR-020) – create read-only target file causing copy failure expect permission diagnostic & non-zero exit.
+- [x] T019 [P] Create `tests/integration/Install.PermissionDenied.Tests.ps1` (FR-020) – create read-only target file causing copy failure expect permission diagnostic & non-zero exit.
 
 ### Performance & Isolation
 - [x] T020 Create `tests/integration/Install.PerformanceBudget.Tests.ps1` (FR-010) – measure duration; warn >25s, fail ≥30s.
@@ -67,21 +61,21 @@ Guard rails & early failures first, then success/idempotence, then diagnostics c
 - [x] T026 Add unknown parameter validation (abort with usage, exit 10) – may wrap param binder or custom validation.
 - [x] T027 Add PowerShell version guard (if <7.0 warn/fail pattern already satisfied else forced test skip logic) unify with guard prefix.
 - [x] T028 Emit standardized success summary line `[install] success ref=<ref> overlay=<destFull> duration=<secs>`.
-- [ ] T029 Emit `[install] temp <path>` line on creation of temp workspace.
-- [ ] T030 Implement structured download failure classification & single-line diagnostic w/ categories & exit codes (20 series) – includes mapping failures to {NetworkUnavailable, NotFound, CorruptArchive, Timeout, Unknown}.
-- [ ] T031 Ensure temp workspace always removed before exit (existing finally; expand logging) & no overlay copy occurs before verified extraction.
-- [ ] T032 Add permission failure detection (wrap copy with try/catch to map to exit 30 with diagnostic `[install] guard PermissionDenied`).
-- [ ] T033 Implement restricted write safety verification (guard path scope to overlay only) – fail if copy would escape dest root.
-- [ ] T034 Add elapsed time measurement & output (used by performance test) – does not enforce threshold internally (tests assert).
-- [ ] T035 Normalize step numbering / messages for parity (stable sequence names).
+- [x] T029 Emit `[install] temp <path>` line on creation of temp workspace.
+- [x] T030 Implement structured download failure classification & single-line diagnostic w/ categories & exit codes (20 series) – includes mapping failures to {NetworkUnavailable, NotFound, CorruptArchive, Timeout, Unknown}.
+- [x] T031 Ensure temp workspace always removed before exit (existing finally; expand logging) & no overlay copy occurs before verified extraction.
+- [x] T032 Add permission failure detection (wrap copy with try/catch to map to exit 30 with diagnostic `[install] guard PermissionDenied`).
+- [x] T033 Implement restricted write safety verification (guard path scope to overlay only) – fail if copy would escape dest root.
+- [x] T034 Add elapsed time measurement & output (used by performance test) – does not enforce threshold internally (tests assert).
+- [x] T035 Normalize step numbering / messages for parity (stable sequence names).
 
 ## Phase 3.4: Integration / Refinement
-- [ ] T036 Refactor duplicated assertion helpers into `tests/_install/Assert-Install.psm1` (if drift emerged during implementation tasks).
-- [ ] T037 Update `contracts/README.md` exit code table if final exit codes differ; ensure tests updated accordingly (FR-012, FR-013 alignment).
-- [ ] T038 Update `traceability.md` with final mapping FR → Test File.
+- [x] T036 Refactor duplicated assertion helpers into `tests/_install/Assert-Install.psm1` (if drift emerged during implementation tasks).
+- [x] T037 Update `contracts/README.md` exit code table if final exit codes differ; ensure tests updated accordingly (FR-012, FR-013 alignment).
+- [x] T038 Update `traceability.md` with final mapping FR → Test File.
 
 ## Phase 3.5: Polish
-- [ ] T039 [P] Add inline documentation comments in `bootstrap/install.ps1` for new guard sections referencing FR IDs (limited; avoid noise).
+- [x] T039 [P] Add inline documentation comments in `bootstrap/install.ps1` for new guard sections referencing FR IDs (limited; avoid noise).
 - [ ] T040 [P] Add contributor guide snippet to `README.md` summarizing installer test contract (FR-012).
 - [ ] T041 [P] Optimize any slow test setup (cache clone for repeated parity checks without altering overwrite semantics).
 - [ ] T042 Final consistency pass: run entire test suite locally (both categories). Capture runtime metrics.

@@ -43,7 +43,7 @@ Describe 'Installer guard: permission denied protection' {
 
             $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref 'main'
 
-            $result.ExitCode | Should -Not -Be 0
+            $result.ExitCode | Should -Be 30
 
             $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
             $guardLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+guard\s+' }

@@ -25,7 +25,7 @@ Describe 'Installer download failure categorization: network unavailable' {
         try {
             $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $script:BaseUrl -Ref $script:Ref
 
-            $result.ExitCode | Should -Not -Be 0
+            $result.ExitCode | Should -Be 20
 
             $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
             $failureLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+download\s+failure\s+' }
