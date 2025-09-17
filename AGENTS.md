@@ -55,5 +55,19 @@ When contributing: If you are about to add a new file under `overlay/`, ask: (a)
 ## Security & Configuration Tips
 - Never hardcode secrets; read from environment variables. On Windows, use `-ExecutionPolicy Bypass` only for one-off local runs.
 
-## Agent Behavior (Codex CLI)
-- Do not run repository-changing Git operations or create PRs without explicit user instruction. Follow the paths/commands above and ask when uncertain.
+## ⚠️ CRITICAL: Repository Safety Warning
+**NEVER run `bootstrap/install.ps1` directly in this repository.** 
+
+Running the installer in the source repository will:
+- Pollute the working directory with overlay files
+- Create untracked files that interfere with git operations
+- Potentially overwrite local development files
+- Make the repository dirty and complicate testing
+
+**Safe alternatives:**
+- Use the test harness in `tests/` directory which creates isolated workspaces
+- Run installer in a separate, disposable test directory
+- Use the archive server test utilities that provide controlled environments
+
+The installer is designed to be run in **consumer repositories**, not in the development repository.
+
