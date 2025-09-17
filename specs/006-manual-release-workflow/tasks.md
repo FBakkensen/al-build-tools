@@ -30,22 +30,22 @@ Phase 3.1: Setup
 - [x] T002 Add repository safety comment block & required permissions (contents: write) to `.github/workflows/release-overlay.yml`.
 
 Phase 3.2: Tests First (TDD)  (All must exist & fail before implementation)
-- [ ] T003 [P] Contract test for acceptance criteria in `tests/contract/ReleaseWorkflow.AcceptanceCriteria.Tests.ps1` validating presence of planned steps / required inputs (stub assertions initially failing).
-- [ ] T004 [P] Contract test for success metrics in `tests/contract/ReleaseWorkflow.SuccessMetrics.Tests.ps1` asserting placeholders for duration/hash metrics collection.
-- [ ] T005 [P] Integration test: dry run produces no tag/release, artifacts exist in `tests/integration/release/DryRun.Tests.ps1`.
-- [ ] T006 [P] Integration test: real run creates tag + release + asset in `tests/integration/release/PublishBasic.Tests.ps1`.
-- [ ] T007 [P] Integration test: hash manifest completeness & root hash reproducibility in `tests/integration/release/HashManifest.Tests.ps1`.
-- [ ] T008 [P] Integration test: overlay isolation (no extraneous files) in `tests/integration/release/OverlayIsolation.Tests.ps1`.
-- [ ] T009 [P] Integration test: non-monotonic version abort in `tests/integration/release/VersionMonotonicity.Tests.ps1`.
-- [ ] T010 [P] Integration test: tag collision abort in `tests/integration/release/TagCollision.Tests.ps1`.
-- [ ] T011 [P] Integration test: dirty overlay abort in `tests/integration/release/DirtyOverlay.Tests.ps1`.
-- [ ] T012 [P] Integration test: maintainer summary inclusion in `tests/integration/release/SummaryInNotes.Tests.ps1`.
-- [ ] T013 [P] Integration test: diff summary sections correct in `tests/integration/release/DiffSummary.Tests.ps1`.
-- [ ] T014 [P] Integration test: metadata JSON block presence & schema in `tests/integration/release/MetadataBlock.Tests.ps1`.
-- [ ] T015 [P] Integration test: immutability (re-run same version fails) in `tests/integration/release/Immutability.Tests.ps1`.
-- [ ] T016 [P] Integration test: performance (duration ≤ target) in `tests/integration/release/PerformanceBudget.Tests.ps1`.
-- [ ] T017 [P] Integration test: rollback availability (prior release still downloadable) in `tests/integration/release/RollbackAvailability.Tests.ps1`.
-- [ ] T018 [P] Integration test: failure transparency single-line error in `tests/integration/release/FailureTransparency.Tests.ps1`.
+- [x] T003 [P] Contract test for acceptance criteria in `tests/contract/ReleaseWorkflow.AcceptanceCriteria.Tests.ps1` validating presence of planned steps / required inputs (stub assertions initially failing).
+- [x] T004 [P] Contract test for success metrics in `tests/contract/ReleaseWorkflow.SuccessMetrics.Tests.ps1` asserting placeholders for duration/hash metrics collection.
+- [x] T005 [P] Integration test: dry run produces no tag/release, artifacts exist in `tests/integration/release/DryRun.Tests.ps1`.
+- [x] T006 [P] Integration test: real run creates tag + release + asset in `tests/integration/release/PublishBasic.Tests.ps1`.
+- [x] T007 [P] Integration test: hash manifest completeness & root hash reproducibility in `tests/integration/release/HashManifest.Tests.ps1`.
+- [x] T008 [P] Integration test: overlay isolation (no extraneous files) in `tests/integration/release/OverlayIsolation.Tests.ps1`.
+- [x] T009 [P] Integration test: non-monotonic version abort in `tests/integration/release/VersionMonotonicity.Tests.ps1`.
+- [x] T010 [P] Integration test: tag collision abort in `tests/integration/release/TagCollision.Tests.ps1`.
+- [x] T011 [P] Integration test: dirty overlay abort in `tests/integration/release/DirtyOverlay.Tests.ps1`.
+- [x] T012 [P] Integration test: maintainer summary inclusion in `tests/integration/release/SummaryInNotes.Tests.ps1`.
+- [x] T013 [P] Integration test: diff summary sections correct in `tests/integration/release/DiffSummary.Tests.ps1`.
+- [x] T014 [P] Integration test: metadata JSON block presence & schema in `tests/integration/release/MetadataBlock.Tests.ps1`.
+- [x] T015 [P] Integration test: immutability (re-run same version fails) in `tests/integration/release/Immutability.Tests.ps1`.
+- [x] T016 [P] Integration test: performance (duration ≤ target) in `tests/integration/release/PerformanceBudget.Tests.ps1`.
+- [x] T017 [P] Integration test: rollback availability (prior release still downloadable) in `tests/integration/release/RollbackAvailability.Tests.ps1`.
+- [x] T018 [P] Integration test: failure transparency single-line error in `tests/integration/release/FailureTransparency.Tests.ps1`.
 
 Phase 3.3: Core Entity Helper Scripts (Models)  (Parallel; distinct files)
 - [ ] T019 [P] Implement Version + ReleaseTag helpers in `scripts/release/version.ps1` (parse, compare semver, tag existence check).
