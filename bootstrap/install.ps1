@@ -121,19 +121,24 @@ function Install-AlBuildTools {
         if (-not $downloaded) {
             # Classify the download failure
             $category = 'Unknown'
+            $hint = 'Check network connectivity and repository URL'
             if ($lastError) {
                 $errorMessage = $lastError.Exception.Message.ToLower()
                 if ($errorMessage -match 'network|connection|timeout|unreachable') {
                     $category = 'NetworkUnavailable'
+                    $hint = 'Network connectivity issues'
                 } elseif ($errorMessage -match '404|not found') {
                     $category = 'NotFound'
+                    $hint = 'Repository or reference does not exist'
                 } elseif ($errorMessage -match 'timeout') {
                     $category = 'Timeout'
+                    $hint = 'Request timed out'
                 } elseif ($errorMessage -match 'corrupt|invalid|archive') {
                     $category = 'CorruptArchive'
+                    $hint = 'Archive file is corrupted or invalid'
                 }
             }
-            Write-Host "[install] download failure category=$category"
+            Write-Host "[install] download failure ref=`"$Ref`" url=`"$base`" category=$category hint=`"$hint`""
             throw "Failed to download repo archive for ref '$Ref' from $Url."
         }
 
@@ -142,12 +147,12 @@ function Install-AlBuildTools {
         try {
             Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force -ErrorAction Stop
         } catch {
-            Write-Host "[install] download failure category=CorruptArchive"
+            Write-Host "[install] download failure ref=`"$Ref`" url=`"$base`" category=CorruptArchive hint=`"Failed to extract archive`""
             throw "Failed to extract archive: $($_.Exception.Message)"
         }
         $top = Get-ChildItem -Path $extract -Directory | Select-Object -First 1
         if (-not $top) { 
-            Write-Host "[install] download failure category=CorruptArchive"
+            Write-Host "[install] download failure ref=`"$Ref`" url=`"$base`" category=CorruptArchive hint=`"Archive appears empty`""
             throw 'Archive appears empty or unreadable.' 
         }
         $src = Join-Path $top.FullName $Source
@@ -157,14 +162,14 @@ function Install-AlBuildTools {
             if ($cand) { 
                 $src = $cand.FullName 
             } else { 
-                Write-Host "[install] download failure category=NotFound"
+                Write-Host "[install] download failure ref=`"$Ref`" url=`"$base`" category=NotFound hint=`"Source folder '$Source' not found in archive`""
                 throw "Expected subfolder '$Source' not found in archive at ref '$Ref'." 
             }
         }
         
         # Validate extraction completed successfully before proceeding
         if (-not (Get-ChildItem -Path $src -File -ErrorAction SilentlyContinue)) {
-            Write-Host "[install] download failure category=CorruptArchive"
+            Write-Host "[install] download failure ref=`"$Ref`" url=`"$base`" category=CorruptArchive hint=`"Source directory contains no files`""
             throw "Source directory '$src' contains no files."
         }
         

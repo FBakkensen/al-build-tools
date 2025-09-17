@@ -42,7 +42,7 @@ Describe 'Installer download failure categorization: corrupt archive' {
             $failureLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+download\s+failure\s+' }
             $failureLine | Should -Not -BeNullOrEmpty
 
-            $failure = Assert-InstallDownloadFailureLine -Line $failureLine[-1] -ExpectedRef 'main' -ExpectedCategory 'CorruptArchive'
+            $failure = Assert-InstallDownloadFailureLine -Line $failureLine -ExpectedRef 'main' -ExpectedCategory 'CorruptArchive'
             $failure.Category | Should -Be 'CorruptArchive'
         }
         finally {

@@ -97,7 +97,7 @@ Describe 'Installer diagnostics stability' {
             $failureLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+download\s+failure\s+' }
             $failureLine | Should -Not -BeNullOrEmpty
 
-            $parsed = Assert-InstallDownloadFailureLine -Line $failureLine[-1] -ExpectedRef $missingRef
+            $parsed = Assert-InstallDownloadFailureLine -Line $failureLine -ExpectedRef $missingRef
             $parsed.RawLine.StartsWith('[install] download failure') | Should -BeTrue
         }
         finally {
