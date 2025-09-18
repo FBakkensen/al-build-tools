@@ -57,16 +57,16 @@ Phase 3.3: Core Entity Helper Scripts (Models)  (Parallel; distinct files)
 - [x] T025 [P] Implement ValidationGate orchestrator in `scripts/release/validation-gates.ps1` (clean overlay, uniqueness, monotonicity, isolation, dry-run safety logic stubs returning structured diagnostics).
 
 Phase 3.4: Workflow Implementation (Sequential – same YAML file)
-- [ ] T026 Add checkout + git fetch depth step in `.github/workflows/release-overlay.yml`.
-- [ ] T027 Add step invoking `version.ps1` for input normalization & monotonicity validation (fail fast) in workflow YAML.
-- [ ] T028 Add step invoking `overlay.ps1` to enumerate files and expose counts as outputs.
-- [ ] T029 Add step invoking `hash-manifest.ps1` to produce `manifest.sha256.txt` (upload as artifact in dry run path too).
-- [ ] T030 Add step invoking `diff-summary.ps1` to produce structured diff output file for later notes composition.
-- [ ] T031 Add conditional dry-run block: upload manifest + diff + metadata preview; set outputs; skip remaining steps if true.
-- [ ] T032 Add tag creation step (annotated) using version helper (abort if collision) in workflow YAML.
-- [ ] T033 Add artifact packaging step invoking `release-artifact.ps1` and uploading resulting zip as release asset draft placeholder.
-- [ ] T034 Add release notes composition & release publish step invoking `release-notes.ps1` (inject maintainer summary when provided) and finalize published release.
-- [ ] T035 Add post-publish verification step (re-fetch release, validate single asset & metadata JSON block present) in workflow YAML.
+- [x] T026 Add checkout + git fetch depth step in `.github/workflows/release-overlay.yml`.
+- [x] T027 Add step invoking `version.ps1` for input normalization & monotonicity validation (fail fast) in workflow YAML.
+- [x] T028 Add step invoking `overlay.ps1` to enumerate files and expose counts as outputs.
+- [x] T029 Add step invoking `hash-manifest.ps1` to produce `manifest.sha256.txt` (upload as artifact in dry run path too).
+- [x] T030 Add step invoking `diff-summary.ps1` to produce structured diff output file for later notes composition.
+- [x] T031 Add conditional dry-run block: upload manifest + diff + metadata preview; set outputs; skip remaining steps if true.
+- [x] T032 Add tag creation step (annotated) using version helper (abort if collision) in workflow YAML.
+- [x] T033 Add artifact packaging step invoking `release-artifact.ps1` and uploading resulting zip as release asset draft placeholder.
+- [x] T034 Add release notes composition & release publish step invoking `release-notes.ps1` (inject maintainer summary when provided) and finalize published release.
+- [x] T035 Add post-publish verification step (re-fetch release, validate single asset & metadata JSON block present) in workflow YAML.
 
 Phase 3.5: Integration / Guards
 - [ ] T036 Add failure transparency wrapper ensuring each gate emits single-line `ERROR:` message on abort (shared function or inline) in `scripts/release/validation-gates.ps1`.

@@ -29,4 +29,427 @@ jobs:
   release:
     name: Manual overlay release
     runs-on: ubuntu-latest
-    steps: []
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
+      REQUESTED_VERSION: ${{ github.event.inputs.version }}
+      DRY_RUN_INPUT: ${{ github.event.inputs.dry_run }}
+      MAINTAINER_SUMMARY: ${{ github.event.inputs.summary }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve release version
+        id: version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Set-ActionOutput {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [string]$Value
+            )
+
+            if ($null -eq $Value) {
+              $Value = ''
+            }
+
+            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+          $workspace = Get-Location
+          $artifactDir = Join-Path $workspace 'artifacts/workflow'
+          [System.IO.Directory]::CreateDirectory($artifactDir) | Out-Null
+
+          $versionInput = $env:REQUESTED_VERSION
+          if ([string]::IsNullOrWhiteSpace($versionInput)) {
+            throw 'Version input is required.'
+          }
+
+          $versionJson = ./scripts/release/version.ps1 -Version $versionInput -AsJson
+          $versionInfo = $versionJson | ConvertFrom-Json -Depth 6
+
+          if ($versionInfo.Latest -and -not $versionInfo.IsGreaterThanLatest) {
+            $latest = $versionInfo.Latest.Normalized
+            throw "Proposed version $($versionInfo.Candidate.Normalized) must be greater than latest $latest."
+          }
+
+          $versionFile = Join-Path $artifactDir 'version.json'
+          $versionJson | Out-File -FilePath $versionFile -Encoding utf8
+
+          Set-ActionOutput -Name 'normalized_version' -Value $versionInfo.Candidate.Normalized
+          Set-ActionOutput -Name 'tag_name' -Value $versionInfo.Candidate.TagName
+          Set-ActionOutput -Name 'version_info_path' -Value ((Resolve-Path -LiteralPath $versionFile).Path)
+
+          if ($versionInfo.Latest) {
+            Set-ActionOutput -Name 'latest_version' -Value $versionInfo.Latest.Normalized
+          } else {
+            Set-ActionOutput -Name 'latest_version' -Value ''
+          }
+
+          $tagExists = ($versionInfo.TagExists -eq $true)
+          Set-ActionOutput -Name 'tag_exists' -Value ($tagExists.ToString().ToLowerInvariant())
+
+      - name: Enumerate overlay payload
+        id: overlay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Set-ActionOutput {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [string]$Value
+            )
+
+            if ($null -eq $Value) {
+              $Value = ''
+            }
+
+            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+          $artifactDir = Join-Path (Get-Location) 'artifacts/workflow'
+          [System.IO.Directory]::CreateDirectory($artifactDir) | Out-Null
+
+          $overlayJson = ./scripts/release/overlay.ps1 -AsJson
+          $overlay = $overlayJson | ConvertFrom-Json -Depth 6
+
+          $overlayFile = Join-Path $artifactDir 'overlay.json'
+          $overlayJson | Out-File -FilePath $overlayFile -Encoding utf8
+
+          Set-ActionOutput -Name 'overlay_payload_path' -Value ((Resolve-Path -LiteralPath $overlayFile).Path)
+          Set-ActionOutput -Name 'overlay_file_count' -Value ([string]$overlay.FileCount)
+          Set-ActionOutput -Name 'overlay_total_bytes' -Value ([string]$overlay.ByteSizeTotal)
+
+      - name: Generate hash manifest
+        id: manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Set-ActionOutput {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [string]$Value
+            )
+
+            if ($null -eq $Value) {
+              $Value = ''
+            }
+
+            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+          $artifactDir = Join-Path (Get-Location) 'artifacts/workflow'
+          [System.IO.Directory]::CreateDirectory($artifactDir) | Out-Null
+          $manifestPath = Join-Path $artifactDir 'manifest.sha256.txt'
+
+          $manifestJson = ./scripts/release/hash-manifest.ps1 -OutputPath $manifestPath -AsJson
+          $manifestInfo = $manifestJson | ConvertFrom-Json -Depth 6
+
+          $manifestInfoFile = Join-Path $artifactDir 'manifest.json'
+          $manifestJson | Out-File -FilePath $manifestInfoFile -Encoding utf8
+
+          Set-ActionOutput -Name 'manifest_path' -Value ((Resolve-Path -LiteralPath $manifestPath).Path)
+          Set-ActionOutput -Name 'manifest_info_path' -Value ((Resolve-Path -LiteralPath $manifestInfoFile).Path)
+          Set-ActionOutput -Name 'manifest_root_hash' -Value $manifestInfo.RootHash
+          Set-ActionOutput -Name 'manifest_file_count' -Value ([string]$manifestInfo.FileCount)
+
+      - name: Compute diff summary
+        id: diff
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Set-ActionOutput {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [string]$Value
+            )
+
+            if ($null -eq $Value) {
+              $Value = ''
+            }
+
+            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+          $artifactDir = Join-Path (Get-Location) 'artifacts/workflow'
+          [System.IO.Directory]::CreateDirectory($artifactDir) | Out-Null
+
+          $version = '${{ steps.version.outputs.normalized_version }}'
+          $diffJson = ./scripts/release/diff-summary.ps1 -Version $version -AsJson
+          $diffInfo = $diffJson | ConvertFrom-Json -Depth 6
+
+          $diffFile = Join-Path $artifactDir 'diff-summary.json'
+          $diffJson | Out-File -FilePath $diffFile -Encoding utf8
+
+          Set-ActionOutput -Name 'diff_summary_path' -Value ((Resolve-Path -LiteralPath $diffFile).Path)
+          Set-ActionOutput -Name 'current_commit' -Value $diffInfo.CurrentCommit
+          Set-ActionOutput -Name 'previous_version' -Value ($diffInfo.PreviousVersion ?? '')
+          $isInitial = [bool]$diffInfo.IsInitialRelease
+          Set-ActionOutput -Name 'is_initial_release' -Value ($isInitial.ToString().ToLowerInvariant())
+
+      - name: Evaluate dry run mode
+        id: dry_run
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Set-ActionOutput {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [string]$Value
+            )
+
+            if ($null -eq $Value) {
+              $Value = ''
+            }
+
+            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+          $raw = $env:DRY_RUN_INPUT
+          $isDryRun = $true
+          if (-not [string]::IsNullOrWhiteSpace($raw)) {
+            $isDryRun = [System.Convert]::ToBoolean($raw)
+          }
+
+          Set-ActionOutput -Name 'is_dry_run' -Value ($isDryRun.ToString().ToLowerInvariant())
+
+      - name: Compose preview artifacts (dry run)
+        id: dry_run_preview
+        if: ${{ steps.dry_run.outputs.is_dry_run == 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Set-ActionOutput {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [string]$Value
+            )
+
+            if ($null -eq $Value) {
+              $Value = ''
+            }
+
+            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+          $artifactDir = Join-Path (Get-Location) 'artifacts/workflow'
+          [System.IO.Directory]::CreateDirectory($artifactDir) | Out-Null
+
+          $overlay = Get-Content -LiteralPath '${{ steps.overlay.outputs.overlay_payload_path }}' -Raw | ConvertFrom-Json -Depth 6
+          $manifest = Get-Content -LiteralPath '${{ steps.manifest.outputs.manifest_info_path }}' -Raw | ConvertFrom-Json -Depth 6
+          $diff = Get-Content -LiteralPath '${{ steps.diff.outputs.diff_summary_path }}' -Raw | ConvertFrom-Json -Depth 6
+
+          $notesJson = ./scripts/release/release-notes.ps1 \
+            -Version '${{ steps.version.outputs.normalized_version }}' \
+            -MaintainerSummary $env:MAINTAINER_SUMMARY \
+            -OverlayPayload $overlay \
+            -Manifest $manifest \
+            -Diff $diff \
+            -CurrentCommit '${{ steps.diff.outputs.current_commit }}' \
+            -AsJson
+
+          $notes = $notesJson | ConvertFrom-Json -Depth 6
+
+          $previewNotesPath = Join-Path $artifactDir 'release-notes-preview.md'
+          $notes.BodyMarkdown | Out-File -FilePath $previewNotesPath -Encoding utf8
+
+          $previewMetadataPath = Join-Path $artifactDir 'release-metadata-preview.json'
+          $notes.MetadataJson | Out-File -FilePath $previewMetadataPath -Encoding utf8
+
+          Set-ActionOutput -Name 'preview_notes_path' -Value ((Resolve-Path -LiteralPath $previewNotesPath).Path)
+          Set-ActionOutput -Name 'preview_metadata_path' -Value ((Resolve-Path -LiteralPath $previewMetadataPath).Path)
+
+      - name: Upload dry run artifacts
+        if: ${{ steps.dry_run.outputs.is_dry_run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dry-run-${{ steps.version.outputs.normalized_version }}
+          retention-days: 7
+          path: |
+            ${{ steps.manifest.outputs.manifest_path }}
+            ${{ steps.diff.outputs.diff_summary_path }}
+            ${{ steps.dry_run_preview.outputs.preview_notes_path }}
+            ${{ steps.dry_run_preview.outputs.preview_metadata_path }}
+
+      - name: Create annotated release tag
+        id: create_tag
+        if: ${{ steps.dry_run.outputs.should_publish == 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $tagName = '${{ steps.version.outputs.tag_name }}'
+          if ([string]::IsNullOrWhiteSpace($tagName)) {
+            throw 'Tag name not resolved.'
+          }
+
+          $tagExists = [System.Convert]::ToBoolean('${{ steps.version.outputs.tag_exists }}')
+          if ($tagExists) {
+            throw "Tag $tagName already exists. Aborting release."
+          }
+
+          git config user.name '${{ github.actor }}'
+          git config user.email '${{ github.actor }}@users.noreply.github.com'
+
+          $message = "Manual overlay release $tagName (triggered by $env:GITHUB_ACTOR)"
+          git tag -a $tagName -m $message
+          git push origin $tagName
+
+      - name: Package overlay artifact and draft release
+        id: package
+        if: ${{ steps.dry_run.outputs.should_publish == 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Set-ActionOutput {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [string]$Value
+            )
+
+            if ($null -eq $Value) {
+              $Value = ''
+            }
+
+            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+          $artifactDir = Join-Path (Get-Location) 'artifacts/workflow'
+          [System.IO.Directory]::CreateDirectory($artifactDir) | Out-Null
+
+          $overlay = Get-Content -LiteralPath '${{ steps.overlay.outputs.overlay_payload_path }}' -Raw | ConvertFrom-Json -Depth 6
+          $manifest = Get-Content -LiteralPath '${{ steps.manifest.outputs.manifest_info_path }}' -Raw | ConvertFrom-Json -Depth 6
+
+          $artifactJson = ./scripts/release/release-artifact.ps1 \
+            -Version '${{ steps.version.outputs.normalized_version }}' \
+            -OverlayPayload $overlay \
+            -Manifest $manifest \
+            -AsJson
+
+          $artifactInfo = $artifactJson | ConvertFrom-Json -Depth 6
+          $artifactInfoFile = Join-Path $artifactDir 'artifact.json'
+          $artifactJson | Out-File -FilePath $artifactInfoFile -Encoding utf8
+
+          $artifactPath = (Resolve-Path -LiteralPath $artifactInfo.OutputPath).Path
+          Set-ActionOutput -Name 'artifact_path' -Value $artifactPath
+          Set-ActionOutput -Name 'artifact_name' -Value $artifactInfo.FileName
+          Set-ActionOutput -Name 'artifact_sha256' -Value $artifactInfo.Sha256
+          Set-ActionOutput -Name 'artifact_info_path' -Value ((Resolve-Path -LiteralPath $artifactInfoFile).Path)
+
+          $draftNotesPath = Join-Path $artifactDir 'release-notes-draft.md'
+          'Release notes will be attached in a subsequent step.' | Out-File -FilePath $draftNotesPath -Encoding utf8
+
+          $tagName = '${{ steps.version.outputs.tag_name }}'
+          $normalizedVersion = '${{ steps.version.outputs.normalized_version }}'
+          $releaseTitle = "Manual overlay release $normalizedVersion"
+          $targetCommit = '${{ steps.diff.outputs.current_commit }}'
+
+          $existingRelease = & gh release view $tagName --json tagName --jq '.tagName' 2>$null
+          if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($existingRelease)) {
+            throw "Release $tagName already exists."
+          }
+
+          gh release create $tagName $artifactPath \
+            --title $releaseTitle \
+            --notes-file $draftNotesPath \
+            --draft \
+            --target $targetCommit
+
+          $releaseDataJson = gh release view $tagName --json url,isDraft
+          $releaseData = $releaseDataJson | ConvertFrom-Json -Depth 4
+          Set-ActionOutput -Name 'release_url' -Value $releaseData.url
+
+      - name: Publish release notes and finalize
+        id: publish
+        if: ${{ steps.dry_run.outputs.should_publish == 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Set-ActionOutput {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [string]$Value
+            )
+
+            if ($null -eq $Value) {
+              $Value = ''
+            }
+
+            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+          $artifactDir = Join-Path (Get-Location) 'artifacts/workflow'
+          [System.IO.Directory]::CreateDirectory($artifactDir) | Out-Null
+
+          $overlay = Get-Content -LiteralPath '${{ steps.overlay.outputs.overlay_payload_path }}' -Raw | ConvertFrom-Json -Depth 6
+          $manifest = Get-Content -LiteralPath '${{ steps.manifest.outputs.manifest_info_path }}' -Raw | ConvertFrom-Json -Depth 6
+          $diff = Get-Content -LiteralPath '${{ steps.diff.outputs.diff_summary_path }}' -Raw | ConvertFrom-Json -Depth 6
+
+          $notesJson = ./scripts/release/release-notes.ps1 \
+            -Version '${{ steps.version.outputs.normalized_version }}' \
+            -MaintainerSummary $env:MAINTAINER_SUMMARY \
+            -OverlayPayload $overlay \
+            -Manifest $manifest \
+            -Diff $diff \
+            -CurrentCommit '${{ steps.diff.outputs.current_commit }}' \
+            -AsJson
+
+          $notes = $notesJson | ConvertFrom-Json -Depth 6
+
+          $notesPath = Join-Path $artifactDir 'release-notes.md'
+          $notes.BodyMarkdown | Out-File -FilePath $notesPath -Encoding utf8
+
+          $metadataPath = Join-Path $artifactDir 'release-metadata.json'
+          $notes.MetadataJson | Out-File -FilePath $metadataPath -Encoding utf8
+
+          Set-ActionOutput -Name 'release_notes_path' -Value ((Resolve-Path -LiteralPath $notesPath).Path)
+          Set-ActionOutput -Name 'metadata_path' -Value ((Resolve-Path -LiteralPath $metadataPath).Path)
+
+          $tagName = '${{ steps.version.outputs.tag_name }}'
+          gh release edit $tagName --notes-file $notesPath --draft=false
+
+      - name: Verify published release
+        id: verify
+        if: ${{ steps.dry_run.outputs.should_publish == 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $tagName = '${{ steps.version.outputs.tag_name }}'
+          $releaseJson = gh release view $tagName --json assets,body,isDraft
+          $release = $releaseJson | ConvertFrom-Json -Depth 6
+
+          if ($release.isDraft) {
+            throw "Release $tagName remains in draft state."
+          }
+
+          $assets = @($release.assets)
+          if ($assets.Count -ne 1) {
+            throw "Expected a single release asset, found $($assets.Count)."
+          }
+
+          $asset = $assets[0]
+          $expectedAsset = '${{ steps.package.outputs.artifact_name }}'
+          if ($asset.name -ne $expectedAsset) {
+            throw "Release asset name '$($asset.name)' does not match expected '$expectedAsset'."
+          }
+
+          $metadataJson = Get-Content -LiteralPath '${{ steps.publish.outputs.metadata_path }}' -Raw
+          $escaped = [regex]::Escape($metadataJson.Trim())
+          if (-not [regex]::IsMatch($release.body, $escaped)) {
+            throw 'Release notes metadata block not found in published body.'
+          }
+
+          Write-Host 'Release published with expected asset and metadata.'
