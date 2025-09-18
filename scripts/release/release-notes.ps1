@@ -195,7 +195,7 @@ function New-ReleaseNotes {
     $body = [string]::Join("`n", $lines)
 
     return [PSCustomObject]@{
-        Version = $versionInfo.Normalized
+        Version = $candidate.Normalized
         MaintainerSummary = $MaintainerSummary
         BodyMarkdown = $body
         MetadataJson = $metadataJson
