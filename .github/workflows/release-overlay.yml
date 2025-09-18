@@ -72,6 +72,41 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
+          function Write-DebugBlock {
+            param(
+              [Parameter(Mandatory = $true)][string]$Title,
+              [string]$Value
+            )
+
+            if ($null -eq $Value) {
+              $Value = ''
+            }
+
+            Write-Host "::debug::$Title=$Value"
+          }
+
+          function Emit-StepError {
+            param(
+              [string]$Message,
+              [System.Management.Automation.ErrorRecord]$ErrorRecord
+            )
+
+            if ($Message) {
+              Write-Error $Message
+            }
+
+            if ($ErrorRecord) {
+              Write-Host "::error::Exception=$($ErrorRecord.Exception.GetType().FullName)"
+              Write-Host "::error::Message=$($ErrorRecord.Exception.Message)"
+
+              if ($ErrorRecord.ScriptStackTrace) {
+                Write-Host "::error::Stack=$($ErrorRecord.ScriptStackTrace)"
+              }
+            }
+
+            throw
+          }
+
           function Set-ActionOutput {
             param(
               [Parameter(Mandatory = $true)][string]$Name,
@@ -85,38 +120,51 @@ jobs:
             "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
 
-          $workspace = Get-Location
-          $artifactDir = Join-Path $workspace 'artifacts/workflow'
-          [System.IO.Directory]::CreateDirectory($artifactDir) | Out-Null
+          try {
+            Write-Host "REQUESTED_VERSION=$($env:REQUESTED_VERSION)"
 
-          $versionInput = $env:REQUESTED_VERSION
-          if ([string]::IsNullOrWhiteSpace($versionInput)) {
-            throw 'Version input is required.'
+            $versionInput = $env:REQUESTED_VERSION
+            if ([string]::IsNullOrWhiteSpace($versionInput)) {
+              Emit-StepError -Message 'Version input is required.'
+            }
+
+            $versionJson = ./scripts/release/version.ps1 -Version $versionInput -AsJson
+            Write-DebugBlock -Title 'versionJson' -Value $versionJson
+
+            if ([string]::IsNullOrWhiteSpace($versionJson)) {
+              Emit-StepError -Message 'version.ps1 returned empty output.'
+            }
+
+            $versionInfo = $versionJson | ConvertFrom-Json -Depth 6
+
+            if ($versionInfo.Latest -and -not $versionInfo.IsGreaterThanLatest) {
+              $latest = $versionInfo.Latest.Normalized
+              Emit-StepError -Message "Proposed version $($versionInfo.Candidate.Normalized) must be greater than latest $latest."
+            }
+
+            $workspace = Get-Location
+            $artifactDir = Join-Path $workspace 'artifacts/workflow'
+            [System.IO.Directory]::CreateDirectory($artifactDir) | Out-Null
+
+            $versionFile = Join-Path $artifactDir 'version.json'
+            $versionJson | Out-File -FilePath $versionFile -Encoding utf8
+
+            Set-ActionOutput -Name 'normalized_version' -Value $versionInfo.Candidate.Normalized
+            Set-ActionOutput -Name 'tag_name' -Value $versionInfo.Candidate.TagName
+            Set-ActionOutput -Name 'version_info_path' -Value ((Resolve-Path -LiteralPath $versionFile).Path)
+
+            if ($versionInfo.Latest) {
+              Set-ActionOutput -Name 'latest_version' -Value $versionInfo.Latest.Normalized
+            } else {
+              Set-ActionOutput -Name 'latest_version' -Value ''
+            }
+
+            $tagExists = ($versionInfo.TagExists -eq $true)
+            Set-ActionOutput -Name 'tag_exists' -Value ($tagExists.ToString().ToLowerInvariant())
           }
-
-          $versionJson = ./scripts/release/version.ps1 -Version $versionInput -AsJson
-          $versionInfo = $versionJson | ConvertFrom-Json -Depth 6
-
-          if ($versionInfo.Latest -and -not $versionInfo.IsGreaterThanLatest) {
-            $latest = $versionInfo.Latest.Normalized
-            throw "Proposed version $($versionInfo.Candidate.Normalized) must be greater than latest $latest."
+          catch {
+            Emit-StepError -Message 'Resolve release version step failed.' -ErrorRecord $_
           }
-
-          $versionFile = Join-Path $artifactDir 'version.json'
-          $versionJson | Out-File -FilePath $versionFile -Encoding utf8
-
-          Set-ActionOutput -Name 'normalized_version' -Value $versionInfo.Candidate.Normalized
-          Set-ActionOutput -Name 'tag_name' -Value $versionInfo.Candidate.TagName
-          Set-ActionOutput -Name 'version_info_path' -Value ((Resolve-Path -LiteralPath $versionFile).Path)
-
-          if ($versionInfo.Latest) {
-            Set-ActionOutput -Name 'latest_version' -Value $versionInfo.Latest.Normalized
-          } else {
-            Set-ActionOutput -Name 'latest_version' -Value ''
-          }
-
-          $tagExists = ($versionInfo.TagExists -eq $true)
-          Set-ActionOutput -Name 'tag_exists' -Value ($tagExists.ToString().ToLowerInvariant())
 
       - name: Enumerate overlay payload
         id: overlay
