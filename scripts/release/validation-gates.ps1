@@ -55,6 +55,89 @@ function Ensure-HelpersLoaded {
     }
 }
 
+
+function ConvertTo-GateDiagnosticsString {
+    param(
+        $Diagnostics
+    )
+
+    if ($null -eq $Diagnostics) {
+        return ''
+    }
+
+    if ($Diagnostics -is [string]) {
+        return $Diagnostics
+    }
+
+    if ($Diagnostics -is [System.Collections.IDictionary]) {
+        $pairs = @()
+        foreach ($key in $Diagnostics.Keys) {
+            $value = $Diagnostics[$key]
+            $pairs += ('{0}={1}' -f $key, $value)
+        }
+        $pairs = $pairs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        return ($pairs -join '; ')
+    }
+
+    if ($Diagnostics -is [System.Collections.IEnumerable] -and -not ($Diagnostics -is [string])) {
+        $parts = @()
+        foreach ($item in $Diagnostics) {
+            if ($null -eq $item) { continue }
+            $parts += ($item.ToString().Trim())
+        }
+        $parts = $parts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        return ($parts -join '; ')
+    }
+
+    return $Diagnostics.ToString()
+}
+
+function Format-GateFailureMessage {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [psobject]$Gate
+    )
+
+    $name = if ([string]::IsNullOrWhiteSpace($Gate.Name)) { 'ValidationGate' } else { $Gate.Name }
+    $diagnostics = ConvertTo-GateDiagnosticsString -Diagnostics $Gate.Diagnostics
+    if ([string]::IsNullOrWhiteSpace($diagnostics)) {
+        $diagnostics = $Gate.Status
+    }
+
+    $singleLine = [regex]::Replace($diagnostics, '\s+', ' ').Trim()
+    if ($singleLine.Length -gt 400) {
+        $singleLine = $singleLine.Substring(0, 397).TrimEnd() + '...'
+    }
+
+    return "ERROR: {0} - {1}" -f $name, $singleLine
+}
+
+function Get-GateFailureMessages {
+    [CmdletBinding()]
+    param(
+        [psobject[]]$GateResults
+    )
+
+    $messages = @()
+    foreach ($gate in ($GateResults | Where-Object { $_ })) {
+        if (-not $gate.IsBlocking) {
+            continue
+        }
+
+        if ($gate.Status -like 'Passed*') {
+            continue
+        }
+
+        $message = Format-GateFailureMessage -Gate $gate
+        if (-not [string]::IsNullOrWhiteSpace($message)) {
+            $messages += $message
+        }
+    }
+
+    return @($messages)
+}
+
 function New-GateResult {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param(
@@ -206,6 +289,7 @@ function Invoke-ValidationGates {
     $gates += Test-OverlayIsolation -OverlayPayload $overlayPayload
     $gates += Test-DryRunSafety -DryRun:$DryRun
 
+    $failureMessages = Get-GateFailureMessages -GateResults $gates
     $blockingFailures = $gates | Where-Object { $_.IsBlocking -and $_.Status -notlike 'Passed*' }
 
     return [PSCustomObject]@{
@@ -215,6 +299,7 @@ function Invoke-ValidationGates {
         DryRun = [bool]$DryRun
         Gates = $gates
         BlockingFailures = @($blockingFailures)
+        FailureMessages = @($failureMessages)
         AllPassed = ($blockingFailures.Count -eq 0)
     }
 }
@@ -233,6 +318,12 @@ function Invoke-ValidationGatesMain {
     if ($AsJson) {
         $result | ConvertTo-Json -Depth 6
     } else {
+        if (-not $result.AllPassed -and $result.FailureMessages.Count -gt 0) {
+            foreach ($message in $result.FailureMessages) {
+                Write-Host $message
+            }
+        }
+
         $result
     }
 }

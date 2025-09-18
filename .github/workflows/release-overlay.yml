@@ -42,6 +42,30 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Capture workflow start time
+        id: timing_start
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Set-ActionOutput {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [string]$Value
+            )
+
+            if ($null -eq $Value) {
+              $Value = ''
+            }
+
+            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+          $now = [System.DateTimeOffset]::UtcNow
+          Set-ActionOutput -Name 'started_at_iso' -Value $now.ToString('o')
+          Set-ActionOutput -Name 'started_at_ms' -Value ([string]$now.ToUnixTimeMilliseconds())
+          Write-Host "::notice::Manual overlay release started at $($now.ToString('o'))."
+
       - name: Resolve release version
         id: version
         shell: pwsh
@@ -160,6 +184,38 @@ jobs:
           Set-ActionOutput -Name 'manifest_root_hash' -Value $manifestInfo.RootHash
           Set-ActionOutput -Name 'manifest_file_count' -Value ([string]$manifestInfo.FileCount)
 
+      - name: Verify manifest reproducibility
+        id: manifest_verify
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $expectedRootHash = '${{ steps.manifest.outputs.manifest_root_hash }}'
+          if ([string]::IsNullOrWhiteSpace($expectedRootHash)) {
+            throw 'Manifest root hash output missing from primary manifest step.'
+          }
+
+          $artifactDir = Join-Path (Get-Location) 'artifacts/workflow'
+          [System.IO.Directory]::CreateDirectory($artifactDir) | Out-Null
+          $recheckPath = Join-Path $artifactDir 'manifest.recheck.sha256.txt'
+
+          $recomputedJson = ./scripts/release/hash-manifest.ps1 -OutputPath $recheckPath -AsJson
+          $recomputed = $recomputedJson | ConvertFrom-Json -Depth 6
+
+          $expectedCountRaw = '${{ steps.manifest.outputs.manifest_file_count }}'
+          if (-not [string]::IsNullOrWhiteSpace($expectedCountRaw)) {
+            $expectedCount = [int]$expectedCountRaw
+            if ($recomputed.FileCount -ne $expectedCount) {
+              throw "Recomputed manifest file count $($recomputed.FileCount) does not match expected $expectedCount."
+            }
+          }
+
+          if ($recomputed.RootHash -ne $expectedRootHash) {
+            throw "Recomputed root hash $($recomputed.RootHash) does not match expected $expectedRootHash."
+          }
+
+          Write-Host 'Root hash reproducibility validated.'
+
       - name: Compute diff summary
         id: diff
         shell: pwsh
@@ -221,6 +277,8 @@ jobs:
           }
 
           Set-ActionOutput -Name 'is_dry_run' -Value ($isDryRun.ToString().ToLowerInvariant())
+          $shouldPublish = -not $isDryRun
+          Set-ActionOutput -Name 'should_publish' -Value ($shouldPublish.ToString().ToLowerInvariant())
 
       - name: Compose preview artifacts (dry run)
         id: dry_run_preview
@@ -370,6 +428,56 @@ jobs:
           $releaseData = $releaseDataJson | ConvertFrom-Json -Depth 4
           Set-ActionOutput -Name 'release_url' -Value $releaseData.url
 
+      - name: Verify artifact overlay isolation
+        id: artifact_isolation
+        if: ${{ steps.dry_run.outputs.should_publish == 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $artifactPath = '${{ steps.package.outputs.artifact_path }}'
+          if ([string]::IsNullOrWhiteSpace($artifactPath)) {
+            throw 'Artifact path output missing from packaging step.'
+          }
+
+          if (-not (Test-Path -LiteralPath $artifactPath)) {
+            throw "Artifact path $artifactPath not found."
+          }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($artifactPath)
+          try {
+            $invalidEntries = @()
+            foreach ($entry in $archive.Entries) {
+              $name = $entry.FullName.Replace('\', '/')
+              if ([string]::IsNullOrWhiteSpace($name)) {
+                continue
+              }
+
+              if ($name.EndsWith('/')) {
+                continue
+              }
+
+              if ($name -eq 'manifest.sha256.txt') {
+                continue
+              }
+
+              if (-not $name.StartsWith('overlay/')) {
+                $invalidEntries += $name
+              }
+            }
+
+            if ($invalidEntries.Count -gt 0) {
+              throw "Artifact contains non-overlay entries: $($invalidEntries -join ', ')"
+            }
+          }
+          finally {
+            $archive.Dispose()
+          }
+
+          Write-Host 'Artifact overlay isolation verified.'
+
       - name: Publish release notes and finalize
         id: publish
         if: ${{ steps.dry_run.outputs.should_publish == 'true' }}
@@ -453,3 +561,54 @@ jobs:
           }
 
           Write-Host 'Release published with expected asset and metadata.'
+
+      - name: Report workflow duration
+        id: timing_complete
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Set-ActionOutput {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [string]$Value
+            )
+
+            if ($null -eq $Value) {
+              $Value = ''
+            }
+
+            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+          $startIso = '${{ steps.timing_start.outputs.started_at_iso }}'
+          $startMsRaw = '${{ steps.timing_start.outputs.started_at_ms }}'
+
+          if ([string]::IsNullOrWhiteSpace($startMsRaw)) {
+            Write-Warning 'Timing start output missing; skipping duration calculation.'
+            return
+          }
+
+          $startMs = [int64]$startMsRaw
+          $startValue = [System.DateTimeOffset]::FromUnixTimeMilliseconds($startMs)
+          if (-not [string]::IsNullOrWhiteSpace($startIso)) {
+            $parsed = [System.DateTimeOffset]::MinValue
+            if ([System.DateTimeOffset]::TryParse($startIso, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind, [ref]$parsed)) {
+              $startValue = $parsed
+            }
+          }
+
+          $now = [System.DateTimeOffset]::UtcNow
+          $durationMs = $now.ToUnixTimeMilliseconds() - $startMs
+          if ($durationMs -lt 0) {
+            $durationMs = 0
+          }
+
+          $durationSeconds = [Math]::Round($durationMs / 1000, 2)
+
+          Set-ActionOutput -Name 'ended_at_iso' -Value $now.ToString('o')
+          Set-ActionOutput -Name 'duration_ms' -Value ([string]$durationMs)
+          Set-ActionOutput -Name 'duration_seconds' -Value ([string]$durationSeconds)
+
+          Write-Host "::notice::Manual overlay release duration: $durationSeconds seconds (started $($startValue.ToString('o')), ended $($now.ToString('o')))."

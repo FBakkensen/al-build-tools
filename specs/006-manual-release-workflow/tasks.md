@@ -69,10 +69,10 @@ Phase 3.4: Workflow Implementation (Sequential – same YAML file)
 - [x] T035 Add post-publish verification step (re-fetch release, validate single asset & metadata JSON block present) in workflow YAML.
 
 Phase 3.5: Integration / Guards
-- [ ] T036 Add failure transparency wrapper ensuring each gate emits single-line `ERROR:` message on abort (shared function or inline) in `scripts/release/validation-gates.ps1`.
-- [ ] T037 Add performance timing capture & log (start/end, compute duration) integrated into workflow (modify `.github/workflows/release-overlay.yml`).
-- [ ] T038 Add root hash reproduction verification step (regen & compare) in workflow YAML.
-- [ ] T039 Add isolation guard verifying no non-overlay file included (audit packaged zip list) in workflow YAML.
+- [x] T036 Add failure transparency wrapper ensuring each gate emits single-line `ERROR:` message on abort (shared function or inline) in `scripts/release/validation-gates.ps1`.
+- [x] T037 Add performance timing capture & log (start/end, compute duration) integrated into workflow (modify `.github/workflows/release-overlay.yml`).
+- [x] T038 Add root hash reproduction verification step (regen & compare) in workflow YAML.
+- [x] T039 Add isolation guard verifying no non-overlay file included (audit packaged zip list) in workflow YAML.
 
 Phase 3.6: Polish
 - [ ] T040 [P] Unit tests for Version & semver comparisons in `tests/unit/release/Version.Tests.ps1`.
