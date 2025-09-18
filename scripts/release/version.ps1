@@ -170,7 +170,12 @@ function Test-ReleaseTagExists {
     Assert-GitAvailable
     $gitArgs = @('-C', $RepositoryRoot, 'rev-parse', '--quiet', '--verify', "refs/tags/$TagName")
     & git @gitArgs > $null 2>&1
-    return $LASTEXITCODE -eq 0
+    $exists = $LASTEXITCODE -eq 0
+
+    # Ensure downstream callers don't inherit git's non-zero exit code when the tag is absent.
+    Set-Variable -Scope Global -Name LASTEXITCODE -Value 0
+
+    return $exists
 }
 
 function Get-VersionInfo {
