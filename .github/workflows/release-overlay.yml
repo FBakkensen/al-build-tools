@@ -91,17 +91,34 @@ jobs:
               [System.Management.Automation.ErrorRecord]$ErrorRecord
             )
 
+            $formattedRecord = $null
+            if ($ErrorRecord) {
+              $formattedRecord = ($ErrorRecord | Format-List * -Force | Out-String).Trim()
+            }
+
             if ($Message) {
-              Write-Error $Message
+              Write-Host "::error::Message=$Message"
             }
 
             if ($ErrorRecord) {
               Write-Host "::error::Exception=$($ErrorRecord.Exception.GetType().FullName)"
-              Write-Host "::error::Message=$($ErrorRecord.Exception.Message)"
+              Write-Host "::error::ExceptionMessage=$($ErrorRecord.Exception.Message)"
 
               if ($ErrorRecord.ScriptStackTrace) {
                 Write-Host "::error::Stack=$($ErrorRecord.ScriptStackTrace)"
               }
+            }
+
+            if ($formattedRecord) {
+              $formattedRecord.Split([Environment]::NewLine) | ForEach-Object {
+                if (-not [string]::IsNullOrWhiteSpace($_)) {
+                  Write-Host "::error::Record=$_"
+                }
+              }
+            }
+
+            if ($ErrorRecord) {
+              throw $ErrorRecord
             }
 
             throw
