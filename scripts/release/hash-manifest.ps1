@@ -34,17 +34,6 @@ function Get-RepositoryRootPath {
     return $script:DefaultRepoRoot
 }
 
-function Ensure-OverlayHelpersLoaded {
-    if (Get-Command -Name Get-OverlayPayload -ErrorAction SilentlyContinue) {
-        return
-    }
-    $overlayScript = Join-Path -Path $PSScriptRoot -ChildPath 'overlay.ps1'
-    if (-not (Test-Path -LiteralPath $overlayScript)) {
-        throw "Overlay helper script not found at $overlayScript"
-    }
-    . $overlayScript
-}
-
 function New-HashManifest {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param(
@@ -53,13 +42,17 @@ function New-HashManifest {
         [string]$OutputPath
     )
 
-    Ensure-OverlayHelpersLoaded
     $repoRoot = Get-RepositoryRootPath -RepositoryRoot $RepositoryRoot
 
     $payload = if ($OverlayPayload) {
         $OverlayPayload
     } else {
-        Get-OverlayPayload -RepositoryRoot $repoRoot
+        $overlayScript = Join-Path -Path $PSScriptRoot -ChildPath 'overlay.ps1'
+        if (-not (Test-Path -LiteralPath $overlayScript)) {
+            throw "Overlay helper script not found at $overlayScript"
+        }
+
+        & $overlayScript -RepositoryRoot $repoRoot
     }
 
     $entries = @()
