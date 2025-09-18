@@ -48,13 +48,13 @@ Phase 3.2: Tests First (TDD)  (All must exist & fail before implementation)
 - [x] T018 [P] Integration test: failure transparency single-line error in `tests/integration/release/FailureTransparency.Tests.ps1`.
 
 Phase 3.3: Core Entity Helper Scripts (Models)  (Parallel; distinct files)
-- [ ] T019 [P] Implement Version + ReleaseTag helpers in `scripts/release/version.ps1` (parse, compare semver, tag existence check).
-- [ ] T020 [P] Implement OverlayPayload scanner in `scripts/release/overlay.ps1` (deterministic file list, counts, sizes).
-- [ ] T021 [P] Implement HashManifest generator in `scripts/release/hash-manifest.ps1` (per-file SHA-256 + root hash computation).
-- [ ] T022 [P] Implement DiffSummary generator in `scripts/release/diff-summary.ps1` (Added/Modified/Removed classification; initial release handling).
-- [ ] T023 [P] Implement ReleaseArtifact packager in `scripts/release/release-artifact.ps1` (zip creation without wrapper, embed manifest).
-- [ ] T024 [P] Implement ReleaseNotes composer in `scripts/release/release-notes.ps1` (summary, diff, metadata JSON block template).
-- [ ] T025 [P] Implement ValidationGate orchestrator in `scripts/release/validation-gates.ps1` (clean overlay, uniqueness, monotonicity, isolation, dry-run safety logic stubs returning structured diagnostics).
+- [x] T019 [P] Implement Version + ReleaseTag helpers in `scripts/release/version.ps1` (parse, compare semver, tag existence check).
+- [x] T020 [P] Implement OverlayPayload scanner in `scripts/release/overlay.ps1` (deterministic file list, counts, sizes).
+- [x] T021 [P] Implement HashManifest generator in `scripts/release/hash-manifest.ps1` (per-file SHA-256 + root hash computation).
+- [x] T022 [P] Implement DiffSummary generator in `scripts/release/diff-summary.ps1` (Added/Modified/Removed classification; initial release handling).
+- [x] T023 [P] Implement ReleaseArtifact packager in `scripts/release/release-artifact.ps1` (zip creation without wrapper, embed manifest).
+- [x] T024 [P] Implement ReleaseNotes composer in `scripts/release/release-notes.ps1` (summary, diff, metadata JSON block template).
+- [x] T025 [P] Implement ValidationGate orchestrator in `scripts/release/validation-gates.ps1` (clean overlay, uniqueness, monotonicity, isolation, dry-run safety logic stubs returning structured diagnostics).
 
 Phase 3.4: Workflow Implementation (Sequential – same YAML file)
 - [ ] T026 Add checkout + git fetch depth step in `.github/workflows/release-overlay.yml`.
