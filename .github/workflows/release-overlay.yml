@@ -504,11 +504,12 @@ jobs:
             throw "Release $tagName already exists."
           }
 
-          gh release create $tagName $artifactPath `
-            --title $releaseTitle `
-            --notes-file $draftNotesPath `
-            --draft `
-            --target $targetCommit
+          $releaseArgs = @('release','create',$tagName,$artifactPath,
+            '--title',$releaseTitle,
+            '--notes-file',$draftNotesPath,
+            '--draft',
+            '--target',$targetCommit)
+          gh @releaseArgs
 
           $releaseDataJson = gh release view $tagName --json url,isDraft
           $releaseData = $releaseDataJson | ConvertFrom-Json -Depth 4
