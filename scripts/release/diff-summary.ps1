@@ -16,6 +16,25 @@ $script:IsDotSourced = $MyInvocation.InvocationName -eq '.'
 $script:DefaultRepoRoot = $null
 $script:GitVerified = $false
 
+function ConvertTo-VersionNumber {
+    param([string]$Input)
+
+    if ([string]::IsNullOrWhiteSpace($Input)) {
+        return $null
+    }
+
+    $match = [Regex]::Match($Input, '^v(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)$')
+    if (-not $match.Success) {
+        return $null
+    }
+
+    return [System.Version]::new(
+        [int]$match.Groups['major'].Value,
+        [int]$match.Groups['minor'].Value,
+        [int]$match.Groups['patch'].Value
+    )
+}
+
 function Get-RepositoryRootPath {
     [CmdletBinding()]
     param(
@@ -34,27 +53,6 @@ function Get-RepositoryRootPath {
     }
 
     return $script:DefaultRepoRoot
-}
-
-function Ensure-VersionHelpersLoaded {
-    if (Get-Command -Name Get-VersionInfo -ErrorAction SilentlyContinue) {
-        return
-    }
-    $versionScript = Join-Path -Path $PSScriptRoot -ChildPath 'version.ps1'
-    if (-not (Test-Path -LiteralPath $versionScript)) {
-        throw "Version helper script not found at $versionScript"
-    }
-    . $versionScript
-
-    $helperNames = @('ConvertTo-ReleaseVersion','Compare-ReleaseVersion','Get-VersionTags','Get-VersionInfo')
-    foreach ($helperName in $helperNames) {
-        $helperCommand = Get-Command -Name $helperName -CommandType Function -ErrorAction Stop
-        if ($helperCommand -and $helperCommand.ScriptBlock) {
-            Set-Item -Path Function:script:$helperName -Value $helperCommand.ScriptBlock
-        } else {
-            throw "Version helper failed to expose $helperName."
-        }
-    }
 }
 
 function Assert-GitAvailable {
@@ -85,40 +83,53 @@ function Get-CommitSha {
 function Get-PreviousReference {
     [CmdletBinding()]
     param(
-        [string]$RepositoryRoot,
+        [psobject]$VersionInfo,
         [psobject]$CandidateVersion,
         [string]$ExplicitPrevious
     )
 
     if ($ExplicitPrevious) { return $ExplicitPrevious }
 
-    Ensure-VersionHelpersLoaded
-    $tags = @(Get-VersionTags -RepositoryRoot $RepositoryRoot)
-    if ($tags.Count -eq 0) { return $null }
-
-    $parsed = @()
-    foreach ($tag in $tags) {
-        try {
-            $parsed += ConvertTo-ReleaseVersion -Version $tag
-        } catch {
-            continue
-        }
+    if (-not $VersionInfo -or -not $VersionInfo.ExistingTags) {
+        return $null
     }
 
-    if ($parsed.Count -eq 0) { return $null }
+    $candidateVersionValue = ConvertTo-VersionNumber $CandidateVersion.Normalized
+    if (-not $candidateVersionValue) {
+        return $null
+    }
 
     $lower = @()
-    foreach ($tagVersion in $parsed) {
-        $comparison = Compare-ReleaseVersion -Left $tagVersion -Right $CandidateVersion
-        if ($comparison -lt 0) {
-            $lower += $tagVersion
+    foreach ($tagEntry in $VersionInfo.ExistingTags) {
+        $normalized = $null
+        if ($tagEntry.PSObject.Properties['Normalized']) {
+            $normalized = $tagEntry.Normalized
+        } elseif ($tagEntry.PSObject.Properties['TagName']) {
+            $normalized = $tagEntry.TagName
+        } elseif ($tagEntry.PSObject.Properties['RawInput']) {
+            $normalized = $tagEntry.RawInput
+        }
+
+        if ([string]::IsNullOrWhiteSpace($normalized)) {
+            continue
+        }
+
+        $tagVersionValue = ConvertTo-VersionNumber $normalized
+        if (-not $tagVersionValue) {
+            continue
+        }
+
+        if ($tagVersionValue -lt $candidateVersionValue) {
+            $lower += [PSCustomObject]@{
+                Tag = $normalized
+                Version = $tagVersionValue
+            }
         }
     }
 
     if ($lower.Count -eq 0) { return $null }
 
-    $sorted = $lower | Sort-Object -Property @{Expression = { $_.Major }; Descending = $true}, @{Expression = { $_.Minor }; Descending = $true}, @{Expression = { $_.Patch }; Descending = $true}
-    return $sorted[0].TagName
+    ($lower | Sort-Object -Property Version | Select-Object -Last 1).Tag
 }
 
 function Get-DiffSummary {
@@ -134,14 +145,23 @@ function Get-DiffSummary {
         throw 'ERROR: DiffSummary - Version parameter is required to compute diff summary.'
     }
 
-    Ensure-VersionHelpersLoaded
     Assert-GitAvailable
 
     $repoRoot = Get-RepositoryRootPath -RepositoryRoot $RepositoryRoot
     $currentRefEffective = if ($CurrentRef) { $CurrentRef } else { 'HEAD' }
-    $versionInfo = Get-VersionInfo -Version $Version -RepositoryRoot $repoRoot
+    $versionScript = Join-Path -Path $PSScriptRoot -ChildPath 'version.ps1'
+    if (-not (Test-Path -LiteralPath $versionScript)) {
+        throw "Version helper script not found at $versionScript"
+    }
+
+    $versionJson = & $versionScript -Version $Version -RepositoryRoot $repoRoot -AsJson
+    if ([string]::IsNullOrWhiteSpace($versionJson)) {
+        throw "Version helper returned empty response for $Version."
+    }
+
+    $versionInfo = $versionJson | ConvertFrom-Json -Depth 6
     $candidate = $versionInfo.Candidate
-    $previousRefEffective = Get-PreviousReference -RepositoryRoot $repoRoot -CandidateVersion $candidate -ExplicitPrevious $PreviousRef
+    $previousRefEffective = Get-PreviousReference -VersionInfo $versionInfo -CandidateVersion $candidate -ExplicitPrevious $PreviousRef
 
     $added = [System.Collections.Generic.List[string]]::new()
     $modified = [System.Collections.Generic.List[string]]::new()
