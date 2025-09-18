@@ -390,13 +390,16 @@ jobs:
           $manifest = Get-Content -LiteralPath '${{ steps.manifest.outputs.manifest_info_path }}' -Raw | ConvertFrom-Json -Depth 6
           $diff = Get-Content -LiteralPath '${{ steps.diff.outputs.diff_summary_path }}' -Raw | ConvertFrom-Json -Depth 6
 
-          $notesJson = ./scripts/release/release-notes.ps1 \
-            -Version '${{ steps.version.outputs.normalized_version }}' \
-            -MaintainerSummary $env:MAINTAINER_SUMMARY \
-            -OverlayPayload $overlay \
-            -Manifest $manifest \
-            -Diff $diff \
-            -CurrentCommit '${{ steps.diff.outputs.current_commit }}' \
+          $releaseDateUtc = (Get-Date).ToUniversalTime()
+
+          $notesJson = ./scripts/release/release-notes.ps1 `
+            -Version '${{ steps.version.outputs.normalized_version }}' `
+            -MaintainerSummary $env:MAINTAINER_SUMMARY `
+            -OverlayPayload $overlay `
+            -Manifest $manifest `
+            -Diff $diff `
+            -CurrentCommit '${{ steps.diff.outputs.current_commit }}' `
+            -ReleaseDateUtc $releaseDateUtc `
             -AsJson
 
           $notes = $notesJson | ConvertFrom-Json -Depth 6
