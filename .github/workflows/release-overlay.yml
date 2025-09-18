@@ -475,10 +475,10 @@ jobs:
           $overlay = Get-Content -LiteralPath '${{ steps.overlay.outputs.overlay_payload_path }}' -Raw | ConvertFrom-Json -Depth 6
           $manifest = Get-Content -LiteralPath '${{ steps.manifest.outputs.manifest_info_path }}' -Raw | ConvertFrom-Json -Depth 6
 
-          $artifactJson = ./scripts/release/release-artifact.ps1 \
-            -Version '${{ steps.version.outputs.normalized_version }}' \
-            -OverlayPayload $overlay \
-            -Manifest $manifest \
+          $artifactJson = ./scripts/release/release-artifact.ps1 `
+            -Version '${{ steps.version.outputs.normalized_version }}' `
+            -OverlayPayload $overlay `
+            -Manifest $manifest `
             -AsJson
 
           $artifactInfo = $artifactJson | ConvertFrom-Json -Depth 6
@@ -504,10 +504,10 @@ jobs:
             throw "Release $tagName already exists."
           }
 
-          gh release create $tagName $artifactPath \
-            --title $releaseTitle \
-            --notes-file $draftNotesPath \
-            --draft \
+          gh release create $tagName $artifactPath `
+            --title $releaseTitle `
+            --notes-file $draftNotesPath `
+            --draft `
             --target $targetCommit
 
           $releaseDataJson = gh release view $tagName --json url,isDraft
