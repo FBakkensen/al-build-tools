@@ -94,7 +94,7 @@ function New-ReleaseNotes {
     }
 
     if ([string]::IsNullOrWhiteSpace($Version)) {
-        throw 'Version parameter is required to compose release notes.'
+        throw 'ERROR: ReleaseNotes - Version parameter is required to compose release notes.'
     }
 
     Ensure-HelpersLoaded

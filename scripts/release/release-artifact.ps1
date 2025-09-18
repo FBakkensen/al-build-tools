@@ -73,7 +73,7 @@ function New-ReleaseArtifact {
     )
 
     if ([string]::IsNullOrWhiteSpace($Version)) {
-        throw 'Version parameter is required to create release artifact.'
+        throw 'ERROR: ReleaseArtifact - Version parameter is required to create release artifact.'
     }
 
     Ensure-HelpersLoaded

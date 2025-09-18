@@ -2,6 +2,8 @@
 
 This guide shows maintainers how to run the manual overlay-only release workflow and consumers how to fetch, verify, and adopt a release.
 
+For a concise overview, see the `Manual Release Workflow` section in the [repository README](../../README.md#manual-release-workflow).
+
 ## Maintainer: Creating a Release
 1. Ensure `main` branch is up to date and CI is green.
 2. Confirm no uncommitted or untracked changes under `overlay/`.

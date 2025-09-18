@@ -49,9 +49,9 @@ function Ensure-VersionHelpersLoaded {
 
 function Assert-GitAvailable {
     if ($script:GitVerified) { return }
-    try { & git --version > $null 2>&1 } catch { throw 'git executable not found in PATH. Diff helper requires git.' }
+    try { & git --version > $null 2>&1 } catch { throw 'ERROR: DiffSummary - git executable not found in PATH. Install git to compute release diffs.' }
     if ($LASTEXITCODE -ne 0) {
-        throw 'git executable not found in PATH. Diff helper requires git.'
+        throw 'ERROR: DiffSummary - git executable not found in PATH. Install git to compute release diffs.'
     }
     $script:GitVerified = $true
 }
@@ -83,7 +83,7 @@ function Get-PreviousReference {
     if ($ExplicitPrevious) { return $ExplicitPrevious }
 
     Ensure-VersionHelpersLoaded
-    $tags = Get-VersionTags -RepositoryRoot $RepositoryRoot
+    $tags = @(Get-VersionTags -RepositoryRoot $RepositoryRoot)
     if ($tags.Count -eq 0) { return $null }
 
     $parsed = @()
@@ -99,7 +99,8 @@ function Get-PreviousReference {
 
     $lower = @()
     foreach ($tagVersion in $parsed) {
-        if (Compare-ReleaseVersion -Left $tagVersion -Right $CandidateVersion -lt 0) {
+        $comparison = Compare-ReleaseVersion -Left $tagVersion -Right $CandidateVersion
+        if ($comparison -lt 0) {
             $lower += $tagVersion
         }
     }
@@ -120,7 +121,7 @@ function Get-DiffSummary {
     )
 
     if ([string]::IsNullOrWhiteSpace($Version)) {
-        throw 'Version parameter is required to compute diff summary.'
+        throw 'ERROR: DiffSummary - Version parameter is required to compute diff summary.'
     }
 
     Ensure-VersionHelpersLoaded

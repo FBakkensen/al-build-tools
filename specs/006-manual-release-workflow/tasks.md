@@ -75,15 +75,15 @@ Phase 3.5: Integration / Guards
 - [x] T039 Add isolation guard verifying no non-overlay file included (audit packaged zip list) in workflow YAML.
 
 Phase 3.6: Polish
-- [ ] T040 [P] Unit tests for Version & semver comparisons in `tests/unit/release/Version.Tests.ps1`.
-- [ ] T041 [P] Unit tests for hash-manifest root hash determinism in `tests/unit/release/HashManifest.Tests.ps1`.
-- [ ] T042 [P] Unit tests for diff summary classification in `tests/unit/release/DiffSummary.Tests.ps1`.
-- [ ] T043 Add README section referencing manual release workflow & verification (modify `README.md`).
-- [ ] T044 Add release process link from Quickstart to README (modify `specs/006-manual-release-workflow/quickstart.md`).
-- [ ] T045 Refine error messages & diagnostics (update helper scripts) for clarity & consistency.
-- [ ] T046 Final dry run example capture & attach logs to PR (manual execution & commit log update `CHANGELOG.md` if needed).
-- [ ] T047 Remove any obsolete TODO comments and ensure scripts avoid network calls beyond GitHub API.
-- [ ] T048 Update traceability table (append to this file or spec) confirming all FRs mapped to implemented tasks.
+- [x] T040 [P] Unit tests for Version & semver comparisons in `tests/unit/release/Version.Tests.ps1`.
+- [x] T041 [P] Unit tests for hash-manifest root hash determinism in `tests/unit/release/HashManifest.Tests.ps1`.
+- [x] T042 [P] Unit tests for diff summary classification in `tests/unit/release/DiffSummary.Tests.ps1`.
+- [x] T043 Add README section referencing manual release workflow & verification (modify `README.md`).
+- [x] T044 Add release process link from Quickstart to README (modify `specs/006-manual-release-workflow/quickstart.md`).
+- [x] T045 Refine error messages & diagnostics (update helper scripts) for clarity & consistency.
+- [x] T046 Final dry run example capture & attach logs to PR (manual execution & commit log update `CHANGELOG.md` if needed).
+- [x] T047 Remove any obsolete TODO comments and ensure scripts avoid network calls beyond GitHub API.
+- [x] T048 Update traceability table (append to this file or spec) confirming all FRs mapped to implemented tasks.
 
 Dependencies
 ```
@@ -116,10 +116,10 @@ Traceability (Functional Requirement → Tasks)
 | FR-01 (Manual trigger) | T001, T026 |
 | FR-02 (Overlay-only artifact) | T023, T033, T039 |
 | FR-03 (Clean overlay state) | T025, T027, T011 test |
-| FR-04 (Version monotonicity + uniqueness) | T019, T027, T009, T010 tests |
+| FR-04 (Version monotonicity + uniqueness) | T019, T027, T009, T010 tests, T040 |
 | FR-05 (Deterministic version tagging) | T032, T033 |
-| FR-06 (Hash manifest) | T021, T029, T007 test, T038 verify |
-| FR-07 (Diff summary) | T022, T030, T013 test |
+| FR-06 (Hash manifest) | T021, T029, T007 test, T038 verify, T041 |
+| FR-07 (Diff summary) | T022, T030, T013 test, T042 |
 | FR-08 (Maintainer summary) | T024, T034, T012 test |
 | FR-09 (Dry run mode) | T031, T005 test |
 | FR-10 (Abort overwrite) | T027/T032 logic, T015 test |
@@ -135,8 +135,8 @@ Validation Checklist
 - [ ] Tests precede implementation (T003–T018 before T019+)
 - [ ] Parallel tasks touch distinct files only
 - [ ] Each task specifies explicit file path(s)
-- [ ] Root hash determinism validated (T038, T041)
-- [ ] Diff classification validated (T042, T013)
+- [x] Root hash determinism validated (T038, T041)
+- [x] Diff classification validated (T042, T013)
 
 Completion Criteria
 - Dry run (T031) outputs manifest + diff + metadata; no tag

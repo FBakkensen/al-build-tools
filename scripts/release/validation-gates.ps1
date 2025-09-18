@@ -37,9 +37,9 @@ function Get-RepositoryRootPath {
 
 function Assert-GitAvailable {
     if ($script:GitVerified) { return }
-    try { & git --version > $null 2>&1 } catch { throw 'git executable not found in PATH. Validation gates require git.' }
+    try { & git --version > $null 2>&1 } catch { throw 'ERROR: ValidationGates - git executable not found in PATH. Install git to evaluate repository state.' }
     if ($LASTEXITCODE -ne 0) {
-        throw 'git executable not found in PATH. Validation gates require git.'
+        throw 'ERROR: ValidationGates - git executable not found in PATH. Install git to evaluate repository state.'
     }
     $script:GitVerified = $true
 }
@@ -170,7 +170,7 @@ function Test-CleanOverlay {
     $gitArgs = @('-C', $RepositoryRoot, 'status', '--short', '--untracked-files=all', 'overlay')
     $status = & git @gitArgs
     if ($LASTEXITCODE -ne 0) {
-        throw 'Failed to inspect git status for overlay directory.'
+        throw 'ERROR: ValidationGates - Failed to inspect git status for overlay directory.'
     }
 
     $lines = @($status | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -190,7 +190,7 @@ function Test-UniqueVersion {
     )
 
     if (-not $VersionInfo) {
-        throw 'VersionInfo is required for uniqueness gate.'
+        throw 'ERROR: ValidationGates - VersionInfo is required for uniqueness gate.'
     }
 
     if (-not $VersionInfo.TagExists) {
@@ -210,7 +210,7 @@ function Test-MonotonicVersion {
     )
 
     if (-not $VersionInfo) {
-        throw 'VersionInfo is required for monotonicity gate.'
+        throw 'ERROR: ValidationGates - VersionInfo is required for monotonicity gate.'
     }
 
     if (-not $VersionInfo.Latest) {
@@ -233,7 +233,7 @@ function Test-OverlayIsolation {
     )
 
     if (-not $OverlayPayload) {
-        throw 'OverlayPayload is required for overlay isolation gate.'
+        throw 'ERROR: ValidationGates - OverlayPayload is required for overlay isolation gate.'
     }
 
     $outliers = @()
@@ -272,7 +272,7 @@ function Invoke-ValidationGates {
     )
 
     if ([string]::IsNullOrWhiteSpace($Version)) {
-        throw 'Version parameter is required for validation gates.'
+        throw 'ERROR: ValidationGates - Version parameter is required for validation gates.'
     }
 
     Ensure-HelpersLoaded

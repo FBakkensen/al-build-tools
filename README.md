@@ -114,6 +114,16 @@ Key expectations that must stay stable:
 
 When updating `bootstrap/install.ps1`, adjust `specs/005-add-tests-for/traceability.md` if coverage moves and run `pwsh -File scripts/run-tests.ps1 -CI`; CI replays the same contract on Windows and Ubuntu.
 
+## Manual Release Workflow
+
+- Trigger the `Manual Overlay Release` GitHub Actions workflow whenever you are ready to ship a tagged overlay-only archive.
+- Provide `version`, `summary`, and `dry_run` inputs; the workflow enforces semantic version monotonicity, tag uniqueness, and overlay cleanliness before packaging.
+- Run a dry pass (`dry_run=true`) to preview the staged overlay file list, SHA-256 manifest, metadata JSON block, and diff summary without creating a tag or release.
+- Run a publish pass (`dry_run=false`) to create the `vMAJOR.MINOR.PATCH` tag, upload `al-build-tools-<version>.zip`, and embed both the manifest and metadata block in the release notes.
+- Consumers can verify archives by expanding the ZIP, running `sha256sum -c manifest.sha256.txt` (or the PowerShell equivalent), and matching the `root_hash` and `commit` fields reported in the release metadata.
+- For step-by-step maintainer and consumer checklists, see [specs/006-manual-release-workflow/quickstart.md](specs/006-manual-release-workflow/quickstart.md).
+
+
 ## How It Works
 
 1. Downloads a ZIP of this repo at the specified ref (default `main`).

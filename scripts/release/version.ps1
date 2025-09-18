@@ -39,10 +39,10 @@ function Assert-GitAvailable {
     try {
         & git --version > $null 2>&1
     } catch {
-        throw 'git executable not found in PATH. Version helper requires git.'
+        throw 'ERROR: VersionHelper - git executable not found in PATH. Install git to inspect release tags.'
     }
     if ($LASTEXITCODE -ne 0) {
-        throw 'git executable not found in PATH. Version helper requires git.'
+        throw 'ERROR: VersionHelper - git executable not found in PATH. Install git to inspect release tags.'
     }
     $script:GitVerified = $true
 }
@@ -56,7 +56,7 @@ function ConvertTo-ReleaseVersion {
 
     $trimmed = $Version.Trim()
     if ([string]::IsNullOrWhiteSpace($trimmed)) {
-        throw 'Version value is required.'
+        throw 'ERROR: VersionHelper - Version value is required.'
     }
 
     $match = [Regex]::Match($trimmed, '^v(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)$')
@@ -136,7 +136,7 @@ function Get-LatestReleaseVersion {
         [string]$RepositoryRoot
     )
 
-    $tags = Get-VersionTags -RepositoryRoot $RepositoryRoot
+    $tags = @(Get-VersionTags -RepositoryRoot $RepositoryRoot)
     if ($tags.Count -eq 0) { return $null }
 
     $parsed = @()
@@ -184,7 +184,7 @@ function Get-VersionInfo {
     $repoRoot = Get-RepositoryRootPath -RepositoryRoot $RepositoryRoot
     $candidate = ConvertTo-ReleaseVersion -Version $Version
 
-    $tags = Get-VersionTags -RepositoryRoot $repoRoot
+    $tags = @(Get-VersionTags -RepositoryRoot $repoRoot)
     $parsedTags = @()
     foreach ($tag in $tags) {
         try {
@@ -220,7 +220,7 @@ function Invoke-VersionHelperMain {
     )
 
     if ([string]::IsNullOrWhiteSpace($Version)) {
-        throw 'Version parameter is required when executing version.ps1 directly.'
+        throw 'ERROR: VersionHelper - Version parameter is required when executing version.ps1 directly.'
     }
 
     $info = Get-VersionInfo -Version $Version -RepositoryRoot $RepositoryRoot
