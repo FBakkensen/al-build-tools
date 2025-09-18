@@ -17,13 +17,13 @@ $script:DefaultRepoRoot = $null
 $script:GitVerified = $false
 
 function ConvertTo-VersionNumber {
-    param([string]$Input)
+    param([string]$VersionText)
 
-    if ([string]::IsNullOrWhiteSpace($Input)) {
+    if ([string]::IsNullOrWhiteSpace($VersionText)) {
         return $null
     }
 
-    $match = [Regex]::Match($Input, '^v(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)$')
+    $match = [Regex]::Match($VersionText, '^v(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)$')
     if (-not $match.Success) {
         return $null
     }
