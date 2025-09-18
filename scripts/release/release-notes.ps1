@@ -39,25 +39,6 @@ function Get-RepositoryRootPath {
     return $script:DefaultRepoRoot
 }
 
-function Ensure-HelpersLoaded {
-    if (-not (Get-Command -Name ConvertTo-ReleaseVersion -ErrorAction SilentlyContinue)) {
-        $versionScript = Join-Path -Path $PSScriptRoot -ChildPath 'version.ps1'
-        . $versionScript
-    }
-    if (-not (Get-Command -Name Get-OverlayPayload -ErrorAction SilentlyContinue)) {
-        $overlayScript = Join-Path -Path $PSScriptRoot -ChildPath 'overlay.ps1'
-        . $overlayScript
-    }
-    if (-not (Get-Command -Name New-HashManifest -ErrorAction SilentlyContinue)) {
-        $manifestScript = Join-Path -Path $PSScriptRoot -ChildPath 'hash-manifest.ps1'
-        . $manifestScript
-    }
-    if (-not (Get-Command -Name Get-DiffSummary -ErrorAction SilentlyContinue)) {
-        $diffScript = Join-Path -Path $PSScriptRoot -ChildPath 'diff-summary.ps1'
-        . $diffScript
-    }
-}
-
 function Get-CommitSha {
     [CmdletBinding()]
     param(
@@ -97,20 +78,63 @@ function New-ReleaseNotes {
         throw 'ERROR: ReleaseNotes - Version parameter is required to compose release notes.'
     }
 
-    Ensure-HelpersLoaded
-
     $repoRoot = Get-RepositoryRootPath -RepositoryRoot $RepositoryRoot
-    $versionInfo = ConvertTo-ReleaseVersion -Version $Version
+    $versionScript = Join-Path -Path $PSScriptRoot -ChildPath 'version.ps1'
+    if (-not (Test-Path -LiteralPath $versionScript)) {
+        throw "Version helper script not found at $versionScript"
+    }
 
-    $overlay = if ($OverlayPayload) { $OverlayPayload } else { Get-OverlayPayload -RepositoryRoot $repoRoot }
-    $manifestInfo = if ($Manifest) { $Manifest } else { New-HashManifest -OverlayPayload $overlay -RepositoryRoot $repoRoot }
-    $diffInfo = if ($Diff) { $Diff } else { Get-DiffSummary -Version $versionInfo.Normalized -RepositoryRoot $repoRoot }
+    $versionJson = & $versionScript -Version $Version -RepositoryRoot $repoRoot -AsJson
+    if ([string]::IsNullOrWhiteSpace($versionJson)) {
+        throw "Version helper returned empty response for $Version."
+    }
+
+    $versionInfo = $versionJson | ConvertFrom-Json -Depth 6
+    $candidate = $versionInfo.Candidate
+
+    $overlay = if ($OverlayPayload) {
+        $OverlayPayload
+    } else {
+        $overlayScript = Join-Path -Path $PSScriptRoot -ChildPath 'overlay.ps1'
+        if (-not (Test-Path -LiteralPath $overlayScript)) {
+            throw "Overlay helper script not found at $overlayScript"
+        }
+        & $overlayScript -RepositoryRoot $repoRoot
+    }
+
+    $manifestInfo = if ($Manifest) {
+        $Manifest
+    } else {
+        $manifestScript = Join-Path -Path $PSScriptRoot -ChildPath 'hash-manifest.ps1'
+        if (-not (Test-Path -LiteralPath $manifestScript)) {
+            throw "Hash manifest helper script not found at $manifestScript"
+        }
+        $manifestJson = & $manifestScript -RepositoryRoot $repoRoot -OverlayPayload $overlay -AsJson
+        if ([string]::IsNullOrWhiteSpace($manifestJson)) {
+            throw 'Hash manifest helper returned empty response.'
+        }
+        $manifestJson | ConvertFrom-Json -Depth 6
+    }
+
+    $diffInfo = if ($Diff) {
+        $Diff
+    } else {
+        $diffScript = Join-Path -Path $PSScriptRoot -ChildPath 'diff-summary.ps1'
+        if (-not (Test-Path -LiteralPath $diffScript)) {
+            throw "Diff summary helper script not found at $diffScript"
+        }
+        $diffJson = & $diffScript -Version $candidate.Normalized -RepositoryRoot $repoRoot -AsJson
+        if ([string]::IsNullOrWhiteSpace($diffJson)) {
+            throw 'Diff summary helper returned empty response.'
+        }
+        $diffJson | ConvertFrom-Json -Depth 6
+    }
 
     $commitSha = if ($CurrentCommit) { $CurrentCommit } elseif ($diffInfo.CurrentCommit) { $diffInfo.CurrentCommit } else { Get-CommitSha -RepositoryRoot $repoRoot -Ref 'HEAD' }
     $releasedUtc = if ($ReleaseDateUtc) { $ReleaseDateUtc.ToUniversalTime() } else { (Get-Date).ToUniversalTime() }
 
     $metadata = [PSCustomObject]@{
-        version = $versionInfo.Normalized
+        version = $candidate.Normalized
         commit = $commitSha
         released = $releasedUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
         fileCount = if ($overlay.FileCount) { [int]$overlay.FileCount } else { $manifestInfo.FileCount }
