@@ -36,32 +36,6 @@ function Get-RepositoryRootPath {
     return $script:DefaultRepoRoot
 }
 
-function Ensure-HelpersLoaded {
-    if (-not (Get-Command -Name Get-OverlayPayload -ErrorAction SilentlyContinue)) {
-        $overlayScript = Join-Path -Path $PSScriptRoot -ChildPath 'overlay.ps1'
-        if (-not (Test-Path -LiteralPath $overlayScript)) {
-            throw "Overlay helper script not found at $overlayScript"
-        }
-        . $overlayScript
-    }
-
-    if (-not (Get-Command -Name ConvertTo-ReleaseVersion -ErrorAction SilentlyContinue)) {
-        $versionScript = Join-Path -Path $PSScriptRoot -ChildPath 'version.ps1'
-        if (-not (Test-Path -LiteralPath $versionScript)) {
-            throw "Version helper script not found at $versionScript"
-        }
-        . $versionScript
-    }
-
-    if (-not (Get-Command -Name New-HashManifest -ErrorAction SilentlyContinue)) {
-        $manifestScript = Join-Path -Path $PSScriptRoot -ChildPath 'hash-manifest.ps1'
-        if (-not (Test-Path -LiteralPath $manifestScript)) {
-            throw "Hash manifest helper script not found at $manifestScript"
-        }
-        . $manifestScript
-    }
-}
-
 function New-ReleaseArtifact {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param(
@@ -76,17 +50,46 @@ function New-ReleaseArtifact {
         throw 'ERROR: ReleaseArtifact - Version parameter is required to create release artifact.'
     }
 
-    Ensure-HelpersLoaded
-
     $repoRoot = Get-RepositoryRootPath -RepositoryRoot $RepositoryRoot
-    $versionInfo = ConvertTo-ReleaseVersion -Version $Version
+    $versionScript = Join-Path -Path $PSScriptRoot -ChildPath 'version.ps1'
+    if (-not (Test-Path -LiteralPath $versionScript)) {
+        throw "Version helper script not found at $versionScript"
+    }
 
-    $overlay = if ($OverlayPayload) { $OverlayPayload } else { Get-OverlayPayload -RepositoryRoot $repoRoot }
-    $manifestInfo = if ($Manifest) { $Manifest } else { New-HashManifest -OverlayPayload $overlay -RepositoryRoot $repoRoot }
+    $versionJson = & $versionScript -Version $Version -RepositoryRoot $repoRoot -AsJson
+    if ([string]::IsNullOrWhiteSpace($versionJson)) {
+        throw "Version helper returned empty response for $Version."
+    }
+
+    $versionInfo = $versionJson | ConvertFrom-Json -Depth 6
+
+    $overlay = if ($OverlayPayload) {
+        $OverlayPayload
+    } else {
+        $overlayScript = Join-Path -Path $PSScriptRoot -ChildPath 'overlay.ps1'
+        if (-not (Test-Path -LiteralPath $overlayScript)) {
+            throw "Overlay helper script not found at $overlayScript"
+        }
+        & $overlayScript -RepositoryRoot $repoRoot
+    }
+
+    $manifestInfo = if ($Manifest) {
+        $Manifest
+    } else {
+        $manifestScript = Join-Path -Path $PSScriptRoot -ChildPath 'hash-manifest.ps1'
+        if (-not (Test-Path -LiteralPath $manifestScript)) {
+            throw "Hash manifest helper script not found at $manifestScript"
+        }
+        $manifestJson = & $manifestScript -RepositoryRoot $repoRoot -OverlayPayload $overlay -AsJson
+        if ([string]::IsNullOrWhiteSpace($manifestJson)) {
+            throw 'Hash manifest helper returned empty response.'
+        }
+        $manifestJson | ConvertFrom-Json -Depth 6
+    }
 
     $defaultDir = Join-Path -Path $repoRoot -ChildPath 'artifacts/release'
     $outputCandidate = if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-        Join-Path -Path $defaultDir -ChildPath ("al-build-tools-{0}.zip" -f $versionInfo.Normalized)
+        Join-Path -Path $defaultDir -ChildPath ("al-build-tools-{0}.zip" -f $versionInfo.Candidate.Normalized)
     } else {
         $OutputPath
     }
@@ -97,7 +100,7 @@ function New-ReleaseArtifact {
     if (-not $PSCmdlet.ShouldProcess($outputFullPath, 'Create release artifact zip')) {
         return [PSCustomObject]@{
             RepositoryRoot = $repoRoot
-            Version = $versionInfo.Normalized
+            Version = $versionInfo.Candidate.Normalized
             OutputPath = $outputFullPath
             FileName = [System.IO.Path]::GetFileName($outputFullPath)
             SizeBytes = 0
@@ -163,7 +166,7 @@ function New-ReleaseArtifact {
 
     return [PSCustomObject]@{
         RepositoryRoot = $repoRoot
-        Version = $versionInfo.Normalized
+        Version = $versionInfo.Candidate.Normalized
         OutputPath = $resolvedPath
         FileName = [System.IO.Path]::GetFileName($resolvedPath)
         SizeBytes = [int64]$fileInfo.Length
