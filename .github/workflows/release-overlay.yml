@@ -182,6 +182,24 @@ jobs:
           catch {
             Emit-StepError -Message 'Resolve release version step failed.' -ErrorRecord $_
           }
+          finally {
+            Write-Host "::notice::ResolveVersion.Success=$?"
+            Write-Host "::notice::ResolveVersion.LastExit=$LASTEXITCODE"
+
+            if ($Error.Count -gt 0) {
+              Write-Host "::warning::ResolveVersion.ErrorQueueCount=$($Error.Count)"
+              $Error | ForEach-Object {
+                $record = ($_ | Format-List * -Force | Out-String).Trim()
+                if (-not [string]::IsNullOrWhiteSpace($record)) {
+                  $record.Split([Environment]::NewLine) | ForEach-Object {
+                    if (-not [string]::IsNullOrWhiteSpace($_)) {
+                      Write-Host "::warning::ResolveVersion.ErrorRecord=$_"
+                    }
+                  }
+                }
+              }
+            }
+          }
 
       - name: Enumerate overlay payload
         id: overlay
