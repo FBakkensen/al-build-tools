@@ -23,7 +23,8 @@ Describe 'Installer download failure categorization: timeout' {
         $dest = Initialize-InstallTestRepo -Path $destRoot
 
         try {
-            $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $script:BaseUrl -Ref $script:Ref
+            # Use a small timeout to keep the negative-path test fast.
+            $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $script:BaseUrl -Ref $script:Ref -AdditionalArguments @('-HttpTimeoutSec', '5')
 
             $result.ExitCode | Should -Be 20
 
