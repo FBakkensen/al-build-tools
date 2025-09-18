@@ -37,7 +37,7 @@ function Get-RepositoryRootPath {
 }
 
 function Ensure-VersionHelpersLoaded {
-    if (Get-Command -Name ConvertTo-ReleaseVersion -ErrorAction SilentlyContinue) {
+    if (Get-Command -Name Get-VersionInfo -ErrorAction SilentlyContinue) {
         return
     }
     $versionScript = Join-Path -Path $PSScriptRoot -ChildPath 'version.ps1'
@@ -45,6 +45,16 @@ function Ensure-VersionHelpersLoaded {
         throw "Version helper script not found at $versionScript"
     }
     . $versionScript
+
+    $helperNames = @('ConvertTo-ReleaseVersion','Compare-ReleaseVersion','Get-VersionTags','Get-VersionInfo')
+    foreach ($helperName in $helperNames) {
+        $helperCommand = Get-Command -Name $helperName -CommandType Function -ErrorAction Stop
+        if ($helperCommand -and $helperCommand.ScriptBlock) {
+            Set-Item -Path Function:script:$helperName -Value $helperCommand.ScriptBlock
+        } else {
+            throw "Version helper failed to expose $helperName."
+        }
+    }
 }
 
 function Assert-GitAvailable {
