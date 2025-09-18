@@ -98,16 +98,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Pester
+      - name: Install PowerShell modules (Pester + YAML)
         shell: pwsh
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module Pester -Scope CurrentUser -Force -AllowClobber
+          Install-Module powershell-yaml -Scope CurrentUser -Force -AllowClobber
 
-      - name: Verify required tools (Pester)
+      - name: Verify required tools (Pester + YAML module)
         shell: pwsh
         run: |
-          & ./scripts/ci/assert-required-tools.ps1 -Modules Pester
+          & ./scripts/ci/assert-required-tools.ps1 -Modules Pester,'powershell-yaml'
 
       - name: Run contract tests
         shell: pwsh

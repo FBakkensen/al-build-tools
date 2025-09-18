@@ -1,5 +1,12 @@
 # Changelog
 
+## 2025-09-18
+
+- tests(release): add unit coverage for version, hash manifest, and diff summary helpers; fix semver tag discovery edge cases.
+- docs(release): document manual release workflow in README and cross-link quickstart guidance.
+- chore(release): standardize ERROR-prefixed diagnostics across helper scripts and mark integration suite pending with opt-in flag.
+- docs(release): captured local dry-run sample outputs in specs/006-manual-release-workflow/dry-run-example.md.
+
 ## 2025-09-15
 
 - feat(make): Entry scripts are now self-contained; removed `overlay/scripts/make/lib/`.

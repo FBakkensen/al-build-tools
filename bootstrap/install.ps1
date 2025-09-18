@@ -3,7 +3,8 @@ param(
     [string]$Url = 'https://github.com/FBakkensen/al-build-tools',
     [string]$Ref = 'main',
     [string]$Dest = '.',
-    [string]$Source = 'overlay'
+    [string]$Source = 'overlay',
+    [int]$HttpTimeoutSec = 0
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -33,7 +34,8 @@ function Install-AlBuildTools {
         [string]$Url = 'https://github.com/FBakkensen/al-build-tools',
         [string]$Ref = 'main',
         [string]$Dest = '.',
-        [string]$Source = 'overlay'
+        [string]$Source = 'overlay',
+        [int]$HttpTimeoutSec = 0
     )
 
     # FR-004: Enforce minimum PowerShell version guard
@@ -45,6 +47,19 @@ function Install-AlBuildTools {
     if ($psVersion -lt [System.Version]'7.0') {
         Write-Host "[install] guard PowerShellVersionUnsupported"
         exit 10
+    }
+
+    $effectiveTimeoutSec = $HttpTimeoutSec
+    if ($effectiveTimeoutSec -le 0) {
+        $envTimeoutRaw = $env:ALBT_HTTP_TIMEOUT_SEC
+        if ($envTimeoutRaw) {
+            $parsedTimeout = 0
+            if ([int]::TryParse($envTimeoutRaw, [ref]$parsedTimeout) -and $parsedTimeout -gt 0) {
+                $effectiveTimeoutSec = $parsedTimeout
+            } else {
+                Write-Warning "[install] env ALBT_HTTP_TIMEOUT_SEC value '$envTimeoutRaw' is not a positive integer; ignoring."
+            }
+        }
     }
 
     $startTime = Get-Date
@@ -117,7 +132,17 @@ function Install-AlBuildTools {
         foreach ($u in $tryUrls) {
             try {
                 Write-Note "Downloading: $u"
-                Invoke-WebRequest -Uri $u -OutFile $zip -UseBasicParsing -MaximumRedirection 5 -ErrorAction Stop
+                $invokeWebRequestParameters = @{
+                    Uri = $u
+                    OutFile = $zip
+                    UseBasicParsing = $true
+                    MaximumRedirection = 5
+                    ErrorAction = 'Stop'
+                }
+                if ($effectiveTimeoutSec -gt 0) {
+                    $invokeWebRequestParameters['TimeoutSec'] = $effectiveTimeoutSec
+                }
+                Invoke-WebRequest @invokeWebRequestParameters
                 $downloaded = $true
                 break
             } catch {
@@ -222,7 +247,16 @@ function Install-AlBuildTools {
 # - When executed via -File or &, InvocationName is the script name/path
 if ($PSCommandPath -and ($MyInvocation.InvocationName -ne '.') -and -not $env:ALBT_NO_AUTORUN) {
     try {
-        Install-AlBuildTools -Url $Url -Ref $Ref -Dest $Dest -Source $Source
+        $installParams = @{
+            Url = $Url
+            Ref = $Ref
+            Dest = $Dest
+            Source = $Source
+        }
+        if ($PSBoundParameters.ContainsKey('HttpTimeoutSec')) {
+            $installParams['HttpTimeoutSec'] = $HttpTimeoutSec
+        }
+        Install-AlBuildTools @installParams
     } catch {
         Write-Host "[install] error unhandled=$(ConvertTo-Json $_.Exception.Message -Compress)"
         exit 99
