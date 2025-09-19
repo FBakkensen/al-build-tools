@@ -1,7 +1,8 @@
 #requires -Version 7.0
+[CmdletBinding()]
 param(
-    [string]$Url = 'https://github.com/FBakkensen/al-build-tools',
-    [string]$Ref = 'main',
+    [string]$Url = 'https://api.github.com/repos/FBakkensen/al-build-tools',
+    [string]$Ref,
     [string]$Dest = '.',
     [string]$Source = 'overlay',
     [int]$HttpTimeoutSec = 0
@@ -10,13 +11,16 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
     # FR-008: Reject unsupported parameters (usage guard)
-    if ($args.Count -gt 0) {
-        $firstArg = $args[0]
-        $argName = if ($firstArg.StartsWith('-')) { $firstArg.Substring(1) } else { $firstArg }
-        Write-Host "[install] guard UnknownParameter argument=`"$argName`""
-        Write-Host "Usage: Install-AlBuildTools [-Url <url>] [-Ref <ref>] [-Dest <path>] [-Source <folder>]"
-        exit 10
-    }
+if (-not (Get-Variable -Name 'args' -Scope 0 -ErrorAction SilentlyContinue)) {
+    $args = @()
+}
+if ($args.Count -gt 0) {
+    $firstArg = $args[0]
+    $argName = if ($firstArg.StartsWith('-')) { $firstArg.Substring(1) } else { $firstArg }
+    Write-Host "[install] guard UnknownParameter argument=`"$argName`""
+    Write-Host "Usage: Install-AlBuildTools [-Url <url>] [-Ref <ref>] [-Dest <path>] [-Source <folder>]"
+    exit 10
+}
 
 function Write-Note($msg) { Write-Host "[al-build-tools] $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "[ok] $msg" -ForegroundColor Green }
@@ -28,11 +32,159 @@ function Write-Step($n, $msg) {
     Write-Host ("[install] step index={0} name={1}" -f $n, $stepName)
 }
 
+function ConvertTo-CanonicalReleaseTag {
+    param(
+        [string]$Tag
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Tag)) {
+        return $Tag
+    }
+
+    $trimmed = $Tag.Trim()
+    if ($trimmed.Length -gt 1 -and ($trimmed[0] -eq 'v' -or $trimmed[0] -eq 'V') -and [char]::IsDigit($trimmed[1])) {
+        return 'v' + $trimmed.Substring(1)
+    }
+
+    if ($trimmed.Length -gt 0 -and [char]::IsDigit($trimmed[0])) {
+        return 'v' + $trimmed
+    }
+
+    return $trimmed
+}
+
+function Resolve-EffectiveReleaseTag {
+    param(
+        [string]$ParameterRef,
+        [string]$EnvRelease,
+        [bool]$EmitVerboseNote = $false
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ParameterRef)) {
+        return [pscustomobject]@{
+            Tag = ConvertTo-CanonicalReleaseTag -Tag $ParameterRef
+            Source = 'Parameter'
+            Original = $ParameterRef
+            NoteMessage = $null
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($EnvRelease)) {
+        $canonical = ConvertTo-CanonicalReleaseTag -Tag $EnvRelease
+        Write-Verbose "Using env ALBT_RELEASE=$canonical"
+        $noteMessage = $null
+        if ($EmitVerboseNote) {
+            $noteMessage = "[install] note Using env ALBT_RELEASE=$canonical"
+        }
+        return [pscustomobject]@{
+            Tag = $canonical
+            Source = 'Environment'
+            Original = $EnvRelease
+            NoteMessage = $noteMessage
+        }
+    }
+
+    return [pscustomobject]@{
+        Tag = $null
+        Source = 'Latest'
+        Original = $null
+        NoteMessage = $null
+    }
+}
+
+function Get-HttpStatusCodeFromError {
+    param(
+        [System.Management.Automation.ErrorRecord]$ErrorRecord
+    )
+
+    if ($null -eq $ErrorRecord) { return $null }
+
+    $exception = $ErrorRecord.Exception
+    while ($exception) {
+        if ($exception.PSObject.Properties.Match('Response')) {
+            $response = $exception.Response
+            if ($response -and $response.PSObject.Properties.Match('StatusCode')) {
+                try {
+                    $code = [int]$response.StatusCode
+                    return $code
+                } catch { }
+            }
+        }
+
+        if ($exception.PSObject.Properties.Match('StatusCode')) {
+            $status = $exception.StatusCode
+            if ($status -is [int]) { return $status }
+            if ($status -is [System.Net.HttpStatusCode]) { return [int]$status }
+            if ($status -and $status.PSObject.Properties.Match('value__')) {
+                try {
+                    return [int]$status.value__
+                } catch { }
+            }
+        }
+
+        $exception = $exception.InnerException
+    }
+
+    return $null
+}
+
+function Resolve-DownloadFailureDetails {
+    param(
+        [System.Management.Automation.ErrorRecord]$ErrorRecord,
+        [string]$DefaultHint = 'Check network connectivity and repository URL',
+        [hashtable]$StatusHints
+    )
+
+    $category = 'Unknown'
+    $hint = $DefaultHint
+
+    if ($null -eq $ErrorRecord) {
+        return [pscustomobject]@{ Category = $category; Hint = $hint }
+    }
+
+    $message = $ErrorRecord.Exception.Message
+    $statusCode = Get-HttpStatusCodeFromError -ErrorRecord $ErrorRecord
+
+    if ($ErrorRecord.Exception -is [System.OperationCanceledException]) {
+        return [pscustomobject]@{ Category = 'Timeout'; Hint = 'Request timed out' }
+    }
+
+    if ($message -match 'timed out|timeout') {
+        return [pscustomobject]@{ Category = 'Timeout'; Hint = 'Request timed out' }
+    }
+
+    if ($message -match 'name or service not known|No such host|Temporary failure in name resolution|network is unreachable|connection refused|connect failed') {
+        return [pscustomobject]@{ Category = 'NetworkUnavailable'; Hint = 'Network connectivity issues' }
+    }
+
+    if ($statusCode) {
+        if ($StatusHints -and $StatusHints.ContainsKey($statusCode)) {
+            $entry = $StatusHints[$statusCode]
+            if ($entry -and $entry.Category) { $category = $entry.Category }
+            if ($entry -and $entry.Hint) { $hint = $entry.Hint }
+        } else {
+            switch ($statusCode) {
+                404 { $category = 'NotFound'; $hint = 'Resource not found' }
+                408 { $category = 'Timeout'; $hint = 'Request timed out' }
+                429 { $category = 'Unknown'; $hint = 'Rate limited retrieving resource' }
+                500 { $category = 'Unknown'; $hint = 'Server error retrieving resource' }
+                502 { $category = 'NetworkUnavailable'; $hint = 'Bad gateway retrieving resource' }
+                503 { $category = 'NetworkUnavailable'; $hint = 'Service unavailable' }
+                504 { $category = 'Timeout'; $hint = 'Gateway timeout retrieving resource' }
+                default { $category = 'Unknown'; $hint = $DefaultHint }
+            }
+        }
+        return [pscustomobject]@{ Category = $category; Hint = $hint }
+    }
+
+    return [pscustomobject]@{ Category = $category; Hint = $hint }
+}
+
 function Install-AlBuildTools {
     [CmdletBinding()]
     param(
-        [string]$Url = 'https://github.com/FBakkensen/al-build-tools',
-        [string]$Ref = 'main',
+        [string]$Url = 'https://api.github.com/repos/FBakkensen/al-build-tools',
+        [string]$Ref,
         [string]$Dest = '.',
         [string]$Source = 'overlay',
         [int]$HttpTimeoutSec = 0
@@ -72,7 +224,7 @@ function Install-AlBuildTools {
         $created = New-Item -ItemType Directory -Force -Path $Dest
         $destFull = (Resolve-Path -Path $created.FullName).Path
     }
-    Write-Note "Install/update from $Url@$Ref into $destFull (source: $Source)"
+    Write-Note "Install/update from $Url into $destFull (source: $Source)"
 
     $step++; Write-Step $step "Detect git repository"
     $gitOk = $false
@@ -117,60 +269,157 @@ function Install-AlBuildTools {
 
     $tmp = New-Item -ItemType Directory -Path ([System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetRandomFileName()))
     Write-Host "[install] temp workspace=`"$($tmp.FullName)`""
+    $selectedReleaseTag = $null
+    $assetName = 'overlay.zip'
+    $assetDownloadUrl = $null
+    $releaseRequestUrl = $null
+    $refForFailure = $null
     try {
-        $step++; Write-Step $step "Download repository archive"
-        $zip = Join-Path $tmp.FullName 'src.zip'
-        $base = $Url.TrimEnd('/')
-        $tryUrls = @(
-            "$base/archive/refs/heads/$Ref.zip",
-            "$base/archive/refs/tags/$Ref.zip",
-            "$base/archive/$Ref.zip"
-        )
-
-        $downloaded = $false
-        $lastError = $null
-        foreach ($u in $tryUrls) {
-            try {
-                Write-Note "Downloading: $u"
-                $invokeWebRequestParameters = @{
-                    Uri = $u
-                    OutFile = $zip
-                    UseBasicParsing = $true
-                    MaximumRedirection = 5
-                    ErrorAction = 'Stop'
-                }
-                if ($effectiveTimeoutSec -gt 0) {
-                    $invokeWebRequestParameters['TimeoutSec'] = $effectiveTimeoutSec
-                }
-                Invoke-WebRequest @invokeWebRequestParameters
-                $downloaded = $true
-                break
-            } catch {
-                $lastError = $_
-                continue
+        $step++; Write-Step $step "Select release"
+        $apiBase = $Url.TrimEnd('/')
+        $emitVerboseNote = $false
+        if ($PSCmdlet) {
+            if ($PSCmdlet.MyInvocation.BoundParameters.ContainsKey('Verbose')) { $emitVerboseNote = $true }
+        }
+        if (-not $emitVerboseNote) {
+            if ($VerbosePreference -eq 'Continue' -or $VerbosePreference -eq 'Inquire') {
+                $emitVerboseNote = $true
             }
         }
-        if (-not $downloaded) {
-            # FR-014: Classify archive acquisition failures by category
-            $category = 'Unknown'
-            $hint = 'Check network connectivity and repository URL'
-            if ($lastError) {
-                $errorMessage = $lastError.Exception.Message.ToLower()
-                if ($errorMessage -match 'timeout') {
-                    $category = 'Timeout'
-                    $hint = 'Request timed out'
-                } elseif ($errorMessage -match 'network|connection|unreachable') {
-                    $category = 'NetworkUnavailable'
-                    $hint = 'Network connectivity issues'
-                } elseif ($errorMessage -match '404|not found') {
-                    $category = 'NotFound'
-                    $hint = 'Repository or reference does not exist'
-                } elseif ($errorMessage -match 'corrupt|invalid|archive') {
-                    $category = 'CorruptArchive'
-                    $hint = 'Archive file is corrupted or invalid'
+
+        $selection = Resolve-EffectiveReleaseTag -ParameterRef $Ref -EnvRelease $env:ALBT_RELEASE -EmitVerboseNote:$emitVerboseNote
+        if ($selection -and $selection.PSObject.Properties.Match('NoteMessage') -and $selection.NoteMessage) {
+            Write-Output $selection.NoteMessage
+        }
+        $refForFailure = if ($selection.Tag) { $selection.Tag } else { 'latest' }
+
+        if ([string]::IsNullOrWhiteSpace($apiBase)) {
+            Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$Url`" category=Unknown hint=`"Release service URL is empty`""
+            exit 20
+        }
+
+        if ($selection.Tag) {
+            $encodedTag = [System.Net.WebUtility]::UrlEncode($selection.Tag)
+            $releaseRequestUrl = "$apiBase/releases/tags/$encodedTag"
+        } else {
+            $releaseRequestUrl = "$apiBase/releases/latest"
+        }
+
+        $metadataStatusHints = @{
+            401 = @{ Category = 'Unknown'; Hint = 'Authentication required for release metadata' }
+            403 = @{ Category = 'Unknown'; Hint = 'Access denied retrieving release metadata' }
+            404 = @{ Category = 'NotFound'; Hint = 'Release tag not found' }
+        }
+
+        try {
+            $metadataRequest = @{
+                Uri = $releaseRequestUrl
+                Method = 'Get'
+                Headers = @{
+                    'Accept' = 'application/vnd.github+json'
+                    'User-Agent' = 'al-build-tools-installer'
                 }
+                ErrorAction = 'Stop'
             }
-            Write-Host "[install] download failure ref=`"$Ref`" url=`"$base`" category=$category hint=`"$hint`""
+            if ($effectiveTimeoutSec -gt 0) {
+                $metadataRequest['TimeoutSec'] = $effectiveTimeoutSec
+            }
+            $releaseMetadata = Invoke-RestMethod @metadataRequest
+        } catch {
+            $failure = Resolve-DownloadFailureDetails -ErrorRecord $_ -DefaultHint 'Unable to retrieve release metadata' -StatusHints $metadataStatusHints
+            Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=$($failure.Category) hint=`"$($failure.Hint)`""
+            exit 20
+        }
+
+        if ($null -eq $releaseMetadata) {
+            Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=NotFound hint=`"Release metadata missing`""
+            exit 20
+        }
+
+        $selectedReleaseTag = ConvertTo-CanonicalReleaseTag -Tag ($releaseMetadata.tag_name)
+        if (-not $selectedReleaseTag) {
+            $selectedReleaseTag = if ($selection.Tag) { $selection.Tag } else { $null }
+        }
+        if (-not $selectedReleaseTag) {
+            Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=Unknown hint=`"Release tag could not be determined`""
+            exit 20
+        }
+        $refForFailure = $selectedReleaseTag
+
+        if ($releaseMetadata.draft -eq $true -or $releaseMetadata.prerelease -eq $true) {
+            Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=NotFound hint=`"Release not published`""
+            exit 20
+        }
+
+        $assets = @()
+        if ($releaseMetadata.PSObject.Properties.Match('assets') -and $releaseMetadata.assets) {
+            if ($releaseMetadata.assets -is [System.Array]) {
+                $assets = $releaseMetadata.assets
+            } else {
+                $assets = @($releaseMetadata.assets)
+            }
+        }
+
+        $asset = $null
+        foreach ($candidate in $assets) {
+            if ($null -eq $candidate) { continue }
+            $nameProp = $candidate.PSObject.Properties | Where-Object { $_.Name -eq 'name' } | Select-Object -First 1
+            if (-not $nameProp) { continue }
+            $candidateName = [string]$nameProp.Value
+            if (-not [string]::IsNullOrWhiteSpace($candidateName) -and $candidateName -ieq 'overlay.zip') {
+                $asset = $candidate
+                break
+            }
+        }
+
+        if (-not $asset) {
+            Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=NotFound hint=`"Release asset overlay.zip not found`""
+            exit 20
+        }
+
+        $assetNameProp = $asset.PSObject.Properties | Where-Object { $_.Name -eq 'name' } | Select-Object -First 1
+        if ($assetNameProp) {
+            $assetName = [string]$assetNameProp.Value
+        }
+
+        $assetUrlProp = $asset.PSObject.Properties | Where-Object { $_.Name -eq 'browser_download_url' } | Select-Object -First 1
+        if ($assetUrlProp) {
+            $assetDownloadUrl = [string]$assetUrlProp.Value
+        }
+
+        if ([string]::IsNullOrWhiteSpace($assetDownloadUrl)) {
+            Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=Unknown hint=`"Release asset download URL missing`""
+            exit 20
+        }
+
+        Write-Note "Selected release: $selectedReleaseTag (asset: $assetName)"
+
+        $step++; Write-Step $step "Download release asset"
+        $zip = Join-Path $tmp.FullName 'overlay.zip'
+        $assetStatusHints = @{
+            401 = @{ Category = 'Unknown'; Hint = 'Authentication required for release asset' }
+            403 = @{ Category = 'Unknown'; Hint = 'Access denied retrieving release asset' }
+            404 = @{ Category = 'NotFound'; Hint = 'Release asset overlay.zip not found' }
+        }
+
+        try {
+            $downloadParams = @{
+                Uri = $assetDownloadUrl
+                OutFile = $zip
+                Headers = @{
+                    'Accept' = 'application/octet-stream'
+                    'User-Agent' = 'al-build-tools-installer'
+                }
+                MaximumRedirection = 5
+                ErrorAction = 'Stop'
+            }
+            if ($effectiveTimeoutSec -gt 0) {
+                $downloadParams['TimeoutSec'] = $effectiveTimeoutSec
+            }
+            Invoke-WebRequest @downloadParams
+        } catch {
+            $failure = Resolve-DownloadFailureDetails -ErrorRecord $_ -DefaultHint 'Unable to download release asset' -StatusHints $assetStatusHints
+            Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$assetDownloadUrl`" category=$($failure.Category) hint=`"$($failure.Hint)`""
             exit 20
         }
 
@@ -179,36 +428,34 @@ function Install-AlBuildTools {
         try {
             Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force -ErrorAction Stop
         } catch {
-            Write-Host "[install] download failure ref=`"$Ref`" url=`"$base`" category=CorruptArchive hint=`"Failed to extract archive`""
+            Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$assetDownloadUrl`" category=CorruptArchive hint=`"Failed to extract asset`""
             exit 20
         }
         $top = Get-ChildItem -Path $extract -Directory | Select-Object -First 1
-        if (-not $top) { 
-            Write-Host "[install] download failure ref=`"$Ref`" url=`"$base`" category=CorruptArchive hint=`"Archive appears empty`""
+        if (-not $top) {
+            Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$assetDownloadUrl`" category=CorruptArchive hint=`"Asset archive appears empty`""
             exit 20
         }
         $src = Join-Path $top.FullName $Source
         if (-not (Test-Path $src -PathType Container)) {
-            # last-chance scan
             $cand = Get-ChildItem -Path $extract -Recurse -Directory -Filter $Source | Select-Object -First 1
-            if ($cand) { 
-                $src = $cand.FullName 
-            } else { 
-                Write-Host "[install] download failure ref=`"$Ref`" url=`"$base`" category=NotFound hint=`"Source folder '$Source' not found in archive`""
+            if ($cand) {
+                $src = $cand.FullName
+            } else {
+                Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$assetDownloadUrl`" category=NotFound hint=`"Source folder '$Source' not found in asset`""
                 exit 20
             }
         }
-        
-        # Validate extraction completed successfully before proceeding
+
         if (-not (Get-ChildItem -Path $src -File -ErrorAction SilentlyContinue)) {
-            Write-Host "[install] download failure ref=`"$Ref`" url=`"$base`" category=CorruptArchive hint=`"Source directory contains no files`""
+            Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$assetDownloadUrl`" category=CorruptArchive hint=`"Source directory contains no files`""
             exit 20
         }
-        
+
         Write-Ok "Source directory: $src"
 
         $step++; Write-Step $step "Copy files into destination"
-        
+
         # FR-007: Verify all source files remain within destination boundary
         $overlayFiles = Get-ChildItem -Path $src -Recurse -File
         foreach ($file in $overlayFiles) {
@@ -220,10 +467,9 @@ function Install-AlBuildTools {
                 exit 30
             }
         }
-        
+
         $fileCount = (Get-ChildItem -Path $src -Recurse -File | Measure-Object).Count
         $dirCount  = (Get-ChildItem -Path $src -Recurse -Directory | Measure-Object).Count + 1
-        # FR-020: Surface permission failures as guard diagnostics
         try {
             Copy-Item -Path (Join-Path $src '*') -Destination $destFull -Recurse -Force -ErrorAction Stop
         } catch [System.UnauthorizedAccessException], [System.IO.IOException] {
@@ -234,8 +480,8 @@ function Install-AlBuildTools {
 
         $endTime = Get-Date
         $durationSeconds = ($endTime - $startTime).TotalSeconds
-        Write-Host "[install] success ref=`"$Ref`" overlay=`"$Source`" duration=$($durationSeconds.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture))"
-        Write-Note "Completed: $Source from $Url@$Ref into $destFull"
+        Write-Host "[install] success ref=`"$selectedReleaseTag`" overlay=`"$Source`" asset=`"$assetName`" duration=$($durationSeconds.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture))"
+        Write-Note "Completed: $Source from $Url@$selectedReleaseTag into $destFull"
     } finally {
         try { Remove-Item -Recurse -Force -LiteralPath $tmp.FullName -ErrorAction SilentlyContinue } catch { Write-Verbose "[install] cleanup failed: $($_.Exception.Message)" }
     }

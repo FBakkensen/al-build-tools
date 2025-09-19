@@ -17,10 +17,10 @@
 - [x] T007 [P] Add `tests/integration/Install.ReleaseSelection.Normalize.Tests.ps1` covering Quickstart step 5 by installing with a tag lacking `v` and asserting success reports the canonical tag; validate with `pwsh -NoProfile -Command "Invoke-Pester -Path tests/integration/Install.ReleaseSelection.Normalize.Tests.ps1"`.
 
 ## Phase 3.3: Core Implementation (after tests are failing)
-- [ ] T008 Implement an `Resolve-EffectiveReleaseTag` helper inside `bootstrap/install.ps1` that applies `-Ref` > `ALBT_RELEASE` > latest release, normalizes missing `v` prefixes, and emits the verbose env note when the override wins.
-- [ ] T009 Add release metadata retrieval in `bootstrap/install.ps1`, calling `/releases/tags/{tag}` or `/releases/latest`, rejecting drafts/prereleases, and locating the `overlay.zip` asset with robust error messages.
-- [ ] T010 Replace the archive download block in `bootstrap/install.ps1` with a GitHub release asset download that sets `Accept: application/octet-stream`, streams to disk, and maps HTTP/status failures back to the existing guard categories.
-- [ ] T011 Update `bootstrap/install.ps1` diagnostics so success logs include `asset="overlay.zip"`, failure logs surface the resolved tag and new hint text, and guard codes remain unchanged.
+- [x] T008 Implement an `Resolve-EffectiveReleaseTag` helper inside `bootstrap/install.ps1` that applies `-Ref` > `ALBT_RELEASE` > latest release, normalizes missing `v` prefixes, and emits the verbose env note when the override wins.
+- [x] T009 Add release metadata retrieval in `bootstrap/install.ps1`, calling `/releases/tags/{tag}` or `/releases/latest`, rejecting drafts/prereleases, and locating the `overlay.zip` asset with robust error messages.
+- [x] T010 Replace the archive download block in `bootstrap/install.ps1` with a GitHub release asset download that sets `Accept: application/octet-stream`, streams to disk, and maps HTTP/status failures back to the existing guard categories.
+- [x] T011 Update `bootstrap/install.ps1` diagnostics so success logs include `asset="overlay.zip"`, failure logs surface the resolved tag and new hint text, and guard codes remain unchanged.
 
 ## Phase 3.4: Integration
 - [ ] T012 Adjust `tests/_install/Invoke-Install.psm1` so installer invocations can point at the release test server base URL, pass through `ALBT_RELEASE`, and capture combined stdout/stderr for the new verbose line.
