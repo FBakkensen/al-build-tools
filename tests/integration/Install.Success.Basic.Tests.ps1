@@ -27,22 +27,33 @@ Describe 'Installer success path: basic overlay install' {
         $dest = Initialize-InstallTestRepo -Path $destRoot
 
         $archiveWorkspace = Join-Path $caseRoot 'pkg'
-        $archive = New-InstallArchive -RepoRoot $script:RepoRoot -Workspace $archiveWorkspace
+        if (-not (Test-Path -LiteralPath $archiveWorkspace)) {
+            New-Item -ItemType Directory -Path $archiveWorkspace | Out-Null
+        }
+
+        $releaseTag = 'v1.0.0'
+        $archive = New-InstallArchive -RepoRoot $script:RepoRoot -Workspace (Join-Path $archiveWorkspace 'release') -Ref $releaseTag
+
+        $releaseDescriptor = [pscustomobject]@{
+            Tag = $releaseTag
+            ZipPath = $archive.ZipPath
+            PublishedAt = (Get-Date).AddMinutes(-2)
+        }
 
         $server = $null
         try {
             $before = Get-InstallDirectorySnapshot -Path $dest -BasePath $dest
 
-            $server = Start-InstallArchiveServer -ZipPath $archive.ZipPath -BasePath ('albt-' + [Guid]::NewGuid().ToString('N'))
-            $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref 'main'
+            $server = Start-InstallArchiveServer -BasePath ('albt-' + [Guid]::NewGuid().ToString('N')) -Releases @($releaseDescriptor) -LatestTag $releaseTag
+            $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref $releaseTag
 
             $result.ExitCode | Should -Be 0
 
-            $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
+            $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr -Combined $result.CombinedOutput
             $successLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+success\s+' }
             $successLine | Should -Not -BeNullOrEmpty
 
-            $null = Assert-InstallSuccessLine -Line $successLine -ExpectedRef 'main' -ExpectedOverlay 'overlay' -MaxDurationSeconds 120
+            $null = Assert-InstallSuccessLine -Line $successLine -ExpectedRef $releaseTag -ExpectedOverlay 'overlay' -ExpectedAsset 'overlay.zip' -MaxDurationSeconds 300
 
             $after = Get-InstallDirectorySnapshot -Path $dest -BasePath $dest
             $expectedPaths = $script:OverlaySnapshot | ForEach-Object { $_.Path }

@@ -23,8 +23,8 @@
 - [x] T011 Update `bootstrap/install.ps1` diagnostics so success logs include `asset="overlay.zip"`, failure logs surface the resolved tag and new hint text, and guard codes remain unchanged.
 
 ## Phase 3.4: Integration
-- [ ] T012 Adjust `tests/_install/Invoke-Install.psm1` so installer invocations can point at the release test server base URL, pass through `ALBT_RELEASE`, and capture combined stdout/stderr for the new verbose line.
-- [ ] T013 [P] Refresh `tests/integration/Install.Success.Basic.Tests.ps1` to consume the release server helper, assert the new success diagnostic fields, and keep overlay snapshot comparisons intact.
+- [x] T012 Adjust `tests/_install/Invoke-Install.psm1` so installer invocations can point at the release test server base URL, pass through `ALBT_RELEASE`, and capture combined stdout/stderr for the new verbose line.
+- [x] T013 [P] Refresh `tests/integration/Install.Success.Basic.Tests.ps1` to consume the release server helper, assert the new success diagnostic fields, and keep overlay snapshot comparisons intact.
 
 ## Phase 3.5: Polish
 - [ ] T014 [P] Update `README.md` with release-based installation instructions, tag precedence order, and unauthenticated rate-limit guidance.
