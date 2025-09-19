@@ -4,7 +4,7 @@ Only release-driven installs are supported; diagnostics below assume the install
 
 ## Success Log
 - **Trigger**: `Install-AlBuildTools` completes copy of `overlay/` from selected release.
-- **Output**: `[install] success ref="<resolved-tag>" overlay="overlay" asset="overlay.zip" duration=<seconds>`
+- **Output**: `[install] success ref="<resolved-tag>" overlay="overlay" asset="<asset-name>" duration=<seconds>` (e.g., `overlay.zip` or `al-build-tools-<tag>.zip`)
 - **Acceptance**:
   - `resolved-tag` equals the canonical release tag returned by GitHub.
   - `asset` field matches the downloaded asset name.

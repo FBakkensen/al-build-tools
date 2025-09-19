@@ -5,7 +5,7 @@
 
 A minimal, cross-platform build toolkit for Microsoft AL projects with a dead-simple bootstrap. It is designed to be dropped into an existing git repo and updated by running the same single command again.
 
-Install and update are the same: the bootstrap resolves a published GitHub release, downloads its `overlay.zip` asset, and copies everything from the archive’s `overlay/` folder into your project. Because you’re in git, you review and commit changes as you like.
+Install and update are the same: the bootstrap resolves a published GitHub release, downloads its overlay ZIP asset (it prefers `overlay.zip` and falls back to `al-build-tools-<tag>.zip` for legacy releases), and copies everything from the archive’s `overlay/` folder into your project. Because you’re in git, you review and commit changes as you like.
 
 ## Quick Start (Install Latest Release)
 
@@ -138,7 +138,7 @@ When updating `bootstrap/install.ps1`, adjust `specs/005-add-tests-for/traceabil
 - Trigger the `Manual Overlay Release` GitHub Actions workflow whenever you are ready to ship a tagged overlay-only archive.
 - Provide `version`, `summary`, and `dry_run` inputs; the workflow enforces semantic version monotonicity, tag uniqueness, and overlay cleanliness before packaging.
 - Run a dry pass (`dry_run=true`) to preview the staged overlay file list, SHA-256 manifest, metadata JSON block, and diff summary without creating a tag or release.
-- Run a publish pass (`dry_run=false`) to create the `vMAJOR.MINOR.PATCH` tag, upload `al-build-tools-<version>.zip`, and embed both the manifest and metadata block in the release notes.
+- Run a publish pass (`dry_run=false`) to create the `vMAJOR.MINOR.PATCH` tag, upload the overlay ZIP (`overlay.zip` going forward; legacy releases use `al-build-tools-<version>.zip`), and embed both the manifest and metadata block in the release notes.
 - Consumers can verify archives by expanding the ZIP, running `sha256sum -c manifest.sha256.txt` (or the PowerShell equivalent), and matching the `root_hash` and `commit` fields reported in the release metadata.
 - For step-by-step maintainer and consumer checklists, see [specs/006-manual-release-workflow/quickstart.md](specs/006-manual-release-workflow/quickstart.md).
 
@@ -146,7 +146,7 @@ When updating `bootstrap/install.ps1`, adjust `specs/005-add-tests-for/traceabil
 ## How It Works
 
 1. Resolves the effective release tag using the selection order above.
-2. Downloads the `overlay.zip` asset from the chosen GitHub release (using the releases API).
+2. Downloads the overlay ZIP asset (`overlay.zip` when present, otherwise `al-build-tools-<tag>.zip`) from the chosen GitHub release (using the releases API).
 3. Copies `overlay/*` into your destination directory, overwriting existing files.
 4. No state files and no backups — use git to review and commit changes.
 
