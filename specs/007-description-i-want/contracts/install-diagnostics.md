@@ -1,5 +1,7 @@
 # Contract: Installer Diagnostics
 
+Only release-driven installs are supported; diagnostics below assume the installer is communicating with GitHub Releases APIs rather than branch/tarball archives.
+
 ## Success Log
 - **Trigger**: `Install-AlBuildTools` completes copy of `overlay/` from selected release.
 - **Output**: `[install] success ref="<resolved-tag>" overlay="overlay" asset="overlay.zip" duration=<seconds>`

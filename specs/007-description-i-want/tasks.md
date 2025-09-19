@@ -3,9 +3,11 @@
 **Input**: Design documents from `/specs/007-description-i-want/`
 **Prerequisites**: plan.md (required), research.md, data-model.md, contracts/
 
+> Reminder: Legacy branch/tarball installers are out of scope. Every task keeps the public contract strictly release-based.
+
 ## Phase 3.1: Setup
-- [ ] T001 Update `tests/_install/Assert-Install.psm1` so `Assert-InstallSuccessLine` and `Assert-InstallDownloadFailureLine` parse the new `asset` token, tolerate canonicalized refs, and expose helpers needed by release diagnostics; validate with `pwsh -NoProfile -Command "Import-Module tests/_install/Assert-Install.psm1; 'ok'"`.
-- [ ] T002 Enhance `tests/_install/InstallArchiveServer.psm1` to serve GitHub-style `/releases/latest`, `/releases/tags/{tag}`, and `/releases/assets/{id}` endpoints that stream the cached overlay zip, returning configurable 404s for missing tags.
+- [x] T001 Update `tests/_install/Assert-Install.psm1` so `Assert-InstallSuccessLine` and `Assert-InstallDownloadFailureLine` parse the new `asset` token, tolerate canonicalized refs, and expose helpers needed by release diagnostics; validate with `pwsh -NoProfile -Command "Import-Module tests/_install/Assert-Install.psm1; 'ok'"`.
+- [x] T002 Enhance `tests/_install/InstallArchiveServer.psm1` to serve GitHub-style `/releases/latest`, `/releases/tags/{tag}`, and `/releases/assets/{id}` endpoints that stream the cached overlay zip, returning configurable 404s for missing tags.
 
 ## Phase 3.2: Tests First (TDD)
 - [ ] T003 Extend `tests/contract/Install.Diagnostics.Stability.Tests.ps1` to drive the release test server, assert the success log includes the resolved tag and `asset="overlay.zip"`, and cover the verbose `ALBT_RELEASE` diagnostic; run with `pwsh -NoProfile -Command "Invoke-Pester -Path tests/contract/Install.Diagnostics.Stability.Tests.ps1"`.

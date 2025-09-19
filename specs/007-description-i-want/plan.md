@@ -4,7 +4,7 @@
 **Input**: Feature specification from `/specs/007-description-i-want/spec.md`
 
 ## Summary
-Shift `bootstrap/install.ps1` from branch archive downloads to release asset retrieval while preserving guard semantics. The installer will resolve the effective release tag (favoring `-Ref`, then `ALBT_RELEASE`, then latest published release), normalize tag formats, fetch the `overlay.zip` asset via the GitHub Releases API, and surface the resolved tag in diagnostics. README and CHANGELOG updates will document the new selection logic.
+Shift `bootstrap/install.ps1` from branch archive downloads to release asset retrieval while preserving guard semantics. The installer will resolve the effective release tag (favoring `-Ref`, then `ALBT_RELEASE`, then latest published release), normalize tag formats, fetch the `overlay.zip` asset via the GitHub Releases API, and surface the resolved tag in diagnostics. README and CHANGELOG updates will document the new selection logic. There is no fallback to branch/tarball archives once this feature ships.
 
 ## Technical Context
 **Language/Version**: PowerShell 7.0+

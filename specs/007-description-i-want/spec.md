@@ -44,6 +44,8 @@ Ambiguities are explicitly marked.
 
 ## User Scenarios & Testing *(mandatory)*
 
+> **Compatibility Note**: This feature intentionally removes branch/tarball installation paths. Consumers must install exclusively from published release assets; there is no fallback to the previous archive URLs.
+
 ### Scope Framing
 Existing contract tests already validate: clean tree guards, parameter validation, download failure categorization, integrity of extraction, and idempotent overwrite semantics. This feature introduces only the release-selection and tagging behavior changes; scenarios below cover net-new or materially changed user-observable behavior.
 
@@ -67,6 +69,7 @@ Existing contract tests already validate: clean tree guards, parameter validatio
 - **FR-Release-06**: Preserve all existing guard names, failure categories, and exit codes unchanged.
 - **FR-Release-07**: Maintain idempotent behavior for re-installing identical release (no additional diff noise).
 - **FR-Release-08**: Document release-selection logic (README/CHANGELOG) as part of feature completion.
+- **FR-Release-09**: Reject requests for legacy branch/tarball archives; only GitHub release endpoints (`/releases/*`) are considered valid sources.
 
 ### Key Entities (Delta Relevant)
 - **Release**: Tag (normalized), draft flag, published timestamp.
@@ -117,5 +120,4 @@ Existing contract tests already validate: clean tree guards, parameter validatio
 - CHANGELOG entry in-scope: note switch from branch archive to release asset and new precedence rule.
 - No transitional fallback code path implemented; attempts to use non-release refs fail NotFound (guard behavior reused).
 - Success diagnostic format to include: resolved release tag and elapsed seconds (retain existing duration format).
-
 

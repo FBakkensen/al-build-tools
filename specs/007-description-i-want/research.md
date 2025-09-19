@@ -6,6 +6,7 @@
 - **Alternatives considered**:
   - Scraping the HTML releases page → brittle, decoding HTML, higher risk of breakage.
   - Hard-coding the `latest/download/overlay.zip` URL → fails to support explicit tag selection and loses diagnostics about the chosen release.
+- **Compatibility outcome**: Legacy branch/tarball archive downloads are removed; the installer will return `NotFound` for any non-release ref.
 
 ## Decision: Asset Download Strategy
 - **Decision**: Construct the asset download URL using `https://api.github.com/repos/{owner}/{repo}/releases/assets/{asset_id}` with the `Accept: application/octet-stream` header to download the binary payload.

@@ -1,5 +1,7 @@
 # Quickstart: Validating Release-Based Installer
 
+> Installs now communicate exclusively with GitHub release APIs—legacy branch archive URLs no longer succeed by design.
+
 1. Create a disposable git repository and ensure the working tree is clean.
 2. Publish or identify two GitHub releases for `FBakkensen/al-build-tools` that each contain an `overlay.zip` asset.
 3. Run `pwsh -File bootstrap/install.ps1 -Dest <repo> -Source overlay` without specifying `-Ref` and confirm the script reports the latest release tag in the success diagnostic.
