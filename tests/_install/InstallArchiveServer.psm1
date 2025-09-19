@@ -286,6 +286,28 @@ function Start-InstallArchiveServer {
 
     $hasReleaseEndpoints = ($releaseDescriptors | Measure-Object).Count -gt 0
     $effectiveLatestTag = $LatestTag
+
+    if (-not $hasReleaseEndpoints -and $archiveBytes) {
+        $defaultTag = if (-not [string]::IsNullOrWhiteSpace($LatestTag)) { $LatestTag } else { 'main' }
+        $assetName = 'overlay.zip'
+        $assetId = Get-InstallDeterministicAssetId -Tag $defaultTag -AssetName $assetName
+        $descriptor = [pscustomobject]@{
+            Tag = $defaultTag
+            AssetId = [uint32]$assetId
+            AssetName = $assetName
+            Bytes = $archiveBytes
+            Size = $archiveBytes.LongLength
+            PublishedAt = (Get-Date).ToUniversalTime().ToString('o')
+            Draft = $false
+            Prerelease = $false
+        }
+        $releaseDescriptors = @($descriptor)
+        $hasReleaseEndpoints = $true
+        if ([string]::IsNullOrWhiteSpace($effectiveLatestTag)) {
+            $effectiveLatestTag = $defaultTag
+        }
+    }
+
     if ($hasReleaseEndpoints -and [string]::IsNullOrWhiteSpace($effectiveLatestTag)) {
         $effectiveLatestTag = $releaseDescriptors[0].Tag
     }

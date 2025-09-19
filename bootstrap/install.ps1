@@ -5,7 +5,9 @@ param(
     [string]$Ref,
     [string]$Dest = '.',
     [string]$Source = 'overlay',
-    [int]$HttpTimeoutSec = 0
+    [int]$HttpTimeoutSec = 0,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$RemainingArguments
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -14,8 +16,15 @@ $ErrorActionPreference = 'Stop'
 if (-not (Get-Variable -Name 'args' -Scope 0 -ErrorAction SilentlyContinue)) {
     $args = @()
 }
-if ($args.Count -gt 0) {
-    $firstArg = $args[0]
+$unknownArgs = @()
+if ($RemainingArguments) {
+    $unknownArgs += $RemainingArguments
+}
+if ($args -and $args.Count -gt 0) {
+    $unknownArgs += $args
+}
+if ($unknownArgs.Count -gt 0) {
+    $firstArg = $unknownArgs[0]
     $argName = if ($firstArg.StartsWith('-')) { $firstArg.Substring(1) } else { $firstArg }
     Write-Host "[install] guard UnknownParameter argument=`"$argName`""
     Write-Host "Usage: Install-AlBuildTools [-Url <url>] [-Ref <ref>] [-Dest <path>] [-Source <folder>]"
@@ -101,25 +110,27 @@ function Get-HttpStatusCodeFromError {
 
     $exception = $ErrorRecord.Exception
     while ($exception) {
-        if ($exception.PSObject.Properties.Match('Response')) {
-            $response = $exception.Response
-            if ($response -and $response.PSObject.Properties.Match('StatusCode')) {
+        $response = $null
+        try { $response = $exception.Response } catch { $response = $null }
+        if ($response) {
+            $statusCandidate = $null
+            try { $statusCandidate = $response.StatusCode } catch { $statusCandidate = $null }
+            if ($null -ne $statusCandidate) {
                 try {
-                    $code = [int]$response.StatusCode
-                    return $code
+                    return [int]$statusCandidate
                 } catch { }
             }
         }
 
-        if ($exception.PSObject.Properties.Match('StatusCode')) {
-            $status = $exception.StatusCode
+        $status = $null
+        try { $status = $exception.StatusCode } catch { $status = $null }
+        if ($null -ne $status) {
             if ($status -is [int]) { return $status }
             if ($status -is [System.Net.HttpStatusCode]) { return [int]$status }
-            if ($status -and $status.PSObject.Properties.Match('value__')) {
-                try {
-                    return [int]$status.value__
-                } catch { }
-            }
+
+            $valueCandidate = $null
+            try { $valueCandidate = $status.value__ } catch { $valueCandidate = $null }
+            if ($valueCandidate -is [int]) { return $valueCandidate }
         }
 
         $exception = $exception.InnerException
@@ -288,7 +299,8 @@ function Install-AlBuildTools {
         }
 
         $selection = Resolve-EffectiveReleaseTag -ParameterRef $Ref -EnvRelease $env:ALBT_RELEASE -EmitVerboseNote:$emitVerboseNote
-        if ($selection -and $selection.PSObject.Properties.Match('NoteMessage') -and $selection.NoteMessage) {
+        $noteProperty = if ($selection) { $selection.PSObject.Properties['NoteMessage'] } else { $null }
+        if ($noteProperty -and $selection.NoteMessage) {
             Write-Output $selection.NoteMessage
         }
         $refForFailure = if ($selection.Tag) { $selection.Tag } else { 'latest' }
@@ -352,7 +364,8 @@ function Install-AlBuildTools {
         }
 
         $assets = @()
-        if ($releaseMetadata.PSObject.Properties.Match('assets') -and $releaseMetadata.assets) {
+        $assetsProperty = $releaseMetadata.PSObject.Properties['assets']
+        if ($assetsProperty -and $releaseMetadata.assets) {
             if ($releaseMetadata.assets -is [System.Array]) {
                 $assets = $releaseMetadata.assets
             } else {

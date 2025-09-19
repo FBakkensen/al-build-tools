@@ -27,9 +27,9 @@
 - [x] T013 [P] Refresh `tests/integration/Install.Success.Basic.Tests.ps1` to consume the release server helper, assert the new success diagnostic fields, and keep overlay snapshot comparisons intact.
 
 ## Phase 3.5: Polish
-- [ ] T014 [P] Update `README.md` with release-based installation instructions, tag precedence order, and unauthenticated rate-limit guidance.
-- [ ] T015 [P] Record the release asset migration and diagnostic changes in `CHANGELOG.md` under the unreleased section.
-- [ ] T016 Run focused suites: `pwsh -File scripts/run-tests.ps1 -Path tests/contract` and `pwsh -File scripts/run-tests.ps1 -Path tests/integration` to confirm contracts and integrations pass.
+- [x] T014 [P] Update `README.md` with release-based installation instructions, tag precedence order, and unauthenticated rate-limit guidance.
+- [x] T015 [P] Record the release asset migration and diagnostic changes in `CHANGELOG.md` under the unreleased section.
+- [ ] T016 Run focused suites: `pwsh -File scripts/run-tests.ps1 -Path tests/contract` and `pwsh -File scripts/run-tests.ps1 -Path tests/integration` to confirm contracts and integrations pass. *(2025-09-19: contract suite now passes; integration suite still blocked on pre-existing `Build.Tests.ps1` failure because no AL compiler is available in this environment.)*
 
 ## Dependencies
 - T001 → T003, T004, T005, T006, T007

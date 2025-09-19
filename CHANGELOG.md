@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- docs(install): describe release-based installer flow, tag precedence, and rate limit expectations in README.
+- docs(install): capture the migration to GitHub release assets and the expanded success/failure diagnostics.
+
 ## 2025-09-18
 
 - tests(release): add unit coverage for version, hash manifest, and diff summary helpers; fix semver tag discovery edge cases.
@@ -16,4 +21,3 @@
   - PowerShell requirements: All entry scripts declare `#requires -Version 7.2`, enable `Set-StrictMode -Version Latest`, and set `$ErrorActionPreference = 'Stop'`.
 
 - docs(spec): Updated `specs/003-powershell-only-build/tasks.md` to mark T004 complete and remove references to the old `lib` paths.
-
