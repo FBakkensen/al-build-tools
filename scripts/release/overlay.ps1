@@ -46,7 +46,8 @@ function Get-OverlayPayload {
 
     $resolvedOverlay = (Resolve-Path -LiteralPath $overlayPath -ErrorAction Stop).Path
 
-    $files = Get-ChildItem -LiteralPath $resolvedOverlay -Recurse -File
+    # Include dot-prefixed entries (e.g., overlay/.github) when enumerating payload files.
+    $files = Get-ChildItem -LiteralPath $resolvedOverlay -Recurse -File -Force
 
     $payloadFiles = @()
     foreach ($file in $files) {
