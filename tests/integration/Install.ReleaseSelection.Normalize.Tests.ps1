@@ -5,12 +5,12 @@ Import-Module (Join-Path $PSScriptRoot '..' '_install' 'Assert-Install.psm1') -F
 Import-Module (Join-Path $PSScriptRoot '..' '_install' 'Invoke-Install.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '..' '_install' 'InstallArchiveServer.psm1') -Force
 
-Describe 'Installer success path: basic overlay install' {
+Describe 'Installer release selection: tag normalization' {
     BeforeAll {
         $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
         $overlayRoot = Join-Path $script:RepoRoot 'overlay'
         $script:OverlaySnapshot = Get-InstallDirectorySnapshot -Path $overlayRoot -BasePath $overlayRoot
-        $script:WorkspaceRoot = New-InstallTestWorkspace -Prefix 'albt-success-'
+        $script:WorkspaceRoot = New-InstallTestWorkspace -Prefix 'albt-rel-norm-'
     }
 
     AfterAll {
@@ -19,7 +19,7 @@ Describe 'Installer success path: basic overlay install' {
         }
     }
 
-    It 'installs overlay files and reports success diagnostics' {
+    It 'canonicalizes unprefixed tags to v-prefixed release identifiers' {
         $caseRoot = Join-Path $script:WorkspaceRoot ("case-" + [Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $caseRoot | Out-Null
 
@@ -30,50 +30,45 @@ Describe 'Installer success path: basic overlay install' {
         if (-not (Test-Path -LiteralPath $archiveWorkspace)) {
             New-Item -ItemType Directory -Path $archiveWorkspace | Out-Null
         }
-
-        $releaseTag = 'v1.0.0'
-        $archive = New-InstallArchive -RepoRoot $script:RepoRoot -Workspace (Join-Path $archiveWorkspace 'release') -Ref $releaseTag
-
-        $releaseDescriptor = [pscustomobject]@{
-            Tag = $releaseTag
-            ZipPath = $archive.ZipPath
-            PublishedAt = (Get-Date).AddMinutes(-2)
-        }
+        $releaseArchive = New-InstallArchive -RepoRoot $script:RepoRoot -Workspace $archiveWorkspace -Ref 'v5.0.1'
 
         $server = $null
         try {
+            $canonicalTag = 'v5.0.1'
+            $releases = @(
+                [pscustomobject]@{
+                    Tag = $canonicalTag
+                    ZipPath = $releaseArchive.ZipPath
+                    PublishedAt = (Get-Date).AddMinutes(-30)
+                }
+            )
+
+            $server = Start-InstallArchiveServer -BasePath ('albt-' + [Guid]::NewGuid().ToString('N')) -Releases $releases -LatestTag $canonicalTag
+
             $before = Get-InstallDirectorySnapshot -Path $dest -BasePath $dest
 
-            $server = Start-InstallArchiveServer -BasePath ('albt-' + [Guid]::NewGuid().ToString('N')) -Releases @($releaseDescriptor) -LatestTag $releaseTag
-            $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref $releaseTag
+            $unprefixedTag = '5.0.1'
+            $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref $unprefixedTag
 
             $result.ExitCode | Should -Be 0
 
-            $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr -Combined $result.CombinedOutput
+            $lines = Get-InstallOutputLines -StdOut $result.StdOut -StdErr $result.StdErr
             $successLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+success\s+' }
             $successLine | Should -Not -BeNullOrEmpty
 
-            $null = Assert-InstallSuccessLine -Line $successLine -ExpectedRef $releaseTag -ExpectedOverlay 'overlay' -ExpectedAsset 'overlay.zip' -MaxDurationSeconds 300
+            $parsed = Assert-InstallSuccessLine -Line $successLine -ExpectedRef $canonicalTag -ExpectedOverlay 'overlay' -ExpectedAsset 'overlay.zip' -MaxDurationSeconds 300
+            $parsed.CanonicalRef | Should -Be $canonicalTag
 
             $after = Get-InstallDirectorySnapshot -Path $dest -BasePath $dest
             $expectedPaths = $script:OverlaySnapshot | ForEach-Object { $_.Path }
             $actualOverlay = $after | Where-Object { $expectedPaths -contains $_.Path }
-            Assert-InstallSnapshotsEqual -Expected $script:OverlaySnapshot -Actual $actualOverlay -Because 'Installed overlay does not match repository overlay.'
+            Assert-InstallSnapshotsEqual -Expected $script:OverlaySnapshot -Actual $actualOverlay -Because 'Normalized install did not copy expected overlay contents.'
 
             $beforeMap = @{}
             foreach ($item in $before) { $beforeMap[$item.Path] = $item }
-
-            $changedPaths = @()
             foreach ($item in $after) {
-                if ($beforeMap.ContainsKey($item.Path)) {
-                    if ($beforeMap[$item.Path].Hash -ne $item.Hash) { $changedPaths += $item.Path }
-                } else {
-                    $changedPaths += $item.Path
-                }
-            }
-
-            foreach ($path in $changedPaths) {
-                $expectedPaths | Should -Contain $path
+                if ($beforeMap.ContainsKey($item.Path) -and $beforeMap[$item.Path].Hash -eq $item.Hash) { continue }
+                $expectedPaths | Should -Contain $item.Path
             }
         }
         finally {

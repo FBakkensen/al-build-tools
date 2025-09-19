@@ -5,16 +5,35 @@
 
 A minimal, cross-platform build toolkit for Microsoft AL projects with a dead-simple bootstrap. It is designed to be dropped into an existing git repo and updated by running the same single command again.
 
-Install and update are the same: the bootstrap copies everything from this repo’s `overlay/` folder into your project. Because you’re in git, you review and commit changes as you like.
+Install and update are the same: the bootstrap resolves a published GitHub release, downloads its `overlay.zip` asset, and copies everything from the archive’s `overlay/` folder into your project. Because you’re in git, you review and commit changes as you like.
 
-## Quick Start (Install Latest)
+## Quick Start (Install Latest Release)
 
 - PowerShell 7+ for installer (Windows, macOS, Linux)
   ```
   iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex; Install-AlBuildTools -Dest .
   ```
 
-Re-run the same command any time to update — it re-copies `overlay/*` over your working tree.
+Re-run the same command any time to update — it re-downloads the chosen release asset and re-copies `overlay/*` over your working tree.
+
+### Release Selection Order
+
+The installer always targets GitHub releases (branch zipballs are no longer used):
+
+- `-Ref <tag>` command parameter wins when provided.
+- Otherwise `ALBT_RELEASE` environment variable selects the release.
+- Otherwise the latest published (non-draft, non-prerelease) release is chosen.
+
+If `ALBT_RELEASE` influences selection, the installer emits a verbose note so automation logs capture the override.
+
+Examples:
+
+- `pwsh -File bootstrap/install.ps1 -Dest . -Ref v1.2.3`
+- `$env:ALBT_RELEASE = 'v1.2.2'; pwsh -File bootstrap/install.ps1 -Dest .`
+
+### Rate Limits
+
+GitHub’s unauthenticated REST API limit is 60 requests per hour per source IP. Heavy automation should provide a GitHub token (for example `GITHUB_TOKEN`) in the environment before invoking the installer to benefit from higher limits.
 
 ---
 
@@ -126,9 +145,10 @@ When updating `bootstrap/install.ps1`, adjust `specs/005-add-tests-for/traceabil
 
 ## How It Works
 
-1. Downloads a ZIP of this repo at the specified ref (default `main`).
-2. Copies `overlay/*` into your destination directory, overwriting existing files.
-3. No state files and no backups — use git to review and commit changes.
+1. Resolves the effective release tag using the selection order above.
+2. Downloads the `overlay.zip` asset from the chosen GitHub release (using the releases API).
+3. Copies `overlay/*` into your destination directory, overwriting existing files.
+4. No state files and no backups — use git to review and commit changes.
 
 ## Troubleshooting
 

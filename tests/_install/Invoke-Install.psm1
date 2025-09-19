@@ -43,8 +43,8 @@ function Invoke-InstallScript {
     param(
         [Parameter(Mandatory)] [string] $RepoRoot,
         [Parameter(Mandatory)] [string] $Dest,
-        [string] $Url = 'https://127.0.0.1:65535/al-build-tools',
-        [string] $Ref = 'main',
+        [string] $Url = 'https://api.github.com/repos/FBakkensen/al-build-tools',
+        [string] $Ref,
         [string] $Source = 'overlay',
         [hashtable] $Environment = @{},
         [string[]] $AdditionalArguments = @()
@@ -65,10 +65,14 @@ function Invoke-InstallScript {
     $null = $psi.ArgumentList.Add($scriptPath)
     $null = $psi.ArgumentList.Add('-Dest')
     $null = $psi.ArgumentList.Add($Dest)
-    $null = $psi.ArgumentList.Add('-Url')
-    $null = $psi.ArgumentList.Add($Url)
-    $null = $psi.ArgumentList.Add('-Ref')
-    $null = $psi.ArgumentList.Add($Ref)
+    if (-not [string]::IsNullOrWhiteSpace($Url)) {
+        $null = $psi.ArgumentList.Add('-Url')
+        $null = $psi.ArgumentList.Add($Url)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Ref)) {
+        $null = $psi.ArgumentList.Add('-Ref')
+        $null = $psi.ArgumentList.Add($Ref)
+    }
     $null = $psi.ArgumentList.Add('-Source')
     $null = $psi.ArgumentList.Add($Source)
 
@@ -84,10 +88,23 @@ function Invoke-InstallScript {
     $proc = [System.Diagnostics.Process]::Start($psi)
     $proc.WaitForExit()
 
+    $stdOut = $proc.StandardOutput.ReadToEnd()
+    $stdErr = $proc.StandardError.ReadToEnd()
+
+    $combinedSegments = @()
+    if (-not [string]::IsNullOrEmpty($stdOut)) { $combinedSegments += $stdOut }
+    if (-not [string]::IsNullOrEmpty($stdErr)) { $combinedSegments += $stdErr }
+    $combined = if ($combinedSegments.Count -gt 0) {
+        [string]::Join([Environment]::NewLine, $combinedSegments)
+    } else {
+        ''
+    }
+
     return [pscustomobject]@{
         ExitCode = $proc.ExitCode
-        StdOut   = $proc.StandardOutput.ReadToEnd()
-        StdErr   = $proc.StandardError.ReadToEnd()
+        StdOut   = $stdOut
+        StdErr   = $stdErr
+        CombinedOutput = $combined
     }
 }
 
@@ -135,12 +152,17 @@ function Get-InstallOutputLines {
     [CmdletBinding()]
     param(
         [string] $StdOut,
-        [string] $StdErr
+        [string] $StdErr,
+        [string] $Combined
     )
 
     $lines = @()
-    if ($StdOut) { $lines += $StdOut -split "(`r`n|`n)" }
-    if ($StdErr) { $lines += $StdErr -split "(`r`n|`n)" }
+    if ($Combined) {
+        $lines += $Combined -split "(`r`n|`n)"
+    } else {
+        if ($StdOut) { $lines += $StdOut -split "(`r`n|`n)" }
+        if ($StdErr) { $lines += $StdErr -split "(`r`n|`n)" }
+    }
     return $lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
 }
 

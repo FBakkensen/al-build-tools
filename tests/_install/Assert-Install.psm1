@@ -9,6 +9,29 @@ $script:InstallDownloadFailurePattern = '^\[install\]\s+download\s+failure\s+(?<
 $script:InstallStepLinePattern = '^\[install\]\s+step\s+(?<Pairs>.+)$'
 $script:InstallDownloadCategories = @('NetworkUnavailable','NotFound','CorruptArchive','Timeout','Unknown')
 
+function ConvertTo-InstallCanonicalRef {
+    [CmdletBinding()]
+    param(
+        [string] $Ref
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Ref)) {
+        return $Ref
+    }
+
+    $trimmed = $Ref.Trim()
+
+    if ($trimmed.Length -gt 1 -and ($trimmed[0] -eq 'v' -or $trimmed[0] -eq 'V') -and [char]::IsDigit($trimmed[1])) {
+        return 'v' + $trimmed.Substring(1)
+    }
+
+    if ($trimmed.Length -gt 0 -and [char]::IsDigit($trimmed[0])) {
+        return 'v' + $trimmed
+    }
+
+    return $trimmed
+}
+
 function ConvertFrom-InstallQuotedValue {
     param(
         [string] $Value
@@ -110,7 +133,8 @@ function Assert-InstallSuccessLine {
         [Parameter(Mandatory)] [string] $Line,
         [string] $ExpectedRef,
         [string] $ExpectedOverlay,
-        [double] $MaxDurationSeconds
+        [double] $MaxDurationSeconds,
+        [string] $ExpectedAsset
     )
 
     $match = [regex]::Match($Line, $script:InstallSuccessLinePattern)
@@ -125,6 +149,11 @@ function Assert-InstallSuccessLine {
         }
     }
 
+    $hasAsset = $pairs.Contains('asset')
+    if (-not $hasAsset -and $PSBoundParameters.ContainsKey('ExpectedAsset')) {
+        throw "Success diagnostic line '$Line' must include 'asset=' when ExpectedAsset is provided."
+    }
+
     try {
         $duration = [double]::Parse($pairs['duration'], [System.Globalization.CultureInfo]::InvariantCulture)
     } catch {
@@ -135,12 +164,27 @@ function Assert-InstallSuccessLine {
         throw "Duration value '$duration' from line '$Line' cannot be negative."
     }
 
-    if ($PSBoundParameters.ContainsKey('ExpectedRef') -and $pairs['ref'] -ne $ExpectedRef) {
-        throw "Expected ref '$ExpectedRef' but found '$($pairs['ref'])' in line '$Line'."
+    $actualRef = $pairs['ref']
+    $canonicalRef = ConvertTo-InstallCanonicalRef -Ref $actualRef
+
+    if ($PSBoundParameters.ContainsKey('ExpectedRef')) {
+        $expectedCanonical = ConvertTo-InstallCanonicalRef -Ref $ExpectedRef
+        if ($canonicalRef -ne $expectedCanonical) {
+            throw "Expected ref '$ExpectedRef' (canonical '$expectedCanonical') but found '$actualRef' in line '$Line'."
+        }
     }
 
     if ($PSBoundParameters.ContainsKey('ExpectedOverlay') -and $pairs['overlay'] -ne $ExpectedOverlay) {
         throw "Expected overlay '$ExpectedOverlay' but found '$($pairs['overlay'])' in line '$Line'."
+    }
+
+    if ($PSBoundParameters.ContainsKey('ExpectedAsset')) {
+        if (-not $hasAsset) {
+            throw "Success diagnostic line '$Line' does not include an 'asset=' token."
+        }
+        if ($pairs['asset'] -ne $ExpectedAsset) {
+            throw "Expected asset '$ExpectedAsset' but found '$($pairs['asset'])' in line '$Line'."
+        }
     }
 
     if ($PSBoundParameters.ContainsKey('MaxDurationSeconds') -and $duration -gt $MaxDurationSeconds) {
@@ -148,8 +192,10 @@ function Assert-InstallSuccessLine {
     }
 
     return [pscustomobject]@{
-        Ref = $pairs['ref']
+        Ref = $actualRef
+        CanonicalRef = $canonicalRef
         Overlay = $pairs['overlay']
+        Asset = if ($hasAsset) { $pairs['asset'] } else { $null }
         DurationSeconds = $duration
         Pairs = $pairs
         RawLine = $Line
@@ -187,7 +233,8 @@ function Assert-InstallDownloadFailureLine {
         [Parameter(Mandatory)] [string] $Line,
         [string] $ExpectedRef,
         [string] $ExpectedUrl,
-        [string] $ExpectedCategory
+        [string] $ExpectedCategory,
+        [string] $ExpectedHint
     )
 
     $match = [regex]::Match($Line, $script:InstallDownloadFailurePattern)
@@ -213,10 +260,6 @@ function Assert-InstallDownloadFailureLine {
         throw "URL '$($pairs['url'])' from line '$Line' is not a valid URI."
     }
 
-    if ($PSBoundParameters.ContainsKey('ExpectedRef') -and $pairs['ref'] -ne $ExpectedRef) {
-        throw "Expected ref '$ExpectedRef' but found '$($pairs['ref'])' in line '$Line'."
-    }
-
     if ($PSBoundParameters.ContainsKey('ExpectedUrl') -and $pairs['url'] -ne $ExpectedUrl) {
         throw "Expected url '$ExpectedUrl' but found '$($pairs['url'])' in line '$Line'."
     }
@@ -225,8 +268,23 @@ function Assert-InstallDownloadFailureLine {
         throw "Expected category '$ExpectedCategory' but found '$($pairs['category'])' in line '$Line'."
     }
 
+    if ($PSBoundParameters.ContainsKey('ExpectedHint') -and $pairs['hint'] -ne $ExpectedHint) {
+        throw "Expected hint '$ExpectedHint' but found '$($pairs['hint'])' in line '$Line'."
+    }
+
+    $actualRef = $pairs['ref']
+    $canonicalRef = ConvertTo-InstallCanonicalRef -Ref $actualRef
+
+    if ($PSBoundParameters.ContainsKey('ExpectedRef')) {
+        $expectedCanonical = ConvertTo-InstallCanonicalRef -Ref $ExpectedRef
+        if ($canonicalRef -ne $expectedCanonical) {
+            throw "Expected ref '$ExpectedRef' (canonical '$expectedCanonical') but found '$actualRef' in line '$Line'."
+        }
+    }
+
     return [pscustomobject]@{
-        Ref = $pairs['ref']
+        Ref = $actualRef
+        CanonicalRef = $canonicalRef
         Url = $pairs['url']
         Category = $pairs['category']
         Hint = $pairs['hint']
@@ -390,12 +448,14 @@ function Assert-InstallSnapshotsEqual {
 }
 
 Export-ModuleMember -Function `
+    ConvertTo-InstallCanonicalRef, `
     Assert-InstallTempPath, `
     Assert-InstallTempLine, `
     Assert-InstallSuccessLine, `
     Assert-InstallGuardLine, `
     Assert-InstallDownloadFailureLine, `
     Assert-InstallStepLine, `
+    Get-InstallKeyValueMap, `
     Get-InstallDirectorySnapshot, `
     Compare-InstallSnapshots, `
     Assert-InstallSnapshotsEqual

@@ -25,14 +25,24 @@ Describe 'Installer download failure categorization: not found' {
         $dest = Initialize-InstallTestRepo -Path $destRoot
 
         $archiveWorkspace = Join-Path $caseRoot 'pkg'
-        $archive = New-InstallArchive -RepoRoot $script:RepoRoot -Workspace $archiveWorkspace
+        $knownArchive = New-InstallArchive -RepoRoot $script:RepoRoot -Workspace $archiveWorkspace -Ref 'v0.1.0'
 
         $server = $null
         try {
-            $server = Start-InstallArchiveServer -ZipPath $archive.ZipPath -BasePath ('albt-' + [Guid]::NewGuid().ToString('N')) -StatusCode 404
+            $missingRefInput = '1.2.3'
+            $missingCanonical = 'v1.2.3'
 
-            $missingRef = 'missing-' + [Guid]::NewGuid().ToString('N')
-            $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref $missingRef
+            $releases = @(
+                [pscustomobject]@{
+                    Tag = 'v0.1.0'
+                    ZipPath = $knownArchive.ZipPath
+                    PublishedAt = (Get-Date).AddHours(-2)
+                }
+            )
+
+            $server = Start-InstallArchiveServer -BasePath ('albt-' + [Guid]::NewGuid().ToString('N')) -Releases $releases -LatestTag 'v0.1.0' -NotFoundTags @($missingRefInput, $missingCanonical)
+
+            $result = Invoke-InstallScript -RepoRoot $script:RepoRoot -Dest $dest -Url $server.BaseUrl -Ref $missingRefInput
 
             $result.ExitCode | Should -Be 20
 
@@ -40,8 +50,10 @@ Describe 'Installer download failure categorization: not found' {
             $failureLine = $lines | Where-Object { $_ -match '^[[]install[]]\s+download\s+failure\s+' }
             $failureLine | Should -Not -BeNullOrEmpty
 
-            $failure = Assert-InstallDownloadFailureLine -Line $failureLine -ExpectedRef $missingRef -ExpectedCategory 'NotFound'
+            $failure = Assert-InstallDownloadFailureLine -Line $failureLine -ExpectedRef $missingRefInput -ExpectedCategory 'NotFound'
             $failure.Category | Should -Be 'NotFound'
+            $failure.CanonicalRef | Should -Be $missingCanonical
+            $failure.Hint | Should -Be 'Release tag not found'
         }
         finally {
             if ($server) { Stop-InstallArchiveServer -Server $server }
