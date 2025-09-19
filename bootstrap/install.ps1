@@ -164,7 +164,7 @@ function Resolve-DownloadFailureDetails {
         return [pscustomobject]@{ Category = 'Timeout'; Hint = 'Request timed out' }
     }
 
-    if ($message -match 'name or service not known|No such host|Temporary failure in name resolution|network is unreachable|connection refused|connect failed') {
+    if ($message -match 'name or service not known|No such host|Temporary failure in name resolution|network is unreachable|connection refused|connect failed|actively refused') {
         return [pscustomobject]@{ Category = 'NetworkUnavailable'; Hint = 'Network connectivity issues' }
     }
 
