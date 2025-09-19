@@ -374,20 +374,32 @@ function Install-AlBuildTools {
         }
 
         $asset = $null
+        $fallbackAsset = $null
         foreach ($candidate in $assets) {
             if ($null -eq $candidate) { continue }
             $nameProp = $candidate.PSObject.Properties | Where-Object { $_.Name -eq 'name' } | Select-Object -First 1
             if (-not $nameProp) { continue }
             $candidateName = [string]$nameProp.Value
-            if (-not [string]::IsNullOrWhiteSpace($candidateName) -and $candidateName -ieq 'overlay.zip') {
+            if ([string]::IsNullOrWhiteSpace($candidateName)) { continue }
+
+            if ($candidateName -ieq 'overlay.zip') {
                 $asset = $candidate
                 break
+            }
+
+            if (-not $fallbackAsset -and $candidateName -like 'al-build-tools-*.zip') {
+                $fallbackAsset = $candidate
             }
         }
 
         if (-not $asset) {
-            Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=NotFound hint=`"Release asset overlay.zip not found`""
-            exit 20
+            if ($fallbackAsset) {
+                $asset = $fallbackAsset
+                Write-Verbose "[install] asset fallback Using release asset '$(($fallbackAsset.name))'"
+            } else {
+                Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=NotFound hint=`"Release asset overlay.zip not found`""
+                exit 20
+            }
         }
 
         $assetNameProp = $asset.PSObject.Properties | Where-Object { $_.Name -eq 'name' } | Select-Object -First 1
@@ -412,7 +424,7 @@ function Install-AlBuildTools {
         $assetStatusHints = @{
             401 = @{ Category = 'Unknown'; Hint = 'Authentication required for release asset' }
             403 = @{ Category = 'Unknown'; Hint = 'Access denied retrieving release asset' }
-            404 = @{ Category = 'NotFound'; Hint = 'Release asset overlay.zip not found' }
+            404 = @{ Category = 'NotFound'; Hint = "Release asset $assetName not found" }
         }
 
         try {

@@ -34,5 +34,5 @@
   - Merging both inputs (env as default, parameter appended to diagnostics) → invites confusion and contradicts spec direction.
 
 ## Open Verification Items
-- Confirm the release pipeline publishes a single asset named `overlay.zip` that contains the expected root folder.
+- Confirm the release pipeline publishes a single overlay ZIP asset (`overlay.zip` preferred; legacy `al-build-tools-<tag>.zip` remains supported) that contains the expected root folder.
 - Validate GitHub API rate limits are acceptable for installer usage (unauthenticated limit of 60 requests/hour should suffice, but note in README for heavy automation).
