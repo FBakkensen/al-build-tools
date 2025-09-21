@@ -161,8 +161,22 @@ function Get-InstalledToolInfo {
         if ($candidate) { $orderedCandidates += $candidate.ToLowerInvariant() }
     }
 
-    $args = @('tool', 'list', '--global', '--format', 'json')
-    $jsonText = & dotnet @args
+    $dotnetListArgs = @('tool', 'list', '--global', '--format', 'json')
+    # If ToolsRoot provided, temporarily set DOTNET_CLI_HOME to its parent to scope global tool listing (uses tools root structure)
+    $originalDotnetCliHome = $env:DOTNET_CLI_HOME
+    $restoreDotnetCliHome = $false
+    try {
+        if ($ToolsRoot) {
+            $candidateHome = Split-Path -Parent $ToolsRoot -ErrorAction SilentlyContinue
+            if ($candidateHome -and (Test-Path -LiteralPath $candidateHome)) {
+                $env:DOTNET_CLI_HOME = $candidateHome
+                $restoreDotnetCliHome = $true
+            }
+        }
+        $jsonText = & dotnet @dotnetListArgs
+    } finally {
+        if ($restoreDotnetCliHome) { $env:DOTNET_CLI_HOME = $originalDotnetCliHome }
+    }
     if ($LASTEXITCODE -ne 0) {
         return $null
     }
@@ -271,7 +285,11 @@ function Ensure-LinterCopAnalyzer {
                 Write-Host "LinterCop analyzer saved to $targetDll"
             } catch {
                 Write-Warning "Failed to download LinterCop analyzer: $($_.Exception.Message)"
-                try { if (Test-Path -LiteralPath $tempFile) { Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue } } catch {}
+                try {
+                    if (Test-Path -LiteralPath $tempFile) { Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue }
+                } catch {
+                    Write-Verbose "[albt] temp file cleanup failed: $($_.Exception.Message)"
+                }
             }
         }
     } catch {

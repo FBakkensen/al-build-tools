@@ -299,10 +299,15 @@ function Select-PackageVersion {
 }
 
 function New-TemporaryDirectory {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
     $base = [System.IO.Path]::GetTempPath()
     $name = 'bc-symbols-' + [System.Guid]::NewGuid().ToString('N')
     $path = Join-Path -Path $base -ChildPath $name
-    Ensure-Directory -Path $path
+    $action = 'Create temporary directory'
+    if (-not $PSCmdlet -or $PSCmdlet.ShouldProcess($path, $action)) {
+        Ensure-Directory -Path $path
+    }
     return $path
 }
 
