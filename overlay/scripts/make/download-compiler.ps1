@@ -21,6 +21,7 @@
     - ALBT_FORCE_LINTERCOP: set to 1/true/yes/on to force re-download of BusinessCentral.LinterCop analyzer.
 #>
 
+#[CmdletBinding()]
 param(
     [string]$AppDir = 'app'
 )
@@ -112,14 +113,14 @@ function Get-ToolCacheRoot {
     return Join-Path -Path $userHome -ChildPath '.bc-tool-cache'
 }
 
-function Ensure-Directory {
+function Initialize-Directory {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) {
         [void](New-Item -ItemType Directory -Path $Path -Force)
     }
 }
 
-function Try-ParseVersion {
+function ConvertTo-Version {
     param([Alias('Input')][string]$Value)
     try {
         if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
@@ -162,15 +163,32 @@ function Get-InstalledToolInfo {
     }
 
     $dotnetListArgs = @('tool', 'list', '--global', '--format', 'json')
-    # If ToolsRoot provided, temporarily set DOTNET_CLI_HOME to its parent to scope global tool listing (uses tools root structure)
+    # IMPORTANT: A previous implementation incorrectly set DOTNET_CLI_HOME to the *parent* of the tools root (the .dotnet folder).
+    # The dotnet global tools layout is: <DOTNET_CLI_HOME>/.dotnet/tools. Therefore, for a tools root of <Home>/.dotnet/tools,
+    # DOTNET_CLI_HOME must be <Home>, not <Home>/.dotnet. Setting it to <Home>/.dotnet caused dotnet to inspect <Home>/.dotnet/.dotnet/tools
+    # which does not exist, yielding an empty tool list and preventing version detection after install.
     $originalDotnetCliHome = $env:DOTNET_CLI_HOME
     $restoreDotnetCliHome = $false
     try {
         if ($ToolsRoot) {
-            $candidateHome = Split-Path -Parent $ToolsRoot -ErrorAction SilentlyContinue
-            if ($candidateHome -and (Test-Path -LiteralPath $candidateHome)) {
-                $env:DOTNET_CLI_HOME = $candidateHome
-                $restoreDotnetCliHome = $true
+            try {
+                $resolvedToolsRoot = (Resolve-Path -LiteralPath $ToolsRoot -ErrorAction Stop).ProviderPath
+            } catch { $resolvedToolsRoot = $ToolsRoot }
+            $leaf = Split-Path -Leaf $resolvedToolsRoot
+            if ($leaf -ieq 'tools') {
+                $parent = Split-Path -Parent $resolvedToolsRoot -ErrorAction SilentlyContinue
+                $parentLeaf = if ($parent) { Split-Path -Leaf $parent } else { $null }
+                if ($parentLeaf -ieq '.dotnet') {
+                    # Home directory is one level above '.dotnet'
+                    $candidateHome = Split-Path -Parent $parent -ErrorAction SilentlyContinue
+                } else {
+                    # Unexpected layout; fall back to parent of tools
+                    $candidateHome = $parent
+                }
+                if ($candidateHome -and (Test-Path -LiteralPath $candidateHome)) {
+                    $env:DOTNET_CLI_HOME = $candidateHome
+                    $restoreDotnetCliHome = $true
+                }
             }
         }
         $jsonText = & dotnet @dotnetListArgs
@@ -233,7 +251,7 @@ function Get-CompilerPath {
 
 function Invoke-DotnetToolCommand {
     param([string[]]$Arguments)
-    Write-Host "dotnet $($Arguments -join ' ')"
+    Write-Output "dotnet $($Arguments -join ' ')"
     & dotnet @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet tool command failed with exit code $LASTEXITCODE"
@@ -254,7 +272,7 @@ function Write-Sentinel {
     $json | Set-Content -LiteralPath $Path -Encoding UTF8
 }
 
-function Ensure-LinterCopAnalyzer {
+function Install-LinterCopAnalyzer {
     param([string]$CompilerPath)
     if (-not $CompilerPath) { return }
     try {
@@ -273,16 +291,16 @@ function Ensure-LinterCopAnalyzer {
         if ((Test-Path -LiteralPath $targetDll) -and -not $forceLinterCop) { $needDownload = $false }
 
         if (-not $needDownload) {
-            Write-Host "LinterCop analyzer already present: $targetDll (set ALBT_FORCE_LINTERCOP=1 to re-download)"
+            Write-Output "LinterCop analyzer already present: $targetDll (set ALBT_FORCE_LINTERCOP=1 to re-download)"
         } else {
-            Write-Host "Downloading BusinessCentral.LinterCop analyzer from $linterCopUrl"
+            Write-Output "Downloading BusinessCentral.LinterCop analyzer from $linterCopUrl"
             $tempFile = [System.IO.Path]::GetTempFileName()
             try {
                 Invoke-WebRequest -Uri $linterCopUrl -OutFile $tempFile -UseBasicParsing -ErrorAction Stop
                 $fileInfo = Get-Item -LiteralPath $tempFile -ErrorAction Stop
                 if ($fileInfo.Length -le 0) { throw 'Downloaded file is empty.' }
                 Move-Item -LiteralPath $tempFile -Destination $targetDll -Force
-                Write-Host "LinterCop analyzer saved to $targetDll"
+                Write-Output "LinterCop analyzer saved to $targetDll"
             } catch {
                 Write-Warning "Failed to download LinterCop analyzer: $($_.Exception.Message)"
                 try {
@@ -311,9 +329,9 @@ $appRuntime = [string]$appJson.runtime
 
 $requestedToolVersion = $env:AL_TOOL_VERSION
 $toolCacheRoot = Get-ToolCacheRoot
-Ensure-Directory -Path $toolCacheRoot
+Initialize-Directory -Path $toolCacheRoot
 $alCacheDir = Join-Path -Path $toolCacheRoot -ChildPath 'al'
-Ensure-Directory -Path $alCacheDir
+Initialize-Directory -Path $alCacheDir
 $sentinelName = if ($requestedToolVersion) { "$requestedToolVersion.json" } else { 'default.json' }
 $sentinelPath = Join-Path -Path $alCacheDir -ChildPath $sentinelName
 
@@ -331,8 +349,8 @@ $sentinelVersion = if ($existingSentinel) { [string]$existingSentinel.compilerVe
 $sentinelToolPath = if ($existingSentinel) { [string]$existingSentinel.toolPath } else { $null }
 $sentinelPackageId = if ($existingSentinel -and ($existingSentinel.PSObject.Properties.Name -contains 'packageId')) { [string]$existingSentinel.packageId } else { $null }
 
-$currentRuntimeVersion = Try-ParseVersion -Input $appRuntime
-$previousRuntimeVersion = Try-ParseVersion -Input $sentinelRuntime
+$currentRuntimeVersion = ConvertTo-Version -Input $appRuntime
+$previousRuntimeVersion = ConvertTo-Version -Input $sentinelRuntime
 $runtimeIncreased = $false
 if ($currentRuntimeVersion -and $previousRuntimeVersion) {
     if ($currentRuntimeVersion -gt $previousRuntimeVersion) { $runtimeIncreased = $true }
@@ -381,14 +399,14 @@ if (-not $existingSentinel -and $compilerPath) {
              Write-Sentinel -Path $sentinelPath -CompilerVersion $sentinelVersionToWrite -Runtime $appRuntime -ToolPath $compilerPath -PackageId $sentinelPackageToWrite
          }
      }
-     Write-Host "AL compiler already installed and up to date: $compilerPath"
-     Ensure-LinterCopAnalyzer -CompilerPath $compilerPath
+     Write-Output "AL compiler already installed and up to date: $compilerPath"
+     Install-LinterCopAnalyzer -CompilerPath $compilerPath
      exit 0
  }
 
 if (-not $installRequired) {
-    Write-Host "AL compiler already provisioned at $compilerPath"
-    Ensure-LinterCopAnalyzer -CompilerPath $compilerPath
+    Write-Output "AL compiler already provisioned at $compilerPath"
+    Install-LinterCopAnalyzer -CompilerPath $compilerPath
     exit 0
 }
 
@@ -439,10 +457,10 @@ if (-not $compilerPath) {
     throw "Installed tool missing alc executable for version $resolvedVersion"
 }
 
-Write-Host "AL compiler ready: $compilerPath (version $resolvedVersion)"
+Write-Output "AL compiler ready: $compilerPath (version $resolvedVersion)"
 if (-not $resolvedPackageId) { $resolvedPackageId = $ToolPackageId }
 Write-Sentinel -Path $sentinelPath -CompilerVersion $resolvedVersion -Runtime $appRuntime -ToolPath $compilerPath -PackageId $resolvedPackageId
 
-Ensure-LinterCopAnalyzer -CompilerPath $compilerPath
+Install-LinterCopAnalyzer -CompilerPath $compilerPath
 
 exit 0
