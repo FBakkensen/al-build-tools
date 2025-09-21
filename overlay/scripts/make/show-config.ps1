@@ -62,14 +62,14 @@ function Expand-FullPath {
     $expanded = [Environment]::ExpandEnvironmentVariables($Path)
 
     if ($expanded.StartsWith('~')) {
-        $home = $env:HOME
-        if (-not $home -and $env:USERPROFILE) { $home = $env:USERPROFILE }
-        if ($home) {
+        $userHome = $env:HOME
+        if (-not $userHome -and $env:USERPROFILE) { $userHome = $env:USERPROFILE }
+        if ($userHome) {
             $suffix = $expanded.Substring(1).TrimStart([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
             if ([string]::IsNullOrWhiteSpace($suffix)) {
-                $expanded = $home
+                $expanded = $userHome
             } else {
-                $expanded = Join-Path -Path $home -ChildPath $suffix
+                $expanded = Join-Path -Path $userHome -ChildPath $suffix
             }
         }
     }
