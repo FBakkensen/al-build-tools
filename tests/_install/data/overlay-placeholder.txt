@@ -1,2 +1,0 @@
-Install overlay fixture payload.
-Used by installer tests to validate hashing and idempotence logic.

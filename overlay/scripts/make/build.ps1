@@ -235,8 +235,6 @@ function Get-EnabledAnalyzerPaths {
             $json = Get-Content $settingsPath -Raw | ConvertFrom-Json
             if ($json -and ($json.PSObject.Properties.Match('al.codeAnalyzers').Count -gt 0) -and $json.'al.codeAnalyzers') {
                 $enabled = @($json.'al.codeAnalyzers')
-            } elseif ($json -and ($json.PSObject.Properties.Match('al.enableCodeAnalysis').Count -gt 0) -and $json.'al.enableCodeAnalysis') {
-                $enabled = @('CodeCop','UICop')
             } elseif ($json) {
                 if ($json.PSObject.Properties.Match('enableCodeCop').Count -gt 0 -and $json.enableCodeCop) { $enabled += 'CodeCop' }
                 if ($json.PSObject.Properties.Match('enableUICop').Count -gt 0 -and $json.enableUICop) { $enabled += 'UICop' }
