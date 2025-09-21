@@ -80,6 +80,7 @@
     { "id": "LC0090", "action": "Warning" },
     { "id": "LC0091", "action": "Warning" },
     { "id": "LC0092", "action": "Warning" },
-    { "id": "LC0093", "action": "Warning" }
+    { "id": "LC0093", "action": "Warning" },
+    { "id": "LC9999", "action": "Hidden" }
   ]
 }

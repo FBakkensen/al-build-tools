@@ -64,53 +64,180 @@ function Get-OutputPath { param([string]$AppDir)
         return Join-Path -Path $AppDir -ChildPath $file
     } catch { return $null }
 }
-function Get-PackageCachePath { param([string]$AppDir) (Join-Path -Path $AppDir -ChildPath '.alpackages') }
 
-# --- AL compiler discovery (from common.ps1) ---
-function Get-HighestVersionALExtension {
-    $userHome = if ($env:USERPROFILE) { $env:USERPROFILE } elseif ($env:HOME) { $env:HOME } else { $null }
-    $roots = @()
-    if ($userHome) {
-        $roots = @(
-            (Join-Path $userHome (Join-Path '.vscode' 'extensions')),
-            (Join-Path $userHome (Join-Path '.vscode-insiders' 'extensions')),
-            (Join-Path $userHome (Join-Path '.vscode-server' 'extensions')),
-            (Join-Path $userHome (Join-Path '.vscode-server-insiders' 'extensions'))
-        )
+function Expand-FullPath {
+    param([string]$Path)
+
+    if (-not $Path) { return $null }
+
+    $expanded = [Environment]::ExpandEnvironmentVariables($Path)
+
+    if ($expanded.StartsWith('~')) {
+        $userHome = $env:HOME
+        if (-not $userHome -and $env:USERPROFILE) { $userHome = $env:USERPROFILE }
+        if ($userHome) {
+            $suffix = $expanded.Substring(1).TrimStart([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+            if ([string]::IsNullOrWhiteSpace($suffix)) {
+                $expanded = $userHome
+            } else {
+                $expanded = Join-Path -Path $userHome -ChildPath $suffix
+            }
+        }
     }
-    $candidates = @()
-    foreach ($root in $roots) { if (Test-Path $root) { $items = Get-ChildItem -Path $root -Filter 'ms-dynamics-smb.al-*' -ErrorAction SilentlyContinue; if ($items) { $candidates += $items } } }
-    if (-not $candidates -or $candidates.Count -eq 0) { return $null }
-    $parseVersion = { param($name)
-        if ($name -match 'ms-dynamics-smb\.al-([0-9]+(\.[0-9]+)*)') { return [version]$matches[1] } else { return [version]'0.0.0' }
+
+    try {
+        return (Resolve-Path -LiteralPath $expanded -ErrorAction Stop).ProviderPath
+    } catch {
+        return [System.IO.Path]::GetFullPath($expanded)
     }
-    $withVersion = $candidates | ForEach-Object { $ver = & $parseVersion $_.Name; $isInsiders = if ($_.FullName -match 'insiders') { 1 } else { 0 }; [PSCustomObject]@{ Ext = $_; Version = $ver; Insiders = $isInsiders } }
-    $highest = $withVersion | Sort-Object -Property Version, Insiders -Descending | Select-Object -First 1
-    if ($highest) { return $highest.Ext } else { return $null }
-}
-function Get-ALCompilerPath {
-    $alExt = Get-HighestVersionALExtension
-    if ($alExt) { $alc = Get-ChildItem -Path $alExt.FullName -Recurse -Filter 'alc.exe' -ErrorAction SilentlyContinue | Select-Object -First 1; if ($alc) { return $alc.FullName } }
-    return $null
 }
 
-# --- Analyzer paths (from common.ps1 + json helpers) ---
-function Get-EnabledAnalyzerPaths { param([string]$AppDir)
+function Get-ToolCacheRoot {
+    $override = $env:ALBT_TOOL_CACHE_ROOT
+    if ($override) { return Expand-FullPath -Path $override }
+
+    $userHome = $env:HOME
+    if (-not $userHome -and $env:USERPROFILE) { $userHome = $env:USERPROFILE }
+    if (-not $userHome) { throw 'Unable to determine home directory for tool cache.' }
+
+    return Join-Path -Path $userHome -ChildPath '.bc-tool-cache'
+}
+
+function Get-CompilerProvisioningInfo {
+    param([string]$ToolVersion)
+
+    $toolCacheRoot = Get-ToolCacheRoot
+    $alCacheDir = Join-Path -Path $toolCacheRoot -ChildPath 'al'
+    $sentinelName = if ($ToolVersion) { "$ToolVersion.json" } else { 'default.json' }
+    $sentinelPath = Join-Path -Path $alCacheDir -ChildPath $sentinelName
+
+    if (-not (Test-Path -LiteralPath $sentinelPath)) {
+        throw "Compiler provisioning sentinel not found at $sentinelPath. Run `make download-compiler` before `make build`."
+    }
+
+    try {
+        $sentinel = Get-Content -LiteralPath $sentinelPath -Raw | ConvertFrom-Json
+    } catch {
+        throw "Failed to parse compiler sentinel at ${sentinelPath}: $($_.Exception.Message). Run `make download-compiler` before `make build`."
+    }
+
+    $toolPath = if ($sentinel) { [string]$sentinel.toolPath } else { $null }
+    if (-not $toolPath) {
+        throw "Compiler sentinel at $sentinelPath is missing toolPath. Run `make download-compiler` before `make build`."
+    }
+
+    $resolvedToolPath = Expand-FullPath -Path $toolPath
+    if (-not (Test-Path -LiteralPath $resolvedToolPath)) {
+        throw "AL compiler not found at ${resolvedToolPath} (sentinel ${sentinelPath}). Run `make download-compiler` before `make build`."
+    }
+
+    $toolItem = Get-Item -LiteralPath $resolvedToolPath
+    $compilerVersion = if ($sentinel.PSObject.Properties.Match('compilerVersion').Count -gt 0) { [string]$sentinel.compilerVersion } else { $null }
+
+    return [pscustomobject]@{
+        AlcPath      = $toolItem.FullName
+        Version      = $compilerVersion
+        SentinelPath = $sentinelPath
+    }
+}
+
+function Sanitize-PathSegment {
+    param([string]$Value)
+
+    if (-not $Value) { return '_' }
+
+    $invalid = [System.IO.Path]::GetInvalidFileNameChars() + [char]':'
+    $result = $Value
+    foreach ($char in $invalid) {
+        $pattern = [regex]::Escape([string]$char)
+        $result = $result -replace $pattern, '_'
+    }
+    $result = $result -replace '\s+', '_'
+    if ([string]::IsNullOrWhiteSpace($result)) { return '_' }
+    return $result
+}
+
+function Get-SymbolCacheRoot {
+    $override = $env:ALBT_SYMBOL_CACHE_ROOT
+    if ($override) { return Expand-FullPath -Path $override }
+
+    $userHome = $env:HOME
+    if (-not $userHome -and $env:USERPROFILE) { $userHome = $env:USERPROFILE }
+    if (-not $userHome) {
+        throw 'Unable to determine home directory for symbol cache. Set ALBT_SYMBOL_CACHE_ROOT or run `make download-symbols` after fixing the environment.'
+    }
+    return Join-Path -Path $userHome -ChildPath '.bc-symbol-cache'
+}
+
+function Get-SymbolCacheInfo {
+    param($AppJson)
+
+    if (-not $AppJson) {
+        throw 'app.json is required to resolve the symbol cache. Ensure app.json exists and run `make download-symbols`.'
+    }
+
+    if (-not $AppJson.publisher) {
+        throw 'app.json missing "publisher". Update the manifest and rerun `make download-symbols`.'
+    }
+    if (-not $AppJson.name) {
+        throw 'app.json missing "name". Update the manifest and rerun `make download-symbols`.'
+    }
+    if (-not $AppJson.id) {
+        throw 'app.json missing "id". Update the manifest and rerun `make download-symbols`.'
+    }
+
+    $cacheRoot = Get-SymbolCacheRoot
+
+    $publisherDir = Join-Path -Path $cacheRoot -ChildPath (Sanitize-PathSegment -Value $AppJson.publisher)
+    $appDirPath = Join-Path -Path $publisherDir -ChildPath (Sanitize-PathSegment -Value $AppJson.name)
+    $cacheDir = Join-Path -Path $appDirPath -ChildPath (Sanitize-PathSegment -Value $AppJson.id)
+
+    if (-not (Test-Path -LiteralPath $cacheDir)) {
+        throw "Symbol cache directory not found at $cacheDir. Run `make download-symbols` before `make build`."
+    }
+
+    $manifestPath = Join-Path -Path $cacheDir -ChildPath 'symbols.lock.json'
+    if (-not (Test-Path -LiteralPath $manifestPath)) {
+        throw "Symbol manifest missing at $manifestPath. Run `make download-symbols` before `make build`."
+    }
+
+    try {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    } catch {
+        throw "Failed to parse symbol manifest at ${manifestPath}: $($_.Exception.Message). Run `make download-symbols` before `make build`."
+    }
+
+    return [pscustomobject]@{
+        CacheDir     = (Get-Item -LiteralPath $cacheDir).FullName
+        ManifestPath = $manifestPath
+        Manifest     = $manifest
+    }
+}
+
+function Get-EnabledAnalyzerPaths {
+    param(
+        [string]$AppDir,
+        [string]$CompilerDir
+    )
+
     $settingsPath = Get-SettingsJsonPath $AppDir
-    $dllMap = @{ 'CodeCop'='Microsoft.Dynamics.Nav.CodeCop.dll'; 'UICop'='Microsoft.Dynamics.Nav.UICop.dll'; 'AppSourceCop'='Microsoft.Dynamics.Nav.AppSourceCop.dll'; 'PerTenantExtensionCop'='Microsoft.Dynamics.Nav.PerTenantExtensionCop.dll' }
-    $supported = @('CodeCop','UICop','AppSourceCop','PerTenantExtensionCop')
+    $dllMap = @{
+        'CodeCop'               = 'Microsoft.Dynamics.Nav.CodeCop.dll'
+        'UICop'                 = 'Microsoft.Dynamics.Nav.UICop.dll'
+        'AppSourceCop'          = 'Microsoft.Dynamics.Nav.AppSourceCop.dll'
+        'PerTenantExtensionCop' = 'Microsoft.Dynamics.Nav.PerTenantExtensionCop.dll'
+    }
+    $supported = $dllMap.Keys
     $enabled = @()
-    if ($settingsPath -and (Test-Path $settingsPath)) {
+
+    if ($settingsPath -and (Test-Path -LiteralPath $settingsPath)) {
         try {
             $json = Get-Content $settingsPath -Raw | ConvertFrom-Json
             if ($json -and ($json.PSObject.Properties.Match('al.codeAnalyzers').Count -gt 0) -and $json.'al.codeAnalyzers') {
                 $enabled = @($json.'al.codeAnalyzers')
-            } elseif ($json -and (
-                ($json.PSObject.Properties.Match('enableCodeCop').Count -gt 0 -and $json.enableCodeCop) -or
-                ($json.PSObject.Properties.Match('enableUICop').Count -gt 0 -and $json.enableUICop) -or
-                ($json.PSObject.Properties.Match('enableAppSourceCop').Count -gt 0 -and $json.enableAppSourceCop) -or
-                ($json.PSObject.Properties.Match('enablePerTenantExtensionCop').Count -gt 0 -and $json.enablePerTenantExtensionCop)
-            )) {
+            } elseif ($json -and ($json.PSObject.Properties.Match('al.enableCodeAnalysis').Count -gt 0) -and $json.'al.enableCodeAnalysis') {
+                $enabled = @('CodeCop','UICop')
+            } elseif ($json) {
                 if ($json.PSObject.Properties.Match('enableCodeCop').Count -gt 0 -and $json.enableCodeCop) { $enabled += 'CodeCop' }
                 if ($json.PSObject.Properties.Match('enableUICop').Count -gt 0 -and $json.enableUICop) { $enabled += 'UICop' }
                 if ($json.PSObject.Properties.Match('enableAppSourceCop').Count -gt 0 -and $json.enableAppSourceCop) { $enabled += 'AppSourceCop' }
@@ -120,36 +247,121 @@ function Get-EnabledAnalyzerPaths { param([string]$AppDir)
             Write-Verbose "[albt] settings.json parse failed: $($_.Exception.Message)"
         }
     }
-    $alExt = Get-HighestVersionALExtension
+
+    $dllPaths = New-Object System.Collections.Generic.List[string]
+    if (-not $enabled -or $enabled.Count -eq 0) { return $dllPaths }
+
     $workspaceRoot = (Get-Location).Path
     $appFull = try { (Resolve-Path $AppDir -ErrorAction Stop).Path } catch { Join-Path $workspaceRoot $AppDir }
-    $analyzersDir = if ($alExt) { Join-Path $alExt.FullName 'bin/Analyzers' } else { $null }
-    function Resolve-AnalyzerEntry { param([string]$Entry)
-        $val = $Entry; if ($null -eq $val) { return @() }
-        if ($val -match '^\$\{analyzerFolder\}(.*)$' -and $analyzersDir) { $tail = $matches[1]; if ($tail -and $tail[0] -notin @('\\','/')) { $val = Join-Path $analyzersDir $tail } else { $val = "$analyzersDir$tail" } }
-        if ($val -match '^\$\{alExtensionPath\}(.*)$' -and $alExt) { $tail2 = $matches[1]; if ($tail2 -and $tail2[0] -notin @('\\','/')) { $val = Join-Path $alExt.FullName $tail2 } else { $val = "$($alExt.FullName)$tail2" } }
-        if ($alExt) { $val = $val.Replace('${alExtensionPath}', $alExt.FullName); $val = $val.Replace('${analyzerFolder}', $analyzersDir) }
-        $val = $val.Replace('${workspaceFolder}', $workspaceRoot).Replace('${workspaceRoot}', $workspaceRoot).Replace('${appDir}', $appFull)
-        $val = [regex]::Replace($val, '\$\{([^}]+)\}', '$1')
-        $val = [Environment]::ExpandEnvironmentVariables($val); if ($val.StartsWith('~')) { $val = $val -replace '^~', $env:USERPROFILE }
-        if (-not [IO.Path]::IsPathRooted($val)) { $val = Join-Path $workspaceRoot $val }
-        if (Test-Path $val -PathType Container) { return Get-ChildItem -Path $val -Filter '*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName } }
-        if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($val)) { return Get-ChildItem -Path $val -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName } }
-        if (Test-Path $val -PathType Leaf) { return @($val) }
-        return @()
-    }
-    $dllPaths = New-Object System.Collections.Generic.List[string]
-    foreach ($item in $enabled) {
-        $name = ($item | Out-String).Trim()
-        if ($name -match '^\$\{([A-Za-z]+)\}$') { $name = $matches[1] }
-        if ($supported -contains $name) {
-            if ($alExt) { $dll = $dllMap[$name]; if ($dll) { $found = Get-ChildItem -Path $alExt.FullName -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1; if ($found) { $dllPaths.Add($found.FullName) } } }
+
+    $analyzersDir = $null
+    if ($CompilerDir -and (Test-Path -LiteralPath $CompilerDir)) {
+        $candidate = Join-Path -Path $CompilerDir -ChildPath 'Analyzers'
+        if (Test-Path -LiteralPath $candidate) {
+            $analyzersDir = (Get-Item -LiteralPath $candidate).FullName
         } else {
-            (Resolve-AnalyzerEntry -Entry $name) | ForEach-Object { if ($_ -and -not $dllPaths.Contains($_)) { $dllPaths.Add($_) } }
+            $analyzersDir = (Get-Item -LiteralPath $CompilerDir).FullName
         }
     }
+
+    function Resolve-AnalyzerEntry {
+        param([string]$Entry)
+
+        $val = $Entry
+        if ($null -eq $val) { return @() }
+
+        if ($val -match '^\$\{analyzerFolder\}(.*)$' -and $analyzersDir) {
+            $tail = $matches[1]
+            if ($tail -and $tail[0] -notin @('\\','/')) { $val = Join-Path $analyzersDir $tail } else { $val = "$analyzersDir$tail" }
+        }
+        if ($val -match '^\$\{alExtensionPath\}(.*)$' -and $CompilerDir) {
+            $tail2 = $matches[1]
+            if ($tail2 -and $tail2[0] -notin @('\\','/')) { $val = Join-Path $CompilerDir $tail2 } else { $val = "$CompilerDir$tail2" }
+        }
+        if ($val -match '^\$\{compilerRoot\}(.*)$' -and $CompilerDir) {
+            $tail3 = $matches[1]
+            if ($tail3 -and $tail3[0] -notin @('\\','/')) { $val = Join-Path $CompilerDir $tail3 } else { $val = "$CompilerDir$tail3" }
+        }
+
+        if ($CompilerDir) {
+            $val = $val.Replace('${alExtensionPath}', $CompilerDir)
+            $val = $val.Replace('${compilerRoot}', $CompilerDir)
+        }
+        if ($analyzersDir) {
+            $val = $val.Replace('${analyzerFolder}', $analyzersDir)
+        }
+
+        $val = $val.Replace('${workspaceFolder}', $workspaceRoot).Replace('${workspaceRoot}', $workspaceRoot).Replace('${appDir}', $appFull)
+        $val = [regex]::Replace($val, '\$\{([^}]+)\}', '$1')
+
+        $expanded = [Environment]::ExpandEnvironmentVariables($val)
+        if ($expanded.StartsWith('~')) {
+            $userHome = $env:HOME
+            if (-not $userHome -and $env:USERPROFILE) { $userHome = $env:USERPROFILE }
+            if ($userHome) {
+                $suffix = $expanded.Substring(1).TrimStart([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+                if ([string]::IsNullOrWhiteSpace($suffix)) {
+                    $expanded = $userHome
+                } else {
+                    $expanded = Join-Path -Path $userHome -ChildPath $suffix
+                }
+            }
+        }
+
+        if (-not [IO.Path]::IsPathRooted($expanded)) {
+            $expanded = Join-Path $workspaceRoot $expanded
+        }
+
+        if (Test-Path $expanded -PathType Container) {
+            return Get-ChildItem -Path $expanded -Filter '*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+        }
+
+        if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($expanded)) {
+            return Get-ChildItem -Path $expanded -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+        }
+
+        if (Test-Path $expanded -PathType Leaf) { return @($expanded) }
+
+        return @()
+    }
+
+    foreach ($item in $enabled) {
+        $name = ($item | Out-String).Trim()
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        if ($name -match '^\$\{([A-Za-z]+)\}$') { $name = $matches[1] }
+
+        if ($supported -contains $name) {
+            if ($analyzersDir -or $CompilerDir) {
+                $dll = $dllMap[$name]
+                $searchRoots = @()
+                if ($analyzersDir) { $searchRoots += $analyzersDir }
+                if ($CompilerDir -and ($searchRoots -notcontains $CompilerDir)) { $searchRoots += $CompilerDir }
+
+                $found = $null
+                foreach ($root in $searchRoots) {
+                    if (-not (Test-Path -LiteralPath $root)) { continue }
+                    $candidate = Get-ChildItem -Path $root -Recurse -Filter $dll -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                    if ($candidate) { $found = $candidate; break }
+                }
+
+                if ($found -and -not $dllPaths.Contains($found.FullName)) {
+                    $dllPaths.Add($found.FullName) | Out-Null
+                } elseif (-not $found) {
+                    Write-Verbose "[albt] Analyzer '$name' requested but $dll not found near compiler directory."
+                }
+            } else {
+                Write-Verbose "[albt] Analyzer '$name' requested but compiler directory unavailable for resolution."
+            }
+        } else {
+            (Resolve-AnalyzerEntry -Entry $name) | ForEach-Object {
+                if ($_ -and -not $dllPaths.Contains($_)) { $dllPaths.Add($_) | Out-Null }
+            }
+        }
+    }
+
     return $dllPaths
 }
+
 
 $Exit = Get-ExitCodes
 
@@ -160,36 +372,98 @@ if (-not $env:ALBT_VIA_MAKE) {
 }
 
 
-# Discover AL compiler (allow test shim override)
-$alcShim = $env:ALBT_ALC_SHIM
-if ($alcShim) {
-    $alcPath = $alcShim
-} else {
-    $alcPath = Get-ALCompilerPath
+# Load manifest for downstream decisions
+$appJson = Get-AppJsonObject $AppDir
+if (-not $appJson) {
+    Write-Error "app.json not found or invalid under '$AppDir'. Ensure the project manifest exists before building."
+    exit $Exit.GeneralError
 }
-if (-not $alcPath) {
-    Write-Error "AL Compiler not found. Please ensure AL extension is installed in VS Code."
+
+# Discover AL compiler (allow override for tests)
+$requestedToolVersion = $env:AL_TOOL_VERSION
+$alcOverride = $env:ALBT_ALC_SHIM
+if (-not $alcOverride -and $env:ALBT_ALC_PATH) { $alcOverride = $env:ALBT_ALC_PATH }
+
+$alcPath = $null
+$compilerVersion = $null
+$compilerRoot = $null
+
+if ($alcOverride) {
+    $resolvedOverride = Expand-FullPath -Path $alcOverride
+    if (-not (Test-Path -LiteralPath $resolvedOverride)) {
+        Write-Error "AL compiler override not found at $alcOverride."
+        exit $Exit.MissingTool
+    }
+    $alcPath = (Get-Item -LiteralPath $resolvedOverride).FullName
+    $compilerRoot = Split-Path -Parent $alcPath
+    $compilerVersion = '(override)'
+} else {
+    try {
+        $compilerInfo = Get-CompilerProvisioningInfo -ToolVersion $requestedToolVersion
+        $alcPath = $compilerInfo.AlcPath
+        $compilerVersion = if ($compilerInfo.Version) { $compilerInfo.Version } else { $null }
+    } catch {
+        Write-Error $_.Exception.Message
+        exit $Exit.MissingTool
+    }
+    $compilerRoot = Split-Path -Parent $alcPath
+}
+
+# Normalize invocation path for cross-platform execution
+$alcCommand = $alcPath
+$alcLaunchPath = $alcPath
+$alcPreArgs = @()
+
+if (-not $IsWindows) {
+    $alcDir = Split-Path -Parent $alcPath
+    $dllCandidate = Join-Path -Path $alcDir -ChildPath 'alc.dll'
+
+    if (Test-Path -LiteralPath $dllCandidate) {
+        $alcLaunchPath = (Get-Item -LiteralPath $dllCandidate).FullName
+        $alcCommand = 'dotnet'
+        $alcPreArgs = @($alcLaunchPath)
+    } elseif ([IO.Path]::GetExtension($alcPath) -eq '.dll') {
+        $alcLaunchPath = (Get-Item -LiteralPath $alcPath).FullName
+        $alcCommand = 'dotnet'
+        $alcPreArgs = @($alcLaunchPath)
+    } elseif ([IO.Path]::GetExtension($alcPath) -eq '.exe') {
+        $alcLaunchPath = $alcPath
+        $alcCommand = 'dotnet'
+        $alcPreArgs = @($alcLaunchPath)
+    }
+}
+
+# Resolve symbol cache provisioned by download-symbols
+try {
+    $symbolCacheInfo = Get-SymbolCacheInfo -AppJson $appJson
+} catch {
+    Write-Error $_.Exception.Message
     exit $Exit.MissingTool
 }
+$packageCachePath = $symbolCacheInfo.CacheDir
 
-# Get enabled analyzer DLL paths
-$analyzerPaths = Get-EnabledAnalyzerPaths $AppDir
+# Resolve analyzer DLLs using compiler install as anchor
+$analyzerPaths = Get-EnabledAnalyzerPaths -AppDir $AppDir -CompilerDir $compilerRoot
 
-
-# Get output and package cache paths
+# Determine output path
 $outputFullPath = Get-OutputPath $AppDir
 if (-not $outputFullPath) {
-    Write-Error "[ERROR] Output path could not be determined. Check app.json and Get-OutputPath function."
-    exit 1
-}
-$packageCachePath = Get-PackageCachePath $AppDir
-if (-not $packageCachePath) {
-    Write-Error "[ERROR] Package cache path could not be determined."
-    exit 1
+    Write-Error "[ERROR] Output path could not be determined from app.json. Verify the manifest and rerun the provisioning targets."
+    exit $Exit.GeneralError
 }
 
+# Summarize provisioning context for operator awareness
+Write-Output "Using AL compiler: $alcLaunchPath"
+if ($alcCommand -eq 'dotnet') {
+    Write-Output "Compiler host: dotnet"
+}
+if ($compilerVersion -and $compilerVersion -ne '(override)') {
+    Write-Output "Compiler version: $compilerVersion"
+}
+Write-Output "Symbol cache: $packageCachePath"
+Write-Output ""
+
 # Derive friendly app info for messages
-$appJson = Get-AppJsonObject $AppDir
 $appName = if ($appJson -and $appJson.name) { $appJson.name } else { 'Unknown App' }
 $appVersion = if ($appJson -and $appJson.version) { $appJson.version } else { '1.0.0.0' }
 $outputFile = Split-Path -Path $outputFullPath -Leaf
@@ -259,7 +533,11 @@ if ($env:WARN_AS_ERROR -and ($env:WARN_AS_ERROR -eq '1' -or $env:WARN_AS_ERROR -
     $cmdArgs += '/warnaserror+'
 }
 
-& $alcPath @cmdArgs
+$alcInvokeArgs = @()
+if ($alcPreArgs.Count -gt 0) { $alcInvokeArgs += $alcPreArgs }
+$alcInvokeArgs += $cmdArgs
+
+& $alcCommand @alcInvokeArgs
 $exitCode = $LASTEXITCODE
 
 if ($exitCode -ne 0) {
