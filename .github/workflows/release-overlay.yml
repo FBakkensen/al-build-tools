@@ -1,40 +1,39 @@
 # ==============================================================================
 # Repository Safety Warning
-# This workflow performs manual release packaging for overlay artifacts.
-# Execute only from trusted automation contexts; avoid running release scripts
-# inside local source clones or invoking bootstrap/install.ps1 within this repo.
+# This workflow performs overlay releases, triggered manually or automatically
+# on PR merges to main. Execute only from trusted automation contexts; avoid
+# running release scripts inside local source clones or invoking
+# bootstrap/install.ps1 within this repo.
 # ==============================================================================
 
-name: Manual Overlay Release
+name: Overlay Release
 
 on:
   workflow_dispatch:
     inputs:
       version:
         description: 'Release version (semantic version, e.g., 1.2.3)'
-        required: true
+        required: false
       summary:
         description: 'Maintainer-provided summary for release notes'
-        required: true
-      dry_run:
-        description: 'Generate artifacts without publishing release'
         required: false
-        type: boolean
-        default: true
+  pull_request:
+    types: [closed]
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Manual overlay release
+    name: Overlay release
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     env:
       GITHUB_TOKEN: ${{ github.token }}
       GH_TOKEN: ${{ github.token }}
       REQUESTED_VERSION: ${{ github.event.inputs.version }}
-      DRY_RUN_INPUT: ${{ github.event.inputs.dry_run }}
-      MAINTAINER_SUMMARY: ${{ github.event.inputs.summary }}
+      MAINTAINER_SUMMARY: ${{ github.event.inputs.summary || github.event.pull_request.title }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -64,7 +63,7 @@ jobs:
           $now = [System.DateTimeOffset]::UtcNow
           Set-ActionOutput -Name 'started_at_iso' -Value $now.ToString('o')
           Set-ActionOutput -Name 'started_at_ms' -Value ([string]$now.ToUnixTimeMilliseconds())
-          Write-Host "::notice::Manual overlay release started at $($now.ToString('o'))."
+          Write-Host "::notice::Overlay release started at $($now.ToString('o'))."
 
       - name: Resolve release version
         id: version
@@ -137,12 +136,105 @@ jobs:
             "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
 
+          function ConvertTo-ReleaseVersion {
+            [CmdletBinding()]
+            param(
+              [Parameter(Mandatory = $true)]
+              [string]$Version
+            )
+
+            $trimmed = $Version.Trim()
+            if ([string]::IsNullOrWhiteSpace($trimmed)) {
+              throw 'ERROR: VersionHelper - Version value is required.'
+            }
+
+            $match = [Regex]::Match($trimmed, '^v(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)$')
+            if (-not $match.Success) {
+              throw "Version '$Version' is not a valid semantic version with leading 'v' (e.g. v1.2.3)."
+            }
+
+            $major = [int]$match.Groups['major'].Value
+            $minor = [int]$match.Groups['minor'].Value
+            $patch = [int]$match.Groups['patch'].Value
+
+            return [PSCustomObject]@{
+              RawInput  = $Version
+              Normalized = "v{0}.{1}.{2}" -f $major, $minor, $patch
+              Major = $major
+              Minor = $minor
+              Patch = $patch
+              TagName = "v{0}.{1}.{2}" -f $major, $minor, $patch
+            }
+          }
+
+          function Get-VersionTags {
+            [CmdletBinding()]
+            param(
+              [Parameter(Mandatory = $true)]
+              [string]$RepositoryRoot
+            )
+
+            $gitArgs = @('-C', $RepositoryRoot, 'tag', '--list', 'v*')
+            $result = & git @gitArgs
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to enumerate git tags from $RepositoryRoot."
+            }
+
+            if ($null -eq $result) { return @() }
+
+            $tags = @()
+            foreach ($line in $result) {
+              if (-not [string]::IsNullOrWhiteSpace($line)) {
+                $tags += $line.Trim()
+              }
+            }
+            return $tags
+          }
+
+          function Get-LatestReleaseVersion {
+            [CmdletBinding()]
+            param(
+              [Parameter(Mandatory = $true)]
+              [string]$RepositoryRoot
+            )
+
+            $tags = @(Get-VersionTags -RepositoryRoot $RepositoryRoot)
+            if ($tags.Count -eq 0) { return $null }
+
+            $parsed = @()
+            foreach ($tag in $tags) {
+              try {
+                $version = ConvertTo-ReleaseVersion -Version $tag
+                $parsed += [PSCustomObject]@{
+                  RawTag = $tag
+                  Version = $version
+                }
+              } catch {
+                continue
+              }
+            }
+
+            if ($parsed.Count -eq 0) { return $null }
+
+            $sorted = $parsed | Sort-Object -Property @{ Expression = { $_.Version.Major }; Descending = $true }, @{ Expression = { $_.Version.Minor }; Descending = $true }, @{ Expression = { $_.Version.Patch }; Descending = $true }
+            return $sorted[0]
+          }
+
           try {
             Write-Host "REQUESTED_VERSION=$($env:REQUESTED_VERSION)"
 
             $versionInput = $env:REQUESTED_VERSION
             if ([string]::IsNullOrWhiteSpace($versionInput)) {
-              Emit-StepError -Message 'Version input is required.'
+              # Auto-generate next minor version
+              $latestInfo = Get-LatestReleaseVersion -RepositoryRoot (Get-Location)
+              if ($latestInfo) {
+                $nextMinor = $latestInfo.Version.Minor + 1
+                $versionInput = "v{0}.{1}.0" -f $latestInfo.Version.Major, $nextMinor
+                Write-Host "Auto-generated version: $versionInput"
+              } else {
+                $versionInput = "v1.0.0"
+                Write-Host "No existing versions found, starting with: $versionInput"
+              }
             }
 
             $versionJson = ./scripts/release/version.ps1 -Version $versionInput -AsJson
@@ -334,100 +426,8 @@ jobs:
           $isInitial = [bool]$diffInfo.IsInitialRelease
           Set-ActionOutput -Name 'is_initial_release' -Value ($isInitial.ToString().ToLowerInvariant())
 
-      - name: Evaluate dry run mode
-        id: dry_run
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          function Set-ActionOutput {
-            param(
-              [Parameter(Mandatory = $true)][string]$Name,
-              [string]$Value
-            )
-
-            if ($null -eq $Value) {
-              $Value = ''
-            }
-
-            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          }
-
-          $raw = $env:DRY_RUN_INPUT
-          $isDryRun = $true
-          if (-not [string]::IsNullOrWhiteSpace($raw)) {
-            $isDryRun = [System.Convert]::ToBoolean($raw)
-          }
-
-          Set-ActionOutput -Name 'is_dry_run' -Value ($isDryRun.ToString().ToLowerInvariant())
-          $shouldPublish = -not $isDryRun
-          Set-ActionOutput -Name 'should_publish' -Value ($shouldPublish.ToString().ToLowerInvariant())
-
-      - name: Compose preview artifacts (dry run)
-        id: dry_run_preview
-        if: ${{ steps.dry_run.outputs.is_dry_run == 'true' }}
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          function Set-ActionOutput {
-            param(
-              [Parameter(Mandatory = $true)][string]$Name,
-              [string]$Value
-            )
-
-            if ($null -eq $Value) {
-              $Value = ''
-            }
-
-            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          }
-
-          $artifactDir = Join-Path (Get-Location) 'artifacts/workflow'
-          [System.IO.Directory]::CreateDirectory($artifactDir) | Out-Null
-
-          $overlay = Get-Content -LiteralPath '${{ steps.overlay.outputs.overlay_payload_path }}' -Raw | ConvertFrom-Json -Depth 6
-          $manifest = Get-Content -LiteralPath '${{ steps.manifest.outputs.manifest_info_path }}' -Raw | ConvertFrom-Json -Depth 6
-          $diff = Get-Content -LiteralPath '${{ steps.diff.outputs.diff_summary_path }}' -Raw | ConvertFrom-Json -Depth 6
-
-          $releaseDateUtc = (Get-Date).ToUniversalTime()
-
-          $notesJson = ./scripts/release/release-notes.ps1 `
-            -Version '${{ steps.version.outputs.normalized_version }}' `
-            -MaintainerSummary $env:MAINTAINER_SUMMARY `
-            -OverlayPayload $overlay `
-            -Manifest $manifest `
-            -Diff $diff `
-            -CurrentCommit '${{ steps.diff.outputs.current_commit }}' `
-            -ReleaseDateUtc $releaseDateUtc `
-            -AsJson
-
-          $notes = $notesJson | ConvertFrom-Json -Depth 6
-
-          $previewNotesPath = Join-Path $artifactDir 'release-notes-preview.md'
-          $notes.BodyMarkdown | Out-File -FilePath $previewNotesPath -Encoding utf8
-
-          $previewMetadataPath = Join-Path $artifactDir 'release-metadata-preview.json'
-          $notes.MetadataJson | Out-File -FilePath $previewMetadataPath -Encoding utf8
-
-          Set-ActionOutput -Name 'preview_notes_path' -Value ((Resolve-Path -LiteralPath $previewNotesPath).Path)
-          Set-ActionOutput -Name 'preview_metadata_path' -Value ((Resolve-Path -LiteralPath $previewMetadataPath).Path)
-
-      - name: Upload dry run artifacts
-        if: ${{ steps.dry_run.outputs.is_dry_run == 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-dry-run-${{ steps.version.outputs.normalized_version }}
-          retention-days: 7
-          path: |
-            ${{ steps.manifest.outputs.manifest_path }}
-            ${{ steps.diff.outputs.diff_summary_path }}
-            ${{ steps.dry_run_preview.outputs.preview_notes_path }}
-            ${{ steps.dry_run_preview.outputs.preview_metadata_path }}
-
       - name: Create annotated release tag
         id: create_tag
-        if: ${{ steps.dry_run.outputs.should_publish == 'true' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -445,13 +445,12 @@ jobs:
           git config user.name '${{ github.actor }}'
           git config user.email '${{ github.actor }}@users.noreply.github.com'
 
-          $message = "Manual overlay release $tagName (triggered by $env:GITHUB_ACTOR)"
+          $message = "Overlay release $tagName (triggered by $env:GITHUB_ACTOR)"
           git tag -a $tagName -m $message
           git push origin $tagName
 
       - name: Package overlay artifact and draft release
         id: package
-        if: ${{ steps.dry_run.outputs.should_publish == 'true' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -496,7 +495,7 @@ jobs:
 
           $tagName = '${{ steps.version.outputs.tag_name }}'
           $normalizedVersion = '${{ steps.version.outputs.normalized_version }}'
-          $releaseTitle = "Manual overlay release $normalizedVersion"
+          $releaseTitle = "Overlay release $normalizedVersion"
           $targetCommit = '${{ steps.diff.outputs.current_commit }}'
 
           $existingRelease = & gh release view $tagName --json tagName --jq '.tagName' 2>$null
@@ -519,7 +518,6 @@ jobs:
 
       - name: Verify artifact overlay isolation
         id: artifact_isolation
-        if: ${{ steps.dry_run.outputs.should_publish == 'true' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -569,7 +567,6 @@ jobs:
 
       - name: Publish release notes and finalize
         id: publish
-        if: ${{ steps.dry_run.outputs.should_publish == 'true' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -622,7 +619,6 @@ jobs:
 
       - name: Verify published release
         id: verify
-        if: ${{ steps.dry_run.outputs.should_publish == 'true' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -703,4 +699,4 @@ jobs:
           Set-ActionOutput -Name 'duration_ms' -Value ([string]$durationMs)
           Set-ActionOutput -Name 'duration_seconds' -Value ([string]$durationSeconds)
 
-          Write-Host "::notice::Manual overlay release duration: $durationSeconds seconds (started $($startValue.ToString('o')), ended $($now.ToString('o')))."
+          Write-Host "::notice::Overlay release duration: $durationSeconds seconds (started $($startValue.ToString('o')), ended $($now.ToString('o')))."
