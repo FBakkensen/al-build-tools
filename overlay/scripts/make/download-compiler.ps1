@@ -1,13 +1,15 @@
 #requires -Version 7.2
 
-<#+
+<#
 .SYNOPSIS
-    Ensures the AL compiler dotnet tool is installed for the runtime declared in app.json.
+    Install or update the AL compiler dotnet tool with structured status reporting.
 
 .DESCRIPTION
+    Ensures the AL compiler dotnet tool is installed for the runtime declared in app.json.
     Parses app.json to determine the runtime, maintains a sentinel under ~/.bc-tool-cache/al,
     and installs/updates the Microsoft.Dynamics.BusinessCentral.Development.Tools dotnet tool
     when the runtime increases, the sentinel is missing, or the compiler binaries are absent.
+    Also downloads the BusinessCentral.LinterCop analyzer.
 
 .PARAMETER AppDir
     Directory that contains app.json (defaults to "app" like build.ps1). You can also set
@@ -18,8 +20,14 @@
       - AL_TOOL_VERSION: explicit version passed through make to select a tool version.
       - ALBT_TOOL_CACHE_ROOT: override for the default ~/.bc-tool-cache location.
       - ALBT_APP_DIR: override for default app directory when -AppDir omitted.
-    - ALBT_FORCE_LINTERCOP: set to 1/true/yes/on to force re-download of BusinessCentral.LinterCop analyzer.
+      - ALBT_FORCE_LINTERCOP: set to 1/true/yes/on to force re-download of BusinessCentral.LinterCop analyzer.
+
+    This script uses Write-Information for output to ensure compatibility with different
+    PowerShell hosts and automation scenarios.
 #>
+
+# PSScriptAnalyzer suppressions for intentional design choices
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseBOMForUnicodeEncodedFile', '', Justification = 'UTF-8 without BOM is preferred for cross-platform compatibility')]
 
 #[CmdletBinding()]
 param(
@@ -32,6 +40,43 @@ if (-not $PSBoundParameters.ContainsKey('AppDir') -and $env:ALBT_APP_DIR) {
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$InformationPreference = 'Continue'
+
+# --- Formatting Helpers ---
+function Write-Section {
+    param([string]$Title, [string]$SubInfo = '')
+    $line = ''.PadLeft(80, '=')
+    Write-Information "" # blank spacer
+    Write-Information $line -InformationAction Continue
+    $header = "🔧 COMPILER | {0}" -f $Title
+    if ($SubInfo) { $header += " | {0}" -f $SubInfo }
+    Write-Information $header -InformationAction Continue
+    Write-Information $line -InformationAction Continue
+}
+
+function Write-InfoLine {
+    param(
+        [string]$Label,
+        [string]$Value,
+        [string]$Icon = '•'
+    )
+    $labelPadded = ($Label).PadRight(14)
+    Write-Information ("  {0}{1}: {2}" -f $Icon, $labelPadded, $Value) -InformationAction Continue
+}
+
+function Write-StatusLine {
+    param([string]$Message, [string]$Icon = '⚠️')
+    Write-Information ("  {0} {1}" -f $Icon, $Message) -InformationAction Continue
+}
+
+function Write-Activity {
+    param([string]$Activity, [string]$Status = '', [string]$Icon = '⏳')
+    if ($Status) {
+        Write-Information ("  {0} {1}: {2}" -f $Icon, $Activity, $Status) -InformationAction Continue
+    } else {
+        Write-Information ("  {0} {1}" -f $Icon, $Activity) -InformationAction Continue
+    }
+}
 
 # --- Constants ---
 $ToolExecutableNames = @('alc.exe', 'alc')
@@ -251,7 +296,7 @@ function Get-CompilerPath {
 
 function Invoke-DotnetToolCommand {
     param([string[]]$Arguments)
-    Write-Output "dotnet $($Arguments -join ' ')"
+    Write-Activity "Executing dotnet command" ("dotnet {0}" -f ($Arguments -join ' ')) '⚡'
     & dotnet @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet tool command failed with exit code $LASTEXITCODE"
@@ -291,16 +336,19 @@ function Install-LinterCopAnalyzer {
         if ((Test-Path -LiteralPath $targetDll) -and -not $forceLinterCop) { $needDownload = $false }
 
         if (-not $needDownload) {
-            Write-Output "LinterCop analyzer already present: $targetDll (set ALBT_FORCE_LINTERCOP=1 to re-download)"
+            Write-InfoLine "LinterCop Status" "Already present" '✅'
+            Write-InfoLine "Location" $targetDll '📁'
+            Write-StatusLine "Set ALBT_FORCE_LINTERCOP=1 to force re-download" 'ℹ️'
         } else {
-            Write-Output "Downloading BusinessCentral.LinterCop analyzer from $linterCopUrl"
+            Write-Activity "Downloading LinterCop analyzer" $linterCopUrl '📥'
             $tempFile = [System.IO.Path]::GetTempFileName()
             try {
                 Invoke-WebRequest -Uri $linterCopUrl -OutFile $tempFile -UseBasicParsing -ErrorAction Stop
                 $fileInfo = Get-Item -LiteralPath $tempFile -ErrorAction Stop
                 if ($fileInfo.Length -le 0) { throw 'Downloaded file is empty.' }
                 Move-Item -LiteralPath $tempFile -Destination $targetDll -Force
-                Write-Output "LinterCop analyzer saved to $targetDll"
+                Write-InfoLine "LinterCop Status" "Downloaded successfully" '✅'
+                Write-InfoLine "Location" $targetDll '📁'
             } catch {
                 Write-Warning "Failed to download LinterCop analyzer: $($_.Exception.Message)"
                 try {
@@ -316,24 +364,46 @@ function Install-LinterCopAnalyzer {
 }
 
 # --- Execution ---
+Write-Section 'Environment Analysis'
+
+Write-Information "🔍 PREREQUISITE CHECK:" -InformationAction Continue
 if (-not (Test-DotnetAvailable)) {
+    Write-InfoLine "dotnet CLI" "Not found" '❌'
+    Write-StatusLine "Install .NET SDK to provision the AL compiler" '❌'
     throw 'dotnet CLI not found on PATH. Install .NET SDK to provision the AL compiler.'
 }
+Write-InfoLine "dotnet CLI" "Available" '✅'
 
+Write-Information "📋 PROJECT CONFIGURATION:" -InformationAction Continue
 $appJsonPath = Resolve-AppJsonPath -AppDirectory $AppDir
 $appJson = Read-JsonFile -Path $appJsonPath
 if (-not $appJson.runtime) {
+    Write-InfoLine "app.json" "Found" '⚠️'
+    Write-StatusLine 'Runtime not specified in app.json ("runtime" property missing)' '❌'
     throw 'Runtime not specified in app.json ("runtime" property missing).'
 }
 $appRuntime = [string]$appJson.runtime
+Write-InfoLine "app.json" "Found" '✅'
+Write-InfoLine "Target Runtime" $appRuntime '🎯'
 
 $requestedToolVersion = $env:AL_TOOL_VERSION
+if ($requestedToolVersion) {
+    Write-InfoLine "Requested Version" $requestedToolVersion '📌'
+}
+
+Write-Section 'Cache Analysis'
+
 $toolCacheRoot = Get-ToolCacheRoot
 Initialize-Directory -Path $toolCacheRoot
 $alCacheDir = Join-Path -Path $toolCacheRoot -ChildPath 'al'
 Initialize-Directory -Path $alCacheDir
 $sentinelName = if ($requestedToolVersion) { "$requestedToolVersion.json" } else { 'default.json' }
 $sentinelPath = Join-Path -Path $alCacheDir -ChildPath $sentinelName
+
+Write-Information "📂 CACHE STRUCTURE:" -InformationAction Continue
+Write-InfoLine "Cache Root" $toolCacheRoot '📁'
+Write-InfoLine "AL Cache Dir" $alCacheDir '📁'
+Write-InfoLine "Sentinel File" $sentinelName '📋'
 
 $existingSentinel = $null
 if (Test-Path -LiteralPath $sentinelPath) {
@@ -389,41 +459,105 @@ if (-not $existingSentinel -and $compilerPath) {
  if (-not $existingSentinel -and -not $compilerPath) { $installRequired = $true }
 
  # If tool is already installed and no specific reason to update, don't try to install
- if ($compilerPath -and -not $runtimeIncreased -and -not $requestedToolVersion) {
-     if (-not $existingSentinel -or -not $sentinelPackageId) {
-         $sentinelVersionToWrite = $sentinelVersion
-         if (-not $sentinelVersionToWrite) { $sentinelVersionToWrite = $installedToolVersion }
-         if (-not $sentinelVersionToWrite) { $sentinelVersionToWrite = $expectedToolVersion }
-         $sentinelPackageToWrite = if ($sentinelPackageId) { $sentinelPackageId } elseif ($installedPackageId) { $installedPackageId } else { $ToolPackageId }
-         if ($sentinelVersionToWrite) {
-             Write-Sentinel -Path $sentinelPath -CompilerVersion $sentinelVersionToWrite -Runtime $appRuntime -ToolPath $compilerPath -PackageId $sentinelPackageToWrite
-         }
-     }
-     Write-Output "AL compiler already installed and up to date: $compilerPath"
-     Install-LinterCopAnalyzer -CompilerPath $compilerPath
-     exit 0
- }
+Write-Section 'Installation Decision'
 
-if (-not $installRequired) {
-    Write-Output "AL compiler already provisioned at $compilerPath"
+Write-Information "🤔 DECISION ANALYSIS:" -InformationAction Continue
+$compilerFoundText = if ($compilerPath) { "Yes" } else { "No" }
+$compilerFoundIcon = if ($compilerPath) { '✅' } else { '❌' }
+Write-InfoLine "Compiler Found" $compilerFoundText $compilerFoundIcon
+
+$runtimeIncreasedText = if ($runtimeIncreased) { "Yes" } else { "No" }
+$runtimeIncreasedIcon = if ($runtimeIncreased) { '⬆️' } else { '➡️' }
+Write-InfoLine "Runtime Increased" $runtimeIncreasedText $runtimeIncreasedIcon
+
+$versionRequestedText = if ($requestedToolVersion) { $requestedToolVersion } else { "None" }
+$versionRequestedIcon = if ($requestedToolVersion) { '📌' } else { '🔄' }
+Write-InfoLine "Version Requested" $versionRequestedText $versionRequestedIcon
+
+$installRequiredText = if ($installRequired) { "Yes" } else { "No" }
+$installRequiredIcon = if ($installRequired) { '🚀' } else { '✅' }
+Write-InfoLine "Install Required" $installRequiredText $installRequiredIcon
+
+$decisionReason = @()
+if (-not $compilerPath) { $decisionReason += "Compiler not found" }
+if ($runtimeIncreased) { $decisionReason += "Runtime version increased" }
+if ($requestedToolVersion -and $sentinelVersion -and ($requestedToolVersion -ne $sentinelVersion)) { $decisionReason += "Specific version requested" }
+if (-not $existingSentinel -and -not $compilerPath) { $decisionReason += "No previous installation" }
+
+if ($decisionReason.Count -gt 0) {
+    Write-InfoLine "Reason" ($decisionReason -join ", ") 'ℹ️'
+} else {
+    Write-InfoLine "Reason" "Already up to date" 'ℹ️'
+}
+
+if ($compilerPath -and -not $runtimeIncreased -and -not $requestedToolVersion) {
+    Write-Information "✅ COMPILER STATUS:" -InformationAction Continue
+    Write-InfoLine "Status" "Already installed and up to date" '✅'
+    $displayVersion = if ($sentinelVersion) { $sentinelVersion } elseif ($installedToolVersion) { $installedToolVersion } elseif ($expectedToolVersion) { $expectedToolVersion } else { "(unknown)" }
+    Write-InfoLine "Version" $displayVersion '📦'
+    Write-InfoLine "Path" $compilerPath '📁'
+
+    if (-not $existingSentinel -or -not $sentinelPackageId) {
+        $sentinelVersionToWrite = $sentinelVersion
+        if (-not $sentinelVersionToWrite) { $sentinelVersionToWrite = $installedToolVersion }
+        if (-not $sentinelVersionToWrite) { $sentinelVersionToWrite = $expectedToolVersion }
+        $sentinelPackageToWrite = if ($sentinelPackageId) { $sentinelPackageId } elseif ($installedPackageId) { $installedPackageId } else { $ToolPackageId }
+        if ($sentinelVersionToWrite) {
+            Write-Sentinel -Path $sentinelPath -CompilerVersion $sentinelVersionToWrite -Runtime $appRuntime -ToolPath $compilerPath -PackageId $sentinelPackageToWrite
+            Write-InfoLine "Sentinel" "Updated" '📋'
+        }
+    }
+
+    Write-Section 'LinterCop Analyzer'
+    Write-Information "🧹 LINTERCOP ANALYZER:" -InformationAction Continue
     Install-LinterCopAnalyzer -CompilerPath $compilerPath
+
+    Write-Section 'Summary'
+    Write-Information "✅ Compiler provisioning complete - no updates needed!" -InformationAction Continue
     exit 0
 }
 
- $dotnetArgs = @('tool')
- $dotnetArgs += if ($existingSentinel -or (Get-CompilerPath -ToolsRoot $toolsRoot -ToolVersion $sentinelVersion -PackageIds $candidatePackageIds)) { 'update' } else { 'install' }
- $dotnetArgs += @('--global', $ToolPackageId)
- if ($requestedToolVersion) {
-     $dotnetArgs += @('--version', $requestedToolVersion)
- } else {
-     $dotnetArgs += @('--prerelease')
- }
+if (-not $installRequired) {
+    Write-Information "✅ COMPILER STATUS:" -InformationAction Continue
+    Write-InfoLine "Status" "Already provisioned" '✅'
+    Write-InfoLine "Path" $compilerPath '📁'
+
+    Write-Section 'LinterCop Analyzer'
+    Write-Information "🧹 LINTERCOP ANALYZER:" -InformationAction Continue
+    Install-LinterCopAnalyzer -CompilerPath $compilerPath
+
+    Write-Section 'Summary'
+    Write-Information "✅ Compiler provisioning complete - no updates needed!" -InformationAction Continue
+    exit 0
+}
+
+Write-Section 'Compiler Installation'
+
+$dotnetArgs = @('tool')
+$operation = if ($existingSentinel -or (Get-CompilerPath -ToolsRoot $toolsRoot -ToolVersion $sentinelVersion -PackageIds $candidatePackageIds)) { 'update' } else { 'install' }
+$dotnetArgs += $operation
+$dotnetArgs += @('--global', $ToolPackageId)
+if ($requestedToolVersion) {
+    $dotnetArgs += @('--version', $requestedToolVersion)
+} else {
+    $dotnetArgs += @('--prerelease')
+}
+
+Write-Information "🚀 INSTALLATION PROCESS:" -InformationAction Continue
+Write-InfoLine "Operation" $operation '⚡'
+Write-InfoLine "Package ID" $ToolPackageId '📦'
+if ($requestedToolVersion) {
+    Write-InfoLine "Version" $requestedToolVersion '🎯'
+} else {
+    Write-InfoLine "Version" "Latest prerelease" '🎯'
+}
 
 try {
     Invoke-DotnetToolCommand -Arguments $dotnetArgs
+    Write-InfoLine "Result" "Success" '✅'
 } catch {
     if ($dotnetArgs[1] -eq 'update') {
-        Write-Warning "dotnet tool update failed, retrying with install"
+        Write-StatusLine "dotnet tool update failed, retrying with install" '⚠️'
         $installArgs = @('tool', 'install', '--global', $ToolPackageId)
         if ($requestedToolVersion) {
             $installArgs += @('--version', $requestedToolVersion)
@@ -432,35 +566,57 @@ try {
         }
         try {
             Invoke-DotnetToolCommand -Arguments $installArgs
+            Write-InfoLine "Result" "Success (after retry)" '✅'
         } catch {
-            Write-Warning "AL compiler package not available in configured feeds. Using existing installation if available."
+            Write-StatusLine "AL compiler package not available in configured feeds. Using existing installation if available." '⚠️'
             if (-not $compilerPath) {
+                Write-InfoLine "Result" "Failed" '❌'
                 throw "AL compiler not available and cannot be installed from configured feeds."
             }
         }
     } else {
-        Write-Warning "AL compiler package not available in configured feeds. Using existing installation if available."
+        Write-StatusLine "AL compiler package not available in configured feeds. Using existing installation if available." '⚠️'
         if (-not $compilerPath) {
+            Write-InfoLine "Result" "Failed" '❌'
             throw "AL compiler not available and cannot be installed from configured feeds."
         }
     }
 }
 
+Write-Section 'Installation Verification'
+
 $resolvedToolInfo = Get-InstalledToolInfo -ToolsRoot $toolsRoot -PackageIds $candidatePackageIds
 if (-not $resolvedToolInfo) {
+    Write-InfoLine "Verification" "Failed" '❌'
     throw 'Unable to determine installed tool version after provisioning.'
 }
 $resolvedVersion = [string]$resolvedToolInfo.version
 $resolvedPackageId = if ($resolvedToolInfo.packageId) { [string]$resolvedToolInfo.packageId } else { $null }
 $compilerPath = Get-CompilerPath -ToolsRoot $toolsRoot -ToolVersion $resolvedVersion -PackageIds $candidatePackageIds
 if (-not $compilerPath) {
+    Write-InfoLine "Verification" "Failed" '❌'
     throw "Installed tool missing alc executable for version $resolvedVersion"
 }
 
-Write-Output "AL compiler ready: $compilerPath (version $resolvedVersion)"
+Write-Information "✅ VERIFICATION RESULTS:" -InformationAction Continue
+Write-InfoLine "Status" "Success" '✅'
+Write-InfoLine "Version" $resolvedVersion '📦'
+$displayPackageId = if ($resolvedPackageId) { $resolvedPackageId } else { $ToolPackageId }
+Write-InfoLine "Package ID" $displayPackageId '🏷️'
+Write-InfoLine "Path" $compilerPath '📁'
+
 if (-not $resolvedPackageId) { $resolvedPackageId = $ToolPackageId }
 Write-Sentinel -Path $sentinelPath -CompilerVersion $resolvedVersion -Runtime $appRuntime -ToolPath $compilerPath -PackageId $resolvedPackageId
+Write-InfoLine "Sentinel" "Updated" '📋'
 
+Write-Section 'LinterCop Analyzer'
+
+Write-Information "🧹 LINTERCOP ANALYZER:" -InformationAction Continue
 Install-LinterCopAnalyzer -CompilerPath $compilerPath
+
+Write-Section 'Summary'
+
+Write-Information "🎉 Compiler installation completed successfully!" -InformationAction Continue
+Write-StatusLine "AL compiler is ready for use" '✅'
 
 exit 0

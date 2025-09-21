@@ -1,11 +1,28 @@
 #requires -Version 7.2
 
-# Windows Show-Config Script
-# Inlined helpers (formerly from lib/) to make this entrypoint self-contained.
+<#
+.SYNOPSIS
+    Display comprehensive AL project configuration information with structured formatting.
+
+.DESCRIPTION
+    Shows application configuration, compiler status, symbol cache status, and environment
+    details in a structured format suitable for both interactive display and automation.
+
+.PARAMETER AppDir
+    Directory containing app.json (defaults to current directory)
+
+.NOTES
+    This script uses Write-Information for output to ensure compatibility with different
+    PowerShell hosts and automation scenarios.
+#>
+
+# PSScriptAnalyzer suppressions for intentional design choices
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseBOMForUnicodeEncodedFile', '', Justification = 'UTF-8 without BOM is preferred for cross-platform compatibility')]
 param([string]$AppDir)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$InformationPreference = 'Continue'
 
 # --- Verbosity (from common.ps1) ---
 try {
@@ -17,7 +34,7 @@ try {
 }
 
 # --- Exit codes (from common.ps1) ---
-function Get-ExitCodes {
+function Get-ExitCode {
     return @{
         Success      = 0
         GeneralError = 1
@@ -130,7 +147,7 @@ function Get-CompilerProvisioningInfo {
     }
 }
 
-function Sanitize-PathSegment {
+function ConvertTo-SafePathSegment {
     param([string]$Value)
 
     if (-not $Value) { return '_' }
@@ -176,9 +193,9 @@ function Get-SymbolCacheInfo {
 
     $cacheRoot = Get-SymbolCacheRoot
 
-    $publisherDir = Join-Path -Path $cacheRoot -ChildPath (Sanitize-PathSegment -Value $AppJson.publisher)
-    $appDirPath = Join-Path -Path $publisherDir -ChildPath (Sanitize-PathSegment -Value $AppJson.name)
-    $cacheDir = Join-Path -Path $appDirPath -ChildPath (Sanitize-PathSegment -Value $AppJson.id)
+    $publisherDir = Join-Path -Path $cacheRoot -ChildPath (ConvertTo-SafePathSegment -Value $AppJson.publisher)
+    $appDirPath = Join-Path -Path $publisherDir -ChildPath (ConvertTo-SafePathSegment -Value $AppJson.name)
+    $cacheDir = Join-Path -Path $appDirPath -ChildPath (ConvertTo-SafePathSegment -Value $AppJson.id)
 
     if (-not (Test-Path -LiteralPath $cacheDir)) {
         throw "Symbol cache directory not found at $cacheDir. Run `make download-symbols` before inspecting configuration."
@@ -202,7 +219,7 @@ function Get-SymbolCacheInfo {
     }
 }
 
-$Exit = Get-ExitCodes
+$Exit = Get-ExitCode
 
 # Guard: require invocation via make
 if (-not $env:ALBT_VIA_MAKE) {
@@ -210,26 +227,61 @@ if (-not $env:ALBT_VIA_MAKE) {
     exit $Exit.Guard
 }
 
+# --- Formatting Helpers ---
+function Write-Section {
+    param([string]$Title, [string]$SubInfo = '')
+    $line = ''.PadLeft(80, '=')
+    Write-Information "" # blank spacer
+    Write-Information $line -InformationAction Continue
+    $header = "🔧 CONFIG | {0}" -f $Title
+    if ($SubInfo) { $header += " | {0}" -f $SubInfo }
+    Write-Information $header -InformationAction Continue
+    Write-Information $line -InformationAction Continue
+}
+
+function Write-ConfigLine {
+    param(
+        [string]$Label,
+        [string]$Value,
+        [string]$Icon = '•'
+    )
+    $labelPadded = ($Label).PadRight(12)
+    Write-Information ("  {0}{1}: {2}" -f $Icon, $labelPadded, $Value) -InformationAction Continue
+}
+
+function Write-StatusLine {
+    param([string]$Message, [string]$Icon = '⚠️')
+    Write-Information ("  {0} {1}" -f $Icon, $Message) -InformationAction Continue
+}
+
+Write-Section 'Application Configuration'
+
 $appJson = Get-AppJsonObject $AppDir
 if ($appJson) {
-    Write-Output "App.json configuration:"
-    Write-Output "  Name: $($appJson.name)"
-    Write-Output "  Publisher: $($appJson.publisher)"
-    Write-Output "  Version: $($appJson.version)"
+    Write-Information "📱 APPLICATION MANIFEST:" -InformationAction Continue
+    Write-ConfigLine "Name" $appJson.name '✓'
+    Write-ConfigLine "Publisher" $appJson.publisher '✓'
+    Write-ConfigLine "Version" $appJson.version '✓'
 } else {
-    Write-Error -ErrorAction Continue "ERROR: app.json not found or invalid."
+    Write-StatusLine "app.json not found or invalid" '❌'
 }
+
+Write-Section 'VS Code Configuration'
 
 $settingsJson = Get-SettingsJsonObject $AppDir
 if ($settingsJson) {
-    Write-Output "Settings.json configuration:"
+    Write-Information "⚙️ VSCODE SETTINGS:" -InformationAction Continue
     if (($settingsJson.PSObject.Properties.Match('al.codeAnalyzers').Count -gt 0) -and $settingsJson.'al.codeAnalyzers' -and $settingsJson.'al.codeAnalyzers'.Count -gt 0) {
-        Write-Output "  Analyzers: $($settingsJson.'al.codeAnalyzers')"
+        $analyzerCount = $settingsJson.'al.codeAnalyzers'.Count
+        Write-ConfigLine "Analyzers" "$analyzerCount configured" '📊'
+        foreach ($analyzer in $settingsJson.'al.codeAnalyzers') {
+            Write-Information ("    → {0}" -f $analyzer) -InformationAction Continue
+        }
     } else {
-        Write-Output "  Analyzers: (none)"
+        Write-ConfigLine "Analyzers" "(none configured)" '📊'
     }
 } else {
-    Write-Warning ".vscode/settings.json not found or invalid."
+    Write-StatusLine ".vscode/settings.json not found or invalid" '⚠️'
 }
 
 $requestedToolVersion = $env:AL_TOOL_VERSION
@@ -268,24 +320,29 @@ if ($alcOverride) {
     }
 }
 
+Write-Section 'Compiler Provisioning'
+
 if ($alcPath) {
-    Write-Output "Compiler provisioning:"
-    Write-Output "  Path: $alcPath"
+    Write-Information "🔨 COMPILER STATUS:" -InformationAction Continue
+    Write-ConfigLine "Status" "Ready" '✅'
     if ($compilerVersion) {
-        Write-Output "  Version: $compilerVersion"
+        Write-ConfigLine "Version" $compilerVersion '📦'
     } else {
-        Write-Output "  Version: (unknown)"
+        Write-ConfigLine "Version" "(unknown)" '📦'
     }
+    Write-ConfigLine "Path" $alcPath '📁'
     if ($compilerSentinel) {
-        Write-Output "  Sentinel: $compilerSentinel"
+        Write-ConfigLine "Sentinel" $compilerSentinel '📋'
     }
     $compilerPathValue = $alcPath
     $compilerVersionValue = if ($compilerVersion) { $compilerVersion } else { '(unknown)' }
     $compilerSentinelValue = if ($compilerSentinel) { $compilerSentinel } else { '(missing)' }
 } elseif ($compilerWarning) {
-    Write-Warning $compilerWarning
+    Write-Information "🔨 COMPILER STATUS:" -InformationAction Continue
+    Write-StatusLine $compilerWarning '❌'
 } else {
-    Write-Warning "Compiler provisioning info unavailable. Run `make download-compiler` or set ALBT_ALC_PATH before re-running."
+    Write-Information "🔨 COMPILER STATUS:" -InformationAction Continue
+    Write-StatusLine "Compiler provisioning info unavailable. Run 'make download-compiler' or set ALBT_ALC_PATH" '❌'
 }
 
 $symbolCacheInfo = $null
@@ -298,10 +355,11 @@ if ($appJson) {
     }
 }
 
+Write-Section 'Symbol Cache Status'
+
 if ($symbolCacheInfo) {
-    Write-Output "Symbol cache:"
-    Write-Output "  Directory: $($symbolCacheInfo.CacheDir)"
-    Write-Output "  Manifest: $($symbolCacheInfo.ManifestPath)"
+    Write-Information "📦 SYMBOLS STATUS:" -InformationAction Continue
+    Write-ConfigLine "Status" "Ready" '✅'
     if ($symbolCacheInfo.Manifest -and $symbolCacheInfo.Manifest.packages) {
         $packageNode = $symbolCacheInfo.Manifest.packages
         $count = 0
@@ -310,14 +368,18 @@ if ($symbolCacheInfo) {
         } elseif ($packageNode.PSObject) {
             $count = @($packageNode.PSObject.Properties).Count
         }
-        Write-Output "  Packages: $count"
+        Write-ConfigLine "Packages" "$count cached" '📊'
     }
+    Write-ConfigLine "Directory" $symbolCacheInfo.CacheDir '📁'
+    Write-ConfigLine "Manifest" $symbolCacheInfo.ManifestPath '📋'
     $symbolCacheValue = $symbolCacheInfo.CacheDir
     $symbolManifestValue = $symbolCacheInfo.ManifestPath
 } elseif ($symbolWarning) {
-    Write-Warning $symbolWarning
+    Write-Information "📦 SYMBOLS STATUS:" -InformationAction Continue
+    Write-StatusLine $symbolWarning '❌'
 } elseif ($appJson) {
-    Write-Warning "Symbol cache info unavailable. Run `make download-symbols` before re-running."
+    Write-Information "📦 SYMBOLS STATUS:" -InformationAction Continue
+    Write-StatusLine "Symbol cache info unavailable. Run 'make download-symbols'" '❌'
 }
 
 # Normalized deterministic key=value section (T010)
@@ -344,6 +406,17 @@ if ($settingsJson) {
     $analyzersList = '(none)'
 }
 
+Write-Section 'System Environment'
+
+Write-Information "🖥️ PLATFORM INFO:" -InformationAction Continue
+Write-ConfigLine "Platform" $platform '🖥️'
+Write-ConfigLine "PowerShell" $psver '⚡'
+
+Write-Section 'Configuration Summary' 'Key-Value Export'
+
+Write-Information "📋 NORMALIZED CONFIGURATION:" -InformationAction Continue
+Write-Information "   Machine-readable format for integration and debugging:" -InformationAction Continue
+
 # Emit in fixed, deterministic order
 $normalized = [ordered]@{
     'App.Name'           = $appName
@@ -360,6 +433,11 @@ $normalized = [ordered]@{
 }
 
 foreach ($k in $normalized.Keys) {
-    Write-Output ("{0}={1}" -f $k, $normalized[$k])
+    $value = $normalized[$k]
+    $displayValue = if ($value.Length -gt 80) { $value.Substring(0, 77) + "..." } else { $value }
+    Write-Information ("   {0}={1}" -f $k, $displayValue) -InformationAction Continue
 }
+
+Write-Information "" -InformationAction Continue
+Write-Information "✅ Configuration review complete!" -InformationAction Continue
 exit $Exit.Success

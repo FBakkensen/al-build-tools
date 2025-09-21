@@ -1,11 +1,28 @@
 #requires -Version 7.2
 
-# Windows Show-Analyzers Script
-# Inlined helpers (formerly from lib/) to make this entrypoint self-contained.
+<#
+.SYNOPSIS
+    Display comprehensive AL analyzer configuration and status with structured formatting.
+
+.DESCRIPTION
+    Shows enabled analyzers, compiler information, and resolved analyzer DLL paths in a
+    structured format suitable for both interactive display and automation.
+
+.PARAMETER AppDir
+    Directory containing .vscode/settings.json (defaults to current directory)
+
+.NOTES
+    This script uses Write-Information for output to ensure compatibility with different
+    PowerShell hosts and automation scenarios.
+#>
+
+# PSScriptAnalyzer suppressions for intentional design choices
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseBOMForUnicodeEncodedFile', '', Justification = 'UTF-8 without BOM is preferred for cross-platform compatibility')]
 param([string]$AppDir)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$InformationPreference = 'Continue'
 
 # --- Verbosity (from common.ps1) ---
 try {
@@ -17,7 +34,7 @@ try {
 }
 
 # --- Exit codes (from common.ps1) ---
-function Get-ExitCodes {
+function Get-ExitCode {
     return @{
         Success      = 0
         GeneralError = 1
@@ -27,6 +44,38 @@ function Get-ExitCodes {
         Integration  = 5
         MissingTool  = 6
     }
+}
+
+# --- Formatting Helpers ---
+function Write-Section {
+    param([string]$Title, [string]$SubInfo = '')
+    $line = ''.PadLeft(80, '=')
+    Write-Information "" # blank spacer
+    Write-Information $line -InformationAction Continue
+    $header = "🔧 ANALYZERS | {0}" -f $Title
+    if ($SubInfo) { $header += " | {0}" -f $SubInfo }
+    Write-Information $header -InformationAction Continue
+    Write-Information $line -InformationAction Continue
+}
+
+function Write-InfoLine {
+    param(
+        [string]$Label,
+        [string]$Value,
+        [string]$Icon = '•'
+    )
+    $labelPadded = ($Label).PadRight(12)
+    Write-Information ("  {0}{1}: {2}" -f $Icon, $labelPadded, $Value) -InformationAction Continue
+}
+
+function Write-StatusLine {
+    param([string]$Message, [string]$Icon = '⚠️')
+    Write-Information ("  {0} {1}" -f $Icon, $Message) -InformationAction Continue
+}
+
+function Write-ListItem {
+    param([string]$Item, [string]$Icon = '→')
+    Write-Information ("    {0} {1}" -f $Icon, $Item) -InformationAction Continue
 }
 
 # --- Paths and JSON helpers (from common.ps1/json-parser.ps1) ---
@@ -42,7 +91,7 @@ function Get-SettingsJsonObject { param([string]$AppDir)
     if (-not $path) { return $null }
     try { Get-Content $path -Raw | ConvertFrom-Json } catch { $null }
 }
-function Get-EnabledAnalyzers { param([string]$AppDir)
+function Get-EnabledAnalyzer { param([string]$AppDir)
     $settings = Get-SettingsJsonObject $AppDir
     if ($settings -and ($settings.PSObject.Properties.Match('al.codeAnalyzers').Count -gt 0) -and $settings.'al.codeAnalyzers') {
         return $settings.'al.codeAnalyzers'
@@ -127,7 +176,7 @@ function Get-CompilerProvisioningInfo {
     }
 }
 
-function Get-EnabledAnalyzerPaths {
+function Get-EnabledAnalyzerPath {
     param(
         [string]$AppDir,
         [string[]]$EnabledAnalyzers,
@@ -255,7 +304,7 @@ function Get-EnabledAnalyzerPaths {
     return $dllPaths
 }
 
-$Exit = Get-ExitCodes
+$Exit = Get-ExitCode
 
 # Guard: require invocation via make
 if (-not $env:ALBT_VIA_MAKE) {
@@ -294,34 +343,85 @@ if ($alcOverride) {
     }
 }
 
-$enabledAnalyzers = Get-EnabledAnalyzers $AppDir
+$enabledAnalyzers = Get-EnabledAnalyzer $AppDir
 $enabledAnalyzers = @($enabledAnalyzers)
-Write-Output "Enabled analyzers:"
+
+Write-Section 'Enabled Analyzers Configuration'
+
+Write-Information "📊 ANALYZER SETTINGS:" -InformationAction Continue
 if ($enabledAnalyzers -and $enabledAnalyzers.Count -gt 0) {
-    $enabledAnalyzers | ForEach-Object { Write-Output "  $_" }
+    Write-InfoLine "Count" "$($enabledAnalyzers.Count) configured" '✅'
+    Write-Information "  📋 Configured analyzers:" -InformationAction Continue
+    $enabledAnalyzers | ForEach-Object { Write-ListItem $_ }
 } else {
-    Write-Output "  (none)"
+    Write-InfoLine "Count" "0 configured" '⚠️'
+    Write-StatusLine "No analyzers are currently enabled in .vscode/settings.json" '⚠️'
 }
 
-$analyzerPaths = Get-EnabledAnalyzerPaths -AppDir $AppDir -EnabledAnalyzers $enabledAnalyzers -CompilerDir $compilerRoot
-$analyzerPaths = @($analyzerPaths)
+Write-Section 'Compiler Status'
+
 if ($alcPath) {
-    Write-Output "Compiler path: $alcPath"
-    if ($compilerVersion) { Write-Output "Compiler version: $compilerVersion" }
+    Write-Information "🔨 COMPILER INFO:" -InformationAction Continue
+    Write-InfoLine "Status" "Ready" '✅'
+    if ($compilerVersion) {
+        Write-InfoLine "Version" $compilerVersion '📦'
+    }
+    Write-InfoLine "Path" $alcPath '📁'
 } elseif ($compilerWarning) {
-    Write-Warning $compilerWarning
+    Write-Information "🔨 COMPILER INFO:" -InformationAction Continue
+    Write-StatusLine $compilerWarning '❌'
 } else {
-    Write-Warning "AL compiler context unavailable. Run `make download-compiler` or set ALBT_ALC_PATH before re-running."
+    Write-Information "🔨 COMPILER INFO:" -InformationAction Continue
+    Write-StatusLine "AL compiler context unavailable. Run 'make download-compiler' or set ALBT_ALC_PATH" '❌'
 }
+
+$analyzerPaths = Get-EnabledAnalyzerPath -AppDir $AppDir -EnabledAnalyzers $enabledAnalyzers -CompilerDir $compilerRoot
+$analyzerPaths = @($analyzerPaths)
+
+Write-Section 'Analyzer DLL Resolution'
 
 if ($analyzerPaths -and $analyzerPaths.Count -gt 0) {
-    Write-Output "Analyzer DLL paths:"
-    $analyzerPaths | ForEach-Object { Write-Output "  $_" }
+    Write-Information "🔍 RESOLVED ANALYZER DLLS:" -InformationAction Continue
+    Write-InfoLine "Found" "$($analyzerPaths.Count) DLL files" '✅'
+    Write-Information "  📂 Resolved DLL paths:" -InformationAction Continue
+    $analyzerPaths | ForEach-Object {
+        $fileName = Split-Path $_ -Leaf
+        $dirPath = Split-Path $_ -Parent
+        Write-Information ("    → {0}" -f $fileName) -InformationAction Continue
+        Write-Information ("      {0}" -f $dirPath) -InformationAction Continue
+    }
 } else {
+    Write-Information "🔍 RESOLVED ANALYZER DLLS:" -InformationAction Continue
+    Write-InfoLine "Found" "0 DLL files" '❌'
     if ($enabledAnalyzers.Count -gt 0) {
-        Write-Warning "Analyzer DLLs not found. Run `make download-compiler` so the compiler's Analyzers folder is available or update settings.json entries."
+        Write-StatusLine "Analyzer DLLs not found. Run 'make download-compiler' so the compiler's Analyzers folder is available or update settings.json entries" '❌'
     } else {
-        Write-Warning "No analyzer DLLs found."
+        Write-StatusLine "No analyzer DLLs found because no analyzers are configured" '⚠️'
     }
 }
+
+Write-Section 'Summary'
+
+$totalEnabled = $enabledAnalyzers.Count
+$totalResolved = $analyzerPaths.Count
+$missingCount = [Math]::Max(0, $totalEnabled - $totalResolved)
+
+Write-Information "📋 ANALYZER SUMMARY:" -InformationAction Continue
+Write-InfoLine "Configured" "$totalEnabled analyzers" '📊'
+Write-InfoLine "Resolved" "$totalResolved DLL files" '🔍'
+if ($missingCount -gt 0) {
+    Write-InfoLine "Missing" "$missingCount DLL files" '⚠️'
+}
+
+if ($totalResolved -eq $totalEnabled -and $totalEnabled -gt 0) {
+    Write-Information "" -InformationAction Continue
+    Write-Information "✅ All configured analyzers resolved successfully!" -InformationAction Continue
+} elseif ($totalEnabled -eq 0) {
+    Write-Information "" -InformationAction Continue
+    Write-Information "⚠️ No analyzers configured. Consider enabling CodeCop, UICop, or other analyzers in .vscode/settings.json" -InformationAction Continue
+} else {
+    Write-Information "" -InformationAction Continue
+    Write-Information "⚠️ Some analyzers could not be resolved. Check compiler installation and settings.json configuration" -InformationAction Continue
+}
+
 exit $Exit.Success
