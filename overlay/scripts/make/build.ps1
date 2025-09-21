@@ -1,11 +1,60 @@
 #requires -Version 7.2
 
-# Windows Build Script
-# Inlined helpers (formerly from lib/) to make this entrypoint self-contained.
+<#
+.SYNOPSIS
+    Build AL project with comprehensive status reporting and modern terminal output.
+
+.DESCRIPTION
+    Compiles the AL project using the provisioned compiler and symbols, with detailed
+    progress tracking, analyzer configuration, and structured error reporting.
+
+.PARAMETER AppDir
+    Directory containing the AL project files and app.json (defaults to "app")
+
+.NOTES
+    This script uses Write-Information for output to ensure compatibility with different
+    PowerShell hosts and automation scenarios.
+#>
+
+# PSScriptAnalyzer suppressions for intentional design choices
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseBOMForUnicodeEncodedFile', '', Justification = 'UTF-8 without BOM is preferred for cross-platform compatibility')]
 param([string]$AppDir = "app")
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$InformationPreference = 'Continue'
+
+# --- Formatting Helpers ---
+function Write-Section {
+    param([string]$Title, [string]$SubInfo = '')
+    $line = ''.PadLeft(80, '=')
+    Write-Information "" # blank spacer
+    Write-Information $line -InformationAction Continue
+    $header = "🔧 BUILD | {0}" -f $Title
+    if ($SubInfo) { $header += " | {0}" -f $SubInfo }
+    Write-Information $header -InformationAction Continue
+    Write-Information $line -InformationAction Continue
+}
+
+function Write-InfoLine {
+    param(
+        [string]$Label,
+        [string]$Value,
+        [string]$Icon = '•'
+    )
+    $labelPadded = ($Label).PadRight(14)
+    Write-Information ("  {0}{1}: {2}" -f $Icon, $labelPadded, $Value) -InformationAction Continue
+}
+
+function Write-StatusLine {
+    param([string]$Message, [string]$Icon = '⚠️')
+    Write-Information ("  {0} {1}" -f $Icon, $Message) -InformationAction Continue
+}
+
+function Write-ListItem {
+    param([string]$Item, [string]$Icon = '→')
+    Write-Information ("    {0} {1}" -f $Icon, $Item) -InformationAction Continue
+}
 
 # --- Verbosity (from common.ps1) ---
 try {
@@ -17,7 +66,7 @@ try {
 }
 
 # --- Exit codes (from common.ps1) ---
-function Get-ExitCodes {
+function Get-ExitCode {
     return @{
         Success      = 0
         GeneralError = 1
@@ -141,7 +190,7 @@ function Get-CompilerProvisioningInfo {
     }
 }
 
-function Sanitize-PathSegment {
+function ConvertTo-SafePathSegment {
     param([string]$Value)
 
     if (-not $Value) { return '_' }
@@ -188,9 +237,9 @@ function Get-SymbolCacheInfo {
 
     $cacheRoot = Get-SymbolCacheRoot
 
-    $publisherDir = Join-Path -Path $cacheRoot -ChildPath (Sanitize-PathSegment -Value $AppJson.publisher)
-    $appDirPath = Join-Path -Path $publisherDir -ChildPath (Sanitize-PathSegment -Value $AppJson.name)
-    $cacheDir = Join-Path -Path $appDirPath -ChildPath (Sanitize-PathSegment -Value $AppJson.id)
+    $publisherDir = Join-Path -Path $cacheRoot -ChildPath (ConvertTo-SafePathSegment -Value $AppJson.publisher)
+    $appDirPath = Join-Path -Path $publisherDir -ChildPath (ConvertTo-SafePathSegment -Value $AppJson.name)
+    $cacheDir = Join-Path -Path $appDirPath -ChildPath (ConvertTo-SafePathSegment -Value $AppJson.id)
 
     if (-not (Test-Path -LiteralPath $cacheDir)) {
         throw "Symbol cache directory not found at $cacheDir. Run `make download-symbols` before `make build`."
@@ -214,7 +263,7 @@ function Get-SymbolCacheInfo {
     }
 }
 
-function Get-EnabledAnalyzerPaths {
+function Get-EnabledAnalyzerPath {
     param(
         [string]$AppDir,
         [string]$CompilerDir
@@ -361,7 +410,7 @@ function Get-EnabledAnalyzerPaths {
 }
 
 
-$Exit = Get-ExitCodes
+$Exit = Get-ExitCode
 
 # Guard: require invocation via make
 if (-not $env:ALBT_VIA_MAKE) {
@@ -370,14 +419,29 @@ if (-not $env:ALBT_VIA_MAKE) {
 }
 
 
-# Load manifest for downstream decisions
+Write-Section 'Project Analysis'
+
+Write-Information "📋 PROJECT MANIFEST:" -InformationAction Continue
 $appJson = Get-AppJsonObject $AppDir
 if (-not $appJson) {
+    Write-InfoLine "app.json" "Not found or invalid" '❌'
+    Write-StatusLine "Ensure the project manifest exists before building" '❌'
     Write-Error "app.json not found or invalid under '$AppDir'. Ensure the project manifest exists before building."
     exit $Exit.GeneralError
 }
 
-# Discover AL compiler (allow override for tests)
+$appName = if ($appJson -and $appJson.name) { $appJson.name } else { 'Unknown App' }
+$appVersion = if ($appJson -and $appJson.version) { $appJson.version } else { '1.0.0.0' }
+$appPublisher = if ($appJson -and $appJson.publisher) { $appJson.publisher } else { 'Unknown' }
+
+Write-InfoLine "Status" "Found" '✅'
+Write-InfoLine "App Name" $appName '📱'
+Write-InfoLine "Version" $appVersion '🏷️'
+Write-InfoLine "Publisher" $appPublisher '👤'
+
+Write-Section 'Compiler Discovery'
+
+Write-Information "🔍 COMPILER RESOLUTION:" -InformationAction Continue
 $requestedToolVersion = $env:AL_TOOL_VERSION
 $alcOverride = $env:ALBT_ALC_SHIM
 if (-not $alcOverride -and $env:ALBT_ALC_PATH) { $alcOverride = $env:ALBT_ALC_PATH }
@@ -387,26 +451,39 @@ $compilerVersion = $null
 $compilerRoot = $null
 
 if ($alcOverride) {
+    Write-InfoLine "Source" "Override path" '🔧'
     $resolvedOverride = Expand-FullPath -Path $alcOverride
     if (-not (Test-Path -LiteralPath $resolvedOverride)) {
+        Write-InfoLine "Status" "Override not found" '❌'
+        Write-StatusLine "AL compiler override not found at $alcOverride" '❌'
         Write-Error "AL compiler override not found at $alcOverride."
         exit $Exit.MissingTool
     }
     $alcPath = (Get-Item -LiteralPath $resolvedOverride).FullName
     $compilerRoot = Split-Path -Parent $alcPath
     $compilerVersion = '(override)'
+    Write-InfoLine "Status" "Override found" '✅'
 } else {
+    Write-InfoLine "Source" "Provisioned tool" '📦'
     try {
         $compilerInfo = Get-CompilerProvisioningInfo -ToolVersion $requestedToolVersion
         $alcPath = $compilerInfo.AlcPath
         $compilerVersion = if ($compilerInfo.Version) { $compilerInfo.Version } else { $null }
+        Write-InfoLine "Status" "Found" '✅'
     } catch {
+        Write-InfoLine "Status" "Not found" '❌'
+        Write-StatusLine $_.Exception.Message '❌'
         Write-Error $_.Exception.Message
         exit $Exit.MissingTool
     }
     $compilerRoot = Split-Path -Parent $alcPath
 }
 
+$displayVersion = if ($compilerVersion) { $compilerVersion } else { "(unknown)" }
+Write-InfoLine "Version" $displayVersion '🏷️'
+Write-InfoLine "Path" $alcPath '📁'
+
+Write-Information "⚙️ EXECUTION SETUP:" -InformationAction Continue
 # Normalize invocation path for cross-platform execution
 $alcCommand = $alcPath
 $alcLaunchPath = $alcPath
@@ -420,74 +497,53 @@ if (-not $IsWindows) {
         $alcLaunchPath = (Get-Item -LiteralPath $dllCandidate).FullName
         $alcCommand = 'dotnet'
         $alcPreArgs = @($alcLaunchPath)
+        Write-InfoLine "Host" "dotnet (via alc.dll)" '⚡'
     } elseif ([IO.Path]::GetExtension($alcPath) -eq '.dll') {
         $alcLaunchPath = (Get-Item -LiteralPath $alcPath).FullName
         $alcCommand = 'dotnet'
         $alcPreArgs = @($alcLaunchPath)
+        Write-InfoLine "Host" "dotnet (direct dll)" '⚡'
     } elseif ([IO.Path]::GetExtension($alcPath) -eq '.exe') {
         $alcLaunchPath = $alcPath
         $alcCommand = 'dotnet'
         $alcPreArgs = @($alcLaunchPath)
+        Write-InfoLine "Host" "dotnet (exe wrapper)" '⚡'
     }
+} else {
+    Write-InfoLine "Host" "native executable" '⚡'
 }
 
-# Resolve symbol cache provisioned by download-symbols
+Write-InfoLine "Launch Path" $alcLaunchPath '🚀'
+
+Write-Section 'Symbol Cache Resolution'
+
+Write-Information "📦 SYMBOL CACHE:" -InformationAction Continue
 try {
     $symbolCacheInfo = Get-SymbolCacheInfo -AppJson $appJson
+    Write-InfoLine "Status" "Found" '✅'
+    $packageCount = 0
+    if ($symbolCacheInfo.Manifest -and $symbolCacheInfo.Manifest.packages) {
+        $packageNode = $symbolCacheInfo.Manifest.packages
+        if ($packageNode -is [System.Collections.IDictionary]) {
+            $packageCount = $packageNode.Count
+        } elseif ($packageNode.PSObject) {
+            $packageCount = @($packageNode.PSObject.Properties).Count
+        }
+    }
+    Write-InfoLine "Packages" "$packageCount available" '📊'
+    Write-InfoLine "Path" $symbolCacheInfo.CacheDir '📁'
 } catch {
+    Write-InfoLine "Status" "Not found" '❌'
+    Write-StatusLine $_.Exception.Message '❌'
     Write-Error $_.Exception.Message
     exit $Exit.MissingTool
 }
 $packageCachePath = $symbolCacheInfo.CacheDir
 
-# Resolve analyzer DLLs using compiler install as anchor
-$analyzerPaths = Get-EnabledAnalyzerPaths -AppDir $AppDir -CompilerDir $compilerRoot
+Write-Section 'Analyzer Configuration'
 
-# Determine output path
-$outputFullPath = Get-OutputPath $AppDir
-if (-not $outputFullPath) {
-    Write-Error "[ERROR] Output path could not be determined from app.json. Verify the manifest and rerun the provisioning targets."
-    exit $Exit.GeneralError
-}
-
-# Summarize provisioning context for operator awareness
-Write-Output "Using AL compiler: $alcLaunchPath"
-if ($alcCommand -eq 'dotnet') {
-    Write-Output "Compiler host: dotnet"
-}
-if ($compilerVersion -and $compilerVersion -ne '(override)') {
-    Write-Output "Compiler version: $compilerVersion"
-}
-Write-Output "Symbol cache: $packageCachePath"
-Write-Output ""
-
-# Derive friendly app info for messages
-$appName = if ($appJson -and $appJson.name) { $appJson.name } else { 'Unknown App' }
-$appVersion = if ($appJson -and $appJson.version) { $appJson.version } else { '1.0.0.0' }
-$outputFile = Split-Path -Path $outputFullPath -Leaf
-
-
-if (Test-Path $outputFullPath -PathType Leaf) {
-    try {
-        Remove-Item $outputFullPath -Force
-    } catch {
-        Write-Error "[ERROR] Failed to remove ${outputFullPath}: $($_.Exception.Message)"
-        exit 1
-    }
-} else {
-}
-# Also check and remove any directory with the same name as the output file
-if (Test-Path $outputFullPath -PathType Container) {
-    try {
-        Remove-Item $outputFullPath -Recurse -Force
-    } catch {
-        Write-Error "[ERROR] Failed to remove conflicting directory ${outputFullPath}: $($_.Exception.Message)"
-        exit 1
-    }
-}
-# List contents of output directory after removal
-
-Write-Output "Building $appName v$appVersion..."
+Write-Information "🧹 CODE ANALYZERS:" -InformationAction Continue
+$analyzerPaths = Get-EnabledAnalyzerPath -AppDir $AppDir -CompilerDir $compilerRoot
 
 # Filter out empty or non-existent analyzer paths (parity with Linux)
 $filteredAnalyzers = New-Object System.Collections.Generic.List[string]
@@ -496,56 +552,163 @@ foreach ($p in $analyzerPaths) {
 }
 
 if ($filteredAnalyzers.Count -gt 0) {
-    Write-Output "Using analyzers from settings.json:"
-    $filteredAnalyzers | ForEach-Object { Write-Output "  - $_" }
-    Write-Output ""
+    Write-InfoLine "Status" "$($filteredAnalyzers.Count) analyzers found" '✅'
+    Write-Information "  📋 Configured analyzers:" -InformationAction Continue
+    $filteredAnalyzers | ForEach-Object {
+        $fileName = Split-Path $_ -Leaf
+        Write-ListItem $fileName
+    }
 } else {
-    Write-Output "No analyzers found or enabled in settings.json"
-    Write-Output ""
+    Write-InfoLine "Status" "No analyzers configured" '⚠️'
+    Write-StatusLine "Consider enabling analyzers in .vscode/settings.json" 'ℹ️'
 }
 
+Write-Section 'Output Configuration'
 
+Write-Information "📤 BUILD OUTPUT:" -InformationAction Continue
+$outputFullPath = Get-OutputPath $AppDir
+if (-not $outputFullPath) {
+    Write-InfoLine "Output Path" "Could not determine" '❌'
+    Write-StatusLine "Verify the manifest and rerun the provisioning targets" '❌'
+    Write-Error "[ERROR] Output path could not be determined from app.json. Verify the manifest and rerun the provisioning targets."
+    exit $Exit.GeneralError
+}
+
+$outputFile = Split-Path -Path $outputFullPath -Leaf
+Write-InfoLine "Target File" $outputFile '📄'
+Write-InfoLine "Full Path" $outputFullPath '📁'
+
+Write-Section 'Pre-Build Cleanup'
+
+Write-Information "🧹 CLEANUP OPERATIONS:" -InformationAction Continue
+$cleanupActions = 0
+
+if (Test-Path $outputFullPath -PathType Leaf) {
+    try {
+        Remove-Item $outputFullPath -Force
+        Write-InfoLine "Removed" "Previous build artifact (file)" '🗑️'
+        $cleanupActions++
+    } catch {
+        Write-InfoLine "Error" "Failed to remove existing file" '❌'
+        Write-StatusLine "Failed to remove ${outputFullPath}: $($_.Exception.Message)" '❌'
+        Write-Error "[ERROR] Failed to remove ${outputFullPath}: $($_.Exception.Message)"
+        exit 1
+    }
+}
+
+if (Test-Path $outputFullPath -PathType Container) {
+    try {
+        Remove-Item $outputFullPath -Recurse -Force
+        Write-InfoLine "Removed" "Conflicting directory" '🗑️'
+        $cleanupActions++
+    } catch {
+        Write-InfoLine "Error" "Failed to remove conflicting directory" '❌'
+        Write-StatusLine "Failed to remove conflicting directory ${outputFullPath}: $($_.Exception.Message)" '❌'
+        Write-Error "[ERROR] Failed to remove conflicting directory ${outputFullPath}: $($_.Exception.Message)"
+        exit 1
+    }
+}
+
+if ($cleanupActions -eq 0) {
+    Write-InfoLine "Status" "No cleanup needed" '✅'
+} else {
+    Write-InfoLine "Status" "$cleanupActions items cleaned" '✅'
+}
+
+Write-Section 'Compilation' "$appName v$appVersion"
+
+
+
+Write-Information "⚙️ COMPILER ARGUMENTS:" -InformationAction Continue
 
 # Build analyzer arguments correctly
 $cmdArgs = @("/project:$AppDir", "/out:$outputFullPath", "/packagecachepath:$packageCachePath", "/parallel+")
+
+Write-InfoLine "Project Dir" $AppDir '📁'
+Write-InfoLine "Output File" $outputFile '📄'
+Write-InfoLine "Symbol Cache" $packageCachePath '📦'
+Write-InfoLine "Parallel" "Enabled" '⚡'
 
 # Optional: pass ruleset if specified and the file exists and is non-empty
 $rulesetPath = $env:RULESET_PATH
 if ($rulesetPath) {
     $rsItem = Get-Item -LiteralPath $rulesetPath -ErrorAction SilentlyContinue
     if ($rsItem -and $rsItem.Length -gt 0) {
-        Write-Output "Using ruleset: $($rsItem.FullName)"
+        Write-InfoLine "Ruleset" $rsItem.Name '📋'
         $cmdArgs += "/ruleset:$($rsItem.FullName)"
     } else {
-        Write-Warning "Ruleset not found or empty, skipping: $rulesetPath"
+        Write-InfoLine "Ruleset" "Not found or empty" '⚠️'
+        Write-StatusLine "Ruleset not found or empty, skipping: $rulesetPath" '⚠️'
     }
+} else {
+    Write-InfoLine "Ruleset" "None specified" 'ℹ️'
 }
+
 if ($filteredAnalyzers.Count -gt 0) {
+    Write-InfoLine "Analyzers" "$($filteredAnalyzers.Count) configured" '🧹'
     foreach ($analyzer in $filteredAnalyzers) {
         $cmdArgs += "/analyzer:$analyzer"
     }
+} else {
+    Write-InfoLine "Analyzers" "None configured" 'ℹ️'
 }
 
 # Optional: treat warnings as errors when requested via environment variable
 if ($env:WARN_AS_ERROR -and ($env:WARN_AS_ERROR -eq '1' -or $env:WARN_AS_ERROR -match '^(?i:true|yes|on)$')) {
+    Write-InfoLine "Warnings" "Treated as errors" '🚨'
     $cmdArgs += '/warnaserror+'
+} else {
+    Write-InfoLine "Warnings" "Allowed" 'ℹ️'
 }
 
+Write-Information "🚀 EXECUTING COMPILATION:" -InformationAction Continue
 $alcInvokeArgs = @()
 if ($alcPreArgs.Count -gt 0) { $alcInvokeArgs += $alcPreArgs }
 $alcInvokeArgs += $cmdArgs
 
+$startTime = Get-Date
+Write-InfoLine "Compiler" $alcCommand '⚡'
+Write-InfoLine "Started" $startTime.ToString('HH:mm:ss') '⏰'
+
+# Execute the compiler
 & $alcCommand @alcInvokeArgs
 $exitCode = $LASTEXITCODE
+$endTime = Get-Date
+$duration = $endTime - $startTime
+
+Write-Section 'Build Results'
+
+Write-Information "📊 COMPILATION RESULTS:" -InformationAction Continue
+Write-InfoLine "Duration" ("{0:mm\:ss\.fff}" -f $duration) '⏱️'
+Write-InfoLine "Exit Code" $exitCode $(if ($exitCode -eq 0) { '✅' } else { '❌' })
 
 if ($exitCode -ne 0) {
-    Write-Output ""
-    # Print a clean failure message without emitting a PowerShell error record
-    Write-Host "Build failed with errors above." -ForegroundColor Red
+    Write-InfoLine "Status" "Failed" '❌'
+
+    Write-Section 'Summary'
+    Write-Information "❌ Build compilation failed" -InformationAction Continue
+    Write-StatusLine "Review the error messages above and fix the reported issues" '❌'
     exit $Exit.Analysis
 } else {
-    Write-Output ""
-    Write-Output "Build completed successfully: $outputFile"
+    Write-InfoLine "Status" "Success" '✅'
+
+    # Check if output file was actually created
+    if (Test-Path $outputFullPath -PathType Leaf) {
+        $outputInfo = Get-Item -LiteralPath $outputFullPath
+        $fileSize = if ($outputInfo.Length -lt 1024) {
+            "{0} bytes" -f $outputInfo.Length
+        } elseif ($outputInfo.Length -lt 1048576) {
+            "{0:N1} KB" -f ($outputInfo.Length / 1024)
+        } else {
+            "{0:N1} MB" -f ($outputInfo.Length / 1048576)
+        }
+        Write-InfoLine "Output Size" $fileSize '📏'
+        Write-InfoLine "Output File" $outputFile '📄'
+    }
+
+    Write-Section 'Summary'
+    Write-Information "🎉 Build completed successfully!" -InformationAction Continue
+    Write-StatusLine "Application package is ready for deployment" '✅'
 }
 
 exit $Exit.Success
