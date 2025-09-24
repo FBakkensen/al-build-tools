@@ -25,13 +25,22 @@ jobs:
 
       - name: Install jq for JSON processing
         run: |
+          set -e  # Exit on any error
           echo "=== Installing jq for JSON processing ==="
           sudo apt-get update
           sudo apt-get install -y jq
           echo "✓ jq installed: $(jq --version)"
 
+      - name: Install InvokeBuild PowerShell module
+        run: |
+          set -e  # Exit on any error
+          echo "=== Installing InvokeBuild PowerShell module ==="
+          pwsh -Command "Install-Module -Name InvokeBuild -Force -Scope CurrentUser"
+          echo "✓ InvokeBuild module installed"
+
       - name: Validate app.json exists
         run: |
+          set -e  # Exit on any error
           echo "=== Validating app.json exists ==="
           if [ ! -f "app.json" ]; then
             echo "Error: app.json not found"
@@ -41,6 +50,7 @@ jobs:
 
       - name: Validate prerequisites
         run: |
+          set -e  # Exit on any error
           echo "=== Validating prerequisites ==="
 
           # Check .NET SDK installation
@@ -64,48 +74,61 @@ jobs:
           fi
           echo "✓ jq: $(jq --version)"
 
-          # Check if Makefile exists
-          if [ ! -f "Makefile" ]; then
-            echo "Error: Makefile not found"
+          # Check if al.build.ps1 exists
+          if [ ! -f "al.build.ps1" ]; then
+            echo "Error: al.build.ps1 not found"
             exit 1
           fi
-          echo "✓ Makefile: Found"
+          echo "✓ al.build.ps1: Found"
 
-          # Check if make is available
-          if ! command -v make &> /dev/null; then
-            echo "Error: make command not found"
+          # Check if Invoke-Build is available
+          if ! pwsh -Command "Get-Module -ListAvailable -Name InvokeBuild" &> /dev/null; then
+            echo "Error: Invoke-Build module not found"
             exit 1
           fi
-          echo "✓ make: Available"
+          echo "✓ Invoke-Build: Available"
 
           echo "✓ All prerequisites validated"
 
       - name: Download AL Compiler
+        id: download-al-compiler
         run: |
+          set -e  # Exit on any error
           echo "=== Downloading AL Compiler ==="
-          if ! make download-compiler; then
-            echo "Error: Failed to download AL compiler"
-            echo "Available make targets:"
-            make help
-            exit 1
-          fi
+          pwsh -Command "Invoke-Build download-compiler"
           echo "✓ AL compiler downloaded successfully"
+        continue-on-error: false
+
+      - name: Show available build targets on AL compiler failure
+        if: failure() && steps.download-al-compiler.conclusion == 'failure'
+        run: |
+          echo "Error: Failed to download AL compiler"
+          echo "Available build targets:"
+          pwsh -Command "Invoke-Build ?" || echo "Could not list build targets"
 
       - name: Download BC Symbols
+        id: download-bc-symbols
         run: |
+          set -e  # Exit on any error
           echo "=== Downloading BC Symbols ==="
-          if ! make download-symbols; then
-            echo "Error: Failed to download BC symbols"
-            echo "This might be due to:"
-            echo "  - Network connectivity issues"
-            echo "  - Invalid version numbers in app.json"
-            echo "  - Missing dependencies"
-            exit 1
-          fi
+          pwsh -Command "Invoke-Build download-symbols"
           echo "✓ BC symbols downloaded successfully"
+        continue-on-error: false
+
+      - name: Show BC Symbols troubleshooting on failure
+        if: failure() && steps.download-bc-symbols.conclusion == 'failure'
+        run: |
+          echo "Error: Failed to download BC symbols"
+          echo "This might be due to:"
+          echo "  - Network connectivity issues"
+          echo "  - Invalid version numbers in app.json"
+          echo "  - Missing dependencies"
+          echo "  - PowerShell execution policy restrictions"
 
       - name: Display environment summary
+        if: success()
         run: |
+          set -e  # Exit on any error
           echo "=== Copilot AL Development Environment ==="
           echo "✓ .NET SDK: $(dotnet --version)"
           echo "✓ AL Compiler: Available at $(which alc || echo 'Not found')"
@@ -130,3 +153,17 @@ jobs:
           echo "✓ Tool Cache: ~/.bc-tool-cache/al/"
           echo "✓ Symbol Cache: ~/.bc-symbol-cache/"
           echo "========================================="
+
+      - name: Setup failure summary
+        if: failure()
+        run: |
+          echo "❌ GitHub Runner Setup Failed"
+          echo "========================================="
+          echo "One or more setup steps failed. Check the logs above for details."
+          echo "Common issues:"
+          echo "  - Network connectivity problems"
+          echo "  - PowerShell execution policy restrictions"
+          echo "  - Missing dependencies in app.json"
+          echo "  - Invalid version numbers"
+          echo "========================================="
+          exit 1
