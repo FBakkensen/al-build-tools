@@ -1,4 +1,4 @@
-﻿#requires -Version 7.2
+#requires -Version 7.2
 
 <#+
 .SYNOPSIS
@@ -75,10 +75,10 @@ if ($VerboseSymbols) {
 }
 
 # Data capture arrays for final compact tables
+$script:versionWarnings = @{}
 if ($VerboseSymbols) {
     $summaryRows = New-Object System.Collections.Generic.List[object]
     $raiseRows = New-Object System.Collections.Generic.List[object]
-    $script:versionWarnings = @{}
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
@@ -849,12 +849,12 @@ while ($queue.Count -gt 0) {
 if ($VerboseSymbols) {
 
     # SUMMARY TABLE
-    $warningCount = @($summaryRows | Where-Object { $_.Warn -eq 'Y' }).Count
+    $warningCount = ($summaryRows | Where-Object { $_.Warn -eq 'Y' }).Count
     $successCount = $summaryRows.Count - $warningCount
     Write-Section 'Package Summary' ("{0} ✅ successful, {1} ⚠️ conflicts resolved" -f $successCount, $warningCount)
 
     # Show warnings first for quick scanning
-    $warningPackages = @($summaryRows | Where-Object { $_.Warn -eq 'Y' } | Sort-Object Package)
+    $warningPackages = $summaryRows | Where-Object { $_.Warn -eq 'Y' } | Sort-Object Package
     if ($warningPackages.Count -gt 0) {
         Write-Host "⚠️  VERSION CONFLICTS (resolved automatically):" -ForegroundColor Yellow
         Write-Host "   These packages had version conflicts due to dependency requirements:" -ForegroundColor Gray
@@ -921,7 +921,7 @@ if ($VerboseSymbols) {
     }
 
     # DEPENDENCY RAISES TABLE
-    $raiseCount = @($raiseRows | Where-Object { $_.Raised -eq 'Y' }).Count
+    $raiseCount = ($raiseRows | Where-Object { $_.Raised -eq 'Y' }).Count
     $totalDependencies = $raiseRows.Count
     if ($raiseCount -gt 0) {
         Write-Section 'Dependency Analysis' ("{0} version raises detected" -f $raiseCount)
@@ -930,7 +930,7 @@ if ($VerboseSymbols) {
         $hdr2 = '   {0,-60} {1,-60} {2,-15} {3}' -f 'PARENT','CHILD','MIN VER','RAISED'
         Write-Host $hdr2 -ForegroundColor Yellow
         # Only show the ones that actually raised versions (consistent with count)
-        $actualRaises = @($raiseRows | Where-Object { $_.Raised -eq 'Y' } | Sort-Object Parent, Child)
+        $actualRaises = $raiseRows | Where-Object { $_.Raised -eq 'Y' } | Sort-Object Parent, Child
         foreach ($d in $actualRaises) {
             $pFull = $d.Parent
             $cFull = $d.Child
@@ -1040,8 +1040,8 @@ if (-not $downloadsRequired) {
     }
 }
 if ($VerboseSymbols) {
-    $successCount = @($summaryRows | Where-Object { $_.Warn -ne 'Y' }).Count
-    $warningCount = @($summaryRows | Where-Object { $_.Warn -eq 'Y' }).Count
+    $successCount = ($summaryRows | Where-Object { $_.Warn -ne 'Y' }).Count
+    $warningCount = ($summaryRows | Where-Object { $_.Warn -eq 'Y' }).Count
     $totalCount = $summaryRows.Count
 
     if ($warningCount -eq 0) {
