@@ -14,28 +14,30 @@ $ErrorActionPreference = 'Stop'
 
     # FR-008: Reject unsupported parameters (usage guard)
 if (-not (Get-Variable -Name 'args' -Scope 0 -ErrorAction SilentlyContinue)) {
-    $args = @()
+    $scriptArgs = @()
+} else {
+    $scriptArgs = $args
 }
 $unknownArgs = @()
 if ($RemainingArguments) {
     $unknownArgs += $RemainingArguments
 }
-if ($args -and $args.Count -gt 0) {
-    $unknownArgs += $args
+if ($scriptArgs -and $scriptArgs.Count -gt 0) {
+    $unknownArgs += $scriptArgs
 }
 if ($unknownArgs.Count -gt 0) {
     $firstArg = $unknownArgs[0]
     $argName = if ($firstArg.StartsWith('-')) { $firstArg.Substring(1) } else { $firstArg }
     Write-Host "[install] guard UnknownParameter argument=`"$argName`""
     Write-Host "Usage: Install-AlBuildTools [-Url <url>] [-Ref <ref>] [-Dest <path>] [-Source <folder>]"
-    exit 10
+    throw "Installation failed: Unknown parameter '$argName'. Use: Install-AlBuildTools [-Url <url>] [-Ref <ref>] [-Dest <path>] [-Source <folder>]"
 }
 
 function Write-Note($msg) { Write-Host "[al-build-tools] $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "[ok] $msg" -ForegroundColor Green }
 function Write-Warn2($m)  { Write-Warning $m }
-function Write-Step($n, $msg) { 
-    Write-Host ("[{0}] {1}" -f $n, $msg) 
+function Write-Step($n, $msg) {
+    Write-Host ("[{0}] {1}" -f $n, $msg)
     # Emit standardized step diagnostic for cross-platform parity testing
     $stepName = $msg -replace '[^\w\s]', '' -replace '\s+', '_' -replace '^_|_$', ''
     Write-Host ("[install] step index={0} name={1}" -f $n, $stepName)
@@ -118,7 +120,9 @@ function Get-HttpStatusCodeFromError {
             if ($null -ne $statusCandidate) {
                 try {
                     return [int]$statusCandidate
-                } catch { }
+                } catch {
+                    Write-Verbose "[albt] Failed to convert status candidate to int: $($_.Exception.Message)"
+                }
             }
         }
 
@@ -202,14 +206,14 @@ function Install-AlBuildTools {
     )
 
     # FR-004: Enforce minimum PowerShell version guard
-    $psVersion = if ($env:ALBT_TEST_FORCE_PSVERSION) { 
-        [System.Version]$env:ALBT_TEST_FORCE_PSVERSION 
-    } else { 
-        $PSVersionTable.PSVersion 
+    $psVersion = if ($env:ALBT_TEST_FORCE_PSVERSION) {
+        [System.Version]$env:ALBT_TEST_FORCE_PSVERSION
+    } else {
+        $PSVersionTable.PSVersion
     }
     if ($psVersion -lt [System.Version]'7.0') {
         Write-Host "[install] guard PowerShellVersionUnsupported"
-        exit 10
+        throw "Installation failed: PowerShell 7.0 or later is required. Current version: $psVersion"
     }
 
     $effectiveTimeoutSec = $HttpTimeoutSec
@@ -255,9 +259,9 @@ function Install-AlBuildTools {
     # FR-023: Abort when destination is not a git repository
     if (-not $gitOk -and -not (Test-Path (Join-Path $destFull '.git'))) {
         Write-Host "[install] guard GitRepoRequired"
-        exit 10
+        throw "Installation failed: Destination '$destFull' is not a git repository. Please initialize git first with 'git init' or clone an existing repository."
     }
-    
+
     # FR-024: Require clean working tree before copying overlay
     if ($gitOk -or (Test-Path (Join-Path $destFull '.git'))) {
         $pinfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -272,7 +276,7 @@ function Install-AlBuildTools {
             $statusOutput = $p.StandardOutput.ReadToEnd().Trim()
             if (-not [string]::IsNullOrEmpty($statusOutput)) {
                 Write-Host "[install] guard WorkingTreeNotClean"
-                exit 10
+                throw "Installation failed: Working tree is not clean. Please commit or stash your changes before running the installation."
             }
         }
     }
@@ -307,7 +311,7 @@ function Install-AlBuildTools {
 
         if ([string]::IsNullOrWhiteSpace($apiBase)) {
             Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$Url`" category=Unknown hint=`"Release service URL is empty`""
-            exit 20
+            throw "Installation failed: Release service URL is empty or invalid."
         }
 
         if ($selection.Tag) {
@@ -340,12 +344,12 @@ function Install-AlBuildTools {
         } catch {
             $failure = Resolve-DownloadFailureDetails -ErrorRecord $_ -DefaultHint 'Unable to retrieve release metadata' -StatusHints $metadataStatusHints
             Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=$($failure.Category) hint=`"$($failure.Hint)`""
-            exit 20
+            throw "Installation failed: Unable to retrieve release metadata. $($failure.Hint)"
         }
 
         if ($null -eq $releaseMetadata) {
             Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=NotFound hint=`"Release metadata missing`""
-            exit 20
+            throw "Installation failed: Release metadata is missing or invalid."
         }
 
         $selectedReleaseTag = ConvertTo-CanonicalReleaseTag -Tag ($releaseMetadata.tag_name)
@@ -354,13 +358,13 @@ function Install-AlBuildTools {
         }
         if (-not $selectedReleaseTag) {
             Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=Unknown hint=`"Release tag could not be determined`""
-            exit 20
+            throw "Installation failed: Release tag could not be determined from the release metadata."
         }
         $refForFailure = $selectedReleaseTag
 
         if ($releaseMetadata.draft -eq $true -or $releaseMetadata.prerelease -eq $true) {
             Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=NotFound hint=`"Release not published`""
-            exit 20
+            throw "Installation failed: Release '$refForFailure' is not published (it may be a draft or prerelease)."
         }
 
         $assets = @()
@@ -398,7 +402,7 @@ function Install-AlBuildTools {
                 Write-Verbose "[install] asset fallback Using release asset '$(($fallbackAsset.name))'"
             } else {
                 Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=NotFound hint=`"Release asset overlay.zip not found`""
-                exit 20
+                throw "Installation failed: Release asset 'overlay.zip' not found in release '$refForFailure'."
             }
         }
 
@@ -414,7 +418,7 @@ function Install-AlBuildTools {
 
         if ([string]::IsNullOrWhiteSpace($assetDownloadUrl)) {
             Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$releaseRequestUrl`" category=Unknown hint=`"Release asset download URL missing`""
-            exit 20
+            throw "Installation failed: Release asset download URL is missing or invalid."
         }
 
         Write-Note "Selected release: $selectedReleaseTag (asset: $assetName)"
@@ -445,7 +449,7 @@ function Install-AlBuildTools {
         } catch {
             $failure = Resolve-DownloadFailureDetails -ErrorRecord $_ -DefaultHint 'Unable to download release asset' -StatusHints $assetStatusHints
             Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$assetDownloadUrl`" category=$($failure.Category) hint=`"$($failure.Hint)`""
-            exit 20
+            throw "Installation failed: Unable to download release asset. $($failure.Hint)"
         }
 
         $step++; Write-Step $step "Extract and locate '$Source'"
@@ -454,12 +458,12 @@ function Install-AlBuildTools {
             Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force -ErrorAction Stop
         } catch {
             Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$assetDownloadUrl`" category=CorruptArchive hint=`"Failed to extract asset`""
-            exit 20
+            throw "Installation failed: Failed to extract the downloaded archive. The file may be corrupted."
         }
         $top = Get-ChildItem -Path $extract -Directory | Select-Object -First 1
         if (-not $top) {
             Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$assetDownloadUrl`" category=CorruptArchive hint=`"Asset archive appears empty`""
-            exit 20
+            throw "Installation failed: Downloaded archive appears to be empty or corrupted."
         }
         $src = Join-Path $top.FullName $Source
         if (-not (Test-Path $src -PathType Container)) {
@@ -468,13 +472,13 @@ function Install-AlBuildTools {
                 $src = $cand.FullName
             } else {
                 Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$assetDownloadUrl`" category=NotFound hint=`"Source folder '$Source' not found in asset`""
-                exit 20
+                throw "Installation failed: Source folder '$Source' not found in the downloaded archive."
             }
         }
 
         if (-not (Get-ChildItem -Path $src -File -ErrorAction SilentlyContinue)) {
             Write-Host "[install] download failure ref=`"$refForFailure`" url=`"$assetDownloadUrl`" category=CorruptArchive hint=`"Source directory contains no files`""
-            exit 20
+            throw "Installation failed: Source directory contains no files to install."
         }
 
         Write-Ok "Source directory: $src"
@@ -489,7 +493,7 @@ function Install-AlBuildTools {
             $resolvedTarget = [System.IO.Path]::GetFullPath($targetPath)
             if (-not $resolvedTarget.StartsWith($destFull, [System.StringComparison]::OrdinalIgnoreCase)) {
                 Write-Host "[install] guard RestrictedWrites"
-                exit 30
+                throw "Installation failed: Security violation - attempt to write outside the destination directory."
             }
         }
 
@@ -499,7 +503,7 @@ function Install-AlBuildTools {
             Copy-Item -Path (Join-Path $src '*') -Destination $destFull -Recurse -Force -ErrorAction Stop
         } catch [System.UnauthorizedAccessException], [System.IO.IOException] {
             Write-Host "[install] guard PermissionDenied"
-            exit 30
+            throw "Installation failed: Permission denied. Please check that you have write permissions to the destination directory."
         }
         Write-Ok "Copied $fileCount files across $dirCount directories"
 
@@ -530,6 +534,6 @@ if ($PSCommandPath -and ($MyInvocation.InvocationName -ne '.') -and -not $env:AL
         Install-AlBuildTools @installParams
     } catch {
         Write-Host "[install] error unhandled=$(ConvertTo-Json $_.Exception.Message -Compress)"
-        exit 99
+        throw "Installation failed: An unexpected error occurred during installation. $($_.Exception.Message)"
     }
 }
