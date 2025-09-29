@@ -1845,9 +1845,60 @@ function Get-CompilerPath {
     return $null
 }
 
+function Get-AvailableLinterCopVersions {
+    <#
+    .SYNOPSIS
+        Dynamically discover available LinterCop versions for a specific AL runtime major version
+    .PARAMETER MajorVersion
+        AL runtime major version (e.g., "15", "16", "17")
+    .OUTPUTS
+        String array of available LinterCop version numbers
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$MajorVersion
+    )
 
+    try {
+        Write-Verbose "Discovering available LinterCop versions for AL runtime $MajorVersion.x"
 
+        # Query GitHub releases API to get all available releases
+        $releasesApiUrl = "https://api.github.com/repos/StefanMaron/BusinessCentral.LinterCop/releases"
+        $releases = @(Invoke-RestMethod -Uri $releasesApiUrl -ErrorAction Stop)
 
+        $matchingVersions = @()
+        # LinterCop versions follow pattern: BusinessCentral.LinterCop.AL-15.0.1234567.dll
+        # We want to match any version starting with the major runtime version
+        $versionPattern = "BusinessCentral\.LinterCop\.AL-($MajorVersion\.\d+\.\d+)\.dll"
+
+        if ($releases -and $releases.Length -gt 0) {
+            foreach ($release in $releases) {
+                if ($release.assets -and $release.assets.Length -gt 0) {
+                    foreach ($asset in $release.assets) {
+                        if ($asset.name -match $versionPattern) {
+                            $discoveredVersion = $matches[1]
+                            if ($matchingVersions -notcontains $discoveredVersion) {
+                                $matchingVersions += $discoveredVersion
+                                Write-Verbose "Found LinterCop version: $discoveredVersion"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        # Sort versions in descending order to try newest first
+        $sortedVersions = $matchingVersions | Sort-Object { [version]$_ } -Descending
+        Write-Verbose "Discovered $($sortedVersions.Length) LinterCop versions for runtime $MajorVersion.x"
+
+        return $sortedVersions
+
+    } catch {
+        Write-Warning "Failed to discover LinterCop versions from GitHub API: $($_.Exception.Message)"
+        Write-Verbose "Falling back to direct URL testing for runtime $MajorVersion.x"
+        return @()  # Return empty array to fall back to direct URL testing
+    }
+}
 
 function Get-LinterCopUrlForCompilerVersion {
     <#
@@ -1883,19 +1934,13 @@ function Get-LinterCopUrlForCompilerVersion {
         "$($versionParts[0]).$($versionParts[1]).$($versionParts[2])"  # Major.Minor.Build (15.0.24)
     )
 
-    # Add some common version patterns based on known available versions
-    if ($versionParts[0] -eq "15" -and $versionParts[1] -eq "0") {
-        # For 15.0.x versions, try some common available patterns
-        $versionCandidates += @("15.0.1433841", "15.0.1410565")
-    } elseif ($versionParts[0] -eq "15" -and $versionParts[1] -eq "2") {
-        # For 15.2.x versions, try the known available version
-        $versionCandidates += @("15.2.1630495")
-    } elseif ($versionParts[0] -eq "16" -and $versionParts[1] -eq "0") {
-        # For 16.0.x versions, try some common available patterns
-        $versionCandidates += @("16.0.1743592", "16.0.1418343", "16.0.1433787")
-    } elseif ($versionParts[0] -eq "17" -and $versionParts[1] -eq "0") {
-        # For 17.0.x versions, try available patterns
-        $versionCandidates += @("17.0.1750311")
+    # Dynamically discover available LinterCop versions for this major runtime version
+    # LinterCop is released for major versions 15, 16, 17, etc.
+    Write-Verbose "Discovering available LinterCop versions for runtime $($versionParts[0]).x"
+    $discoveredVersions = Get-AvailableLinterCopVersions -MajorVersion $versionParts[0]
+    if ($discoveredVersions) {
+        $versionCandidates += $discoveredVersions
+        Write-Verbose "Added $($discoveredVersions.Length) discovered LinterCop versions for runtime $($versionParts[0]).x"
     }
 
     foreach ($versionCandidate in $versionCandidates) {
