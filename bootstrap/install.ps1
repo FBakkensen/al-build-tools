@@ -121,7 +121,7 @@ function Get-HttpStatusCodeFromError {
                 try {
                     return [int]$statusCandidate
                 } catch {
-                    Write-Verbose "[albt] Failed to convert status candidate to int: $($_.Exception.Message)"
+                    Write-Verbose "[install] Failed to convert status candidate to int: $($_.Exception.Message)"
                 }
             }
         }
