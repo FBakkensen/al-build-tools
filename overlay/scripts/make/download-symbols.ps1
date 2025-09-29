@@ -31,6 +31,9 @@ if (-not $PSBoundParameters.ContainsKey('AppDir') -and $env:ALBT_APP_DIR) {
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Store VerboseSymbols parameter in script scope for functions to access
+$script:VerboseSymbols = $VerboseSymbols
+
 # --- Formatting Helpers (only used when -VerboseSymbols) ---
 if ($VerboseSymbols) {
     $script:SymFmt = [pscustomobject]@{
@@ -378,6 +381,14 @@ function Download-PackageNupkg {
     $downloadUrl = "{0}/flat2/{1}/{2}/{3}" -f $Feed.TrimEnd('/'), $packageIdLower, $Version, $fileName
     $destinationPath = Join-Path -Path $DestinationDirectory -ChildPath $fileName
 
+    # Add verbose output for downloads
+    if ($script:VerboseSymbols) {
+        $cleanPackageName = Get-CleanPackageName -PackageId $PackageId
+        Write-Host "  📥 Downloading: $cleanPackageName" -ForegroundColor Cyan
+        Write-Host "     Version: $Version" -ForegroundColor Gray
+        Write-Host "     Source: $Feed" -ForegroundColor Gray
+    }
+
     try {
         Invoke-WebRequest -Uri $downloadUrl -OutFile $destinationPath -UseBasicParsing -MaximumRedirection 5 -ErrorAction Stop | Out-Null
     } catch {
@@ -515,6 +526,13 @@ function Extract-SymbolApp {
         }
     } finally {
         $sourceStream.Dispose()
+    }
+
+    # Add verbose output for successful extraction
+    if ($script:VerboseSymbols) {
+        $cleanPackageName = Get-CleanPackageName -PackageId $PackageId
+        Write-Host "  ✅ Extracted: $cleanPackageName" -ForegroundColor Green
+        Write-Host "     Location: $destinationPath" -ForegroundColor Gray
     }
 
     return $destinationPath
@@ -668,6 +686,7 @@ $script:packageMetadataCache = @{}
 $script:packageDependenciesCache = @{}
 $queue = [System.Collections.Generic.Queue[string]]::new()
 $packagesInQueue = @{}
+$downloadSectionShown = $false
 
 foreach ($kvp in $packageMap.GetEnumerator()) {
     $packageId = $kvp.Key
@@ -726,6 +745,12 @@ while ($queue.Count -gt 0) {
     }
 
     if (-not $resolveResult -and $needsDownload) {
+        # Show download section header before first download
+        if ($VerboseSymbols -and -not $downloadSectionShown) {
+            Write-Section 'Symbol Downloads' 'Downloading required packages'
+            $downloadSectionShown = $true
+        }
+
         try {
             $resolveResult = Resolve-SymbolPackage -PackageId $packageId -MinimumVersion $minimumVersion -Feeds $feeds -CacheDir $cacheDir
         } catch {

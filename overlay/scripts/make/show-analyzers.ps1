@@ -138,11 +138,73 @@ function Get-ToolCacheRoot {
     return Join-Path -Path $userHome -ChildPath '.bc-tool-cache'
 }
 
+function Get-RuntimeVersionFromManifest {
+    $appJsonPath = Join-Path -Path (Get-Location) -ChildPath 'app.json'
+    if (-not (Test-Path -LiteralPath $appJsonPath)) {
+        return $null
+    }
+
+    try {
+        $appJson = Get-Content -LiteralPath $appJsonPath -Raw | ConvertFrom-Json
+        if ($appJson -and $appJson.runtime) {
+            return [string]$appJson.runtime
+        }
+    } catch {
+        Write-Verbose "Failed to parse app.json: $($_.Exception.Message)"
+    }
+
+    return $null
+}
+
 function Get-CompilerProvisioningInfo {
     param([string]$ToolVersion)
 
     $toolCacheRoot = Get-ToolCacheRoot
     $alCacheDir = Join-Path -Path $toolCacheRoot -ChildPath 'al'
+
+    # Try runtime-based approach first
+    $runtimeVersion = Get-RuntimeVersionFromManifest
+    if (-not $runtimeVersion) {
+        $runtimeVersion = $env:ALBT_RUNTIME_VERSION
+    }
+
+    if ($runtimeVersion -match '^(\d+)\.') {
+        $majorVersion = $matches[1]
+        $runtimeCacheDir = Join-Path -Path $alCacheDir -ChildPath "runtime-$majorVersion"
+        $runtimeSentinelPath = Join-Path -Path $runtimeCacheDir -ChildPath 'sentinel.json'
+
+        if (Test-Path -LiteralPath $runtimeSentinelPath) {
+            try {
+                $runtimeSentinel = Get-Content -LiteralPath $runtimeSentinelPath -Raw | ConvertFrom-Json
+
+                $toolPath = if ($runtimeSentinel) { [string]$runtimeSentinel.toolPath } else { $null }
+                if (-not $toolPath) {
+                    throw "Runtime-based compiler sentinel at $runtimeSentinelPath missing toolPath. Run `make download-compiler` before inspecting analyzers."
+                }
+
+                $resolvedToolPath = Expand-FullPath -Path $toolPath
+                if (-not (Test-Path -LiteralPath $resolvedToolPath)) {
+                    throw "AL compiler not found at ${resolvedToolPath} (runtime sentinel ${runtimeSentinelPath}). Run `make download-compiler` before inspecting analyzers."
+                }
+
+                $toolItem = Get-Item -LiteralPath $resolvedToolPath
+                $compilerVersion = if ($runtimeSentinel.PSObject.Properties.Match('compilerVersion').Count -gt 0) { [string]$runtimeSentinel.compilerVersion } else { $null }
+
+                return [pscustomobject]@{
+                    AlcPath      = $toolItem.FullName
+                    Version      = $compilerVersion
+                    SentinelPath = $runtimeSentinelPath
+                    RuntimeVersion = $runtimeVersion
+                    MajorVersion = $majorVersion
+                }
+            } catch {
+                # Fall through to legacy approach
+                Write-Verbose "Runtime-based sentinel parsing failed: $($_.Exception.Message)"
+            }
+        }
+    }
+
+    # Fallback to legacy approach
     $sentinelName = if ($ToolVersion) { "$ToolVersion.json" } else { 'default.json' }
     $sentinelPath = Join-Path -Path $alCacheDir -ChildPath $sentinelName
 

@@ -322,6 +322,65 @@ if ($alcOverride) {
 
 Write-Section 'Compiler Provisioning'
 
+# Check for runtime-based compiler configuration
+$runtimeInfo = $null
+$runtimeCacheFound = $false
+if ($appJson -and $appJson.runtime) {
+    $toolCacheRoot = Get-ToolCacheRoot
+    $alCacheRoot = Join-Path -Path $toolCacheRoot -ChildPath 'al'
+
+    # Determine major version for runtime cache
+    $runtimeVersion = [string]$appJson.runtime
+    if ($env:ALBT_RUNTIME_VERSION) {
+        $runtimeVersion = $env:ALBT_RUNTIME_VERSION
+    }
+
+    if ($runtimeVersion -match '^(\d+)\.') {
+        $majorVersion = $matches[1]
+        $runtimeCacheDir = Join-Path -Path $alCacheRoot -ChildPath "runtime-$majorVersion"
+        $runtimeSentinelPath = Join-Path -Path $runtimeCacheDir -ChildPath 'sentinel.json'
+
+        if (Test-Path -LiteralPath $runtimeSentinelPath) {
+            try {
+                $runtimeSentinel = Get-Content -LiteralPath $runtimeSentinelPath -Raw | ConvertFrom-Json
+                $runtimeCacheFound = $true
+                $runtimeInfo = [pscustomobject]@{
+                    RuntimeVersion = $runtimeVersion
+                    MajorVersion = $majorVersion
+                    CompilerVersion = $runtimeSentinel.compilerVersion
+                    ToolPath = $runtimeSentinel.toolPath
+                    InstallationType = $runtimeSentinel.installationType
+                    CacheDirectory = $runtimeCacheDir
+                    SentinelPath = $runtimeSentinelPath
+                    Timestamp = $runtimeSentinel.timestamp
+                }
+            } catch {
+                Write-Verbose "Failed to parse runtime sentinel: $($_.Exception.Message)"
+            }
+        }
+    }
+}
+
+if ($runtimeCacheFound -and $runtimeInfo) {
+    Write-Information "🚀 RUNTIME-BASED COMPILER:" -InformationAction Continue
+    Write-ConfigLine "Status" "Active" '✅'
+    Write-ConfigLine "Runtime" $runtimeInfo.RuntimeVersion '🎯'
+    Write-ConfigLine "Major Version" $runtimeInfo.MajorVersion '📊'
+    Write-ConfigLine "Compiler Ver" $runtimeInfo.CompilerVersion '📦'
+    Write-ConfigLine "Install Type" $runtimeInfo.InstallationType '⚙️'
+    Write-ConfigLine "Cache Dir" $runtimeInfo.CacheDirectory '📁'
+
+    # Verify tool path exists
+    if (Test-Path -LiteralPath $runtimeInfo.ToolPath) {
+        Write-ConfigLine "Tool Path" $runtimeInfo.ToolPath '✅'
+        $alcPath = $runtimeInfo.ToolPath
+        $compilerVersion = $runtimeInfo.CompilerVersion
+        $compilerSentinel = $runtimeInfo.SentinelPath
+    } else {
+        Write-ConfigLine "Tool Path" "$($runtimeInfo.ToolPath) (missing)" '❌'
+    }
+}
+
 if ($alcPath) {
     Write-Information "🔨 COMPILER STATUS:" -InformationAction Continue
     Write-ConfigLine "Status" "Ready" '✅'

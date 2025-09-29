@@ -156,9 +156,60 @@ if ($artifactExists) {
         Write-InfoLine "Expected Path" $outputPath '📁'
     }
 
-    Write-Section 'Summary'
-    Write-Information "ℹ️ No cleanup needed - workspace is already clean!" -InformationAction Continue
-    Write-StatusLine "No build artifacts found to remove" 'ℹ️'
+Write-Section 'Summary'
+Write-Information "ℹ️ No cleanup needed - workspace is already clean!" -InformationAction Continue
+Write-StatusLine "No build artifacts found to remove" 'ℹ️'
 }
+
+# --- Enhanced Cache Cleanup Options ---
+Write-Section 'Cache Cleanup Options' 'Manual Operations'
+
+Write-Information "🧹 MANUAL CACHE CLEANUP COMMANDS:" -InformationAction Continue
+Write-Information "   Use these commands for advanced cache management:" -InformationAction Continue
+Write-Information "" -InformationAction Continue
+
+$userHome = $env:HOME
+if (-not $userHome -and $env:USERPROFILE) { $userHome = $env:USERPROFILE }
+
+if ($userHome) {
+    $cacheRoot = Join-Path $userHome '.bc-tool-cache'
+    $alCacheRoot = Join-Path $cacheRoot 'al'
+
+    Write-Information "🗂️  COMPILER CACHE CLEANUP:" -InformationAction Continue
+    Write-Information ("   • Clean all compiler versions:") -InformationAction Continue
+    Write-Information ("     Remove-Item '{0}' -Recurse -Force -ErrorAction SilentlyContinue" -f $alCacheRoot) -InformationAction Continue
+    Write-Information ("   • Clean specific runtime cache (e.g., runtime 15):") -InformationAction Continue
+    Write-Information ("     Remove-Item '{0}' -Recurse -Force -ErrorAction SilentlyContinue" -f (Join-Path $alCacheRoot 'runtime-15')) -InformationAction Continue
+    Write-Information ("   • Clean legacy cache only:") -InformationAction Continue
+    Write-Information ("     Remove-Item '{0}' -Force -ErrorAction SilentlyContinue" -f (Join-Path $alCacheRoot 'default.json')) -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+
+    $symbolCacheRoot = Join-Path $userHome '.bc-symbol-cache'
+    Write-Information "📦 SYMBOL CACHE CLEANUP:" -InformationAction Continue
+    Write-Information ("   • Clean all symbol packages:") -InformationAction Continue
+    Write-Information ("     Remove-Item '{0}' -Recurse -Force -ErrorAction SilentlyContinue" -f $symbolCacheRoot) -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+
+    Write-Information "🔄 CACHE RESET COMMANDS:" -InformationAction Continue
+    Write-Information ("   • Complete cache reset (compiler + symbols):") -InformationAction Continue
+    Write-Information ("     Remove-Item '{0}', '{1}' -Recurse -Force -ErrorAction SilentlyContinue" -f $alCacheRoot, $symbolCacheRoot) -InformationAction Continue
+    Write-Information ("   • Reprovision after cleanup:") -InformationAction Continue
+    Write-Information ("     Invoke-Build provision") -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+
+    Write-Information "⚙️  CACHE DIAGNOSTICS:" -InformationAction Continue
+    Write-Information ("   • Show cache disk usage:") -InformationAction Continue
+    Write-Information ("     Get-ChildItem '{0}' -Recurse | Measure-Object -Property Length -Sum" -f $cacheRoot) -InformationAction Continue
+    Write-Information ("   • List runtime-specific caches:") -InformationAction Continue
+    Write-Information ("     Get-ChildItem '{0}' -Directory -Filter 'runtime-*'" -f $alCacheRoot) -InformationAction Continue
+    Write-Information ("   • Show current configuration:") -InformationAction Continue
+    Write-Information ("     Invoke-Build show-config") -InformationAction Continue
+} else {
+    Write-StatusLine "Unable to determine cache paths (HOME directory not found)" '⚠️'
+}
+
+Write-Information "" -InformationAction Continue
+Write-StatusLine "Use cache cleanup commands only when necessary" 'ℹ️'
+Write-StatusLine "Cache improves build performance - clean only for troubleshooting" 'ℹ️'
 
 exit $Exit.Success

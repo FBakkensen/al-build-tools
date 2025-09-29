@@ -152,16 +152,103 @@ function Get-ToolCacheRoot {
     return Join-Path -Path $userHome -ChildPath '.bc-tool-cache'
 }
 
+function Get-RuntimeMajorVersion {
+    <#
+    .SYNOPSIS
+        Extract major version from runtime version string
+    .PARAMETER RuntimeVersion
+        Runtime version string from app.json (e.g., "15.2", "16.0")
+    .OUTPUTS
+        String containing major version number or $null if invalid
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [AllowEmptyString()]
+        [string]$RuntimeVersion
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RuntimeVersion)) {
+        return $null
+    }
+
+    # Extract major version from runtime (e.g., "15.2" -> "15")
+    if ($RuntimeVersion -match '^(\d+)\.') {
+        return $matches[1]
+    }
+
+    # Handle single digit versions like "15"
+    if ($RuntimeVersion -match '^\d+$') {
+        return $RuntimeVersion
+    }
+
+    return $null
+}
+
 function Get-CompilerProvisioningInfo {
-    param([string]$ToolVersion)
+    param(
+        [string]$ToolVersion,
+        [string]$RuntimeVersion
+    )
 
     $toolCacheRoot = Get-ToolCacheRoot
     $alCacheDir = Join-Path -Path $toolCacheRoot -ChildPath 'al'
+
+    # Priority 1: Runtime-specific cache (new approach)
+    if ($RuntimeVersion) {
+        $majorVersion = Get-RuntimeMajorVersion -RuntimeVersion $RuntimeVersion
+        if ($majorVersion) {
+            $runtimeCacheDir = Join-Path -Path $alCacheDir -ChildPath "runtime-$majorVersion"
+            $runtimeSentinelPath = Join-Path -Path $runtimeCacheDir -ChildPath 'sentinel.json'
+
+            if (Test-Path -LiteralPath $runtimeSentinelPath) {
+                try {
+                    $sentinel = Get-Content -LiteralPath $runtimeSentinelPath -Raw | ConvertFrom-Json
+                    $compilerVersion = if ($sentinel.PSObject.Properties.Match('compilerVersion').Count -gt 0) { [string]$sentinel.compilerVersion } else { $null }
+
+                    # Check if this is a local tool installation
+                    if ($sentinel.installationType -eq 'local-tool') {
+                        $toolPath = [string]$sentinel.toolPath
+
+                        if ($toolPath -and (Test-Path -LiteralPath $toolPath)) {
+                            # Use direct executable path from local tool
+                            $toolItem = Get-Item -LiteralPath $toolPath
+                            return [pscustomobject]@{
+                                AlcPath      = $toolItem.FullName
+                                Version      = $compilerVersion
+                                SentinelPath = $runtimeSentinelPath
+                                IsLocalTool  = $false
+                                Runtime      = $RuntimeVersion
+                            }
+                        } else {
+                            throw "Local tool installation found but compiler executable not found at: $toolPath"
+                        }
+                    } else {
+                        # Legacy path-based installation
+                        $toolPath = [string]$sentinel.toolPath
+                        if ($toolPath -and (Test-Path -LiteralPath $toolPath)) {
+                            $toolItem = Get-Item -LiteralPath $toolPath
+                            return [pscustomobject]@{
+                                AlcPath      = $toolItem.FullName
+                                Version      = $compilerVersion
+                                SentinelPath = $runtimeSentinelPath
+                                IsLocalTool  = $false
+                            }
+                        }
+                    }
+                } catch {
+                    Write-Warning "Failed to parse runtime-specific sentinel: $($_.Exception.Message)"
+                }
+            }
+        }
+    }
+
+    # Priority 2: Legacy approach (backward compatibility)
     $sentinelName = if ($ToolVersion) { "$ToolVersion.json" } else { 'default.json' }
     $sentinelPath = Join-Path -Path $alCacheDir -ChildPath $sentinelName
 
     if (-not (Test-Path -LiteralPath $sentinelPath)) {
-        throw "Compiler provisioning sentinel not found at $sentinelPath. Run `make download-compiler` before `make build`."
+        throw "Compiler provisioning sentinel not found. Runtime: $RuntimeVersion, Tool: $ToolVersion. Run `make download-compiler` before `make build`."
     }
 
     try {
@@ -187,6 +274,7 @@ function Get-CompilerProvisioningInfo {
         AlcPath      = $toolItem.FullName
         Version      = $compilerVersion
         SentinelPath = $sentinelPath
+        IsLocalTool  = $false
     }
 }
 
@@ -263,6 +351,33 @@ function Get-SymbolCacheInfo {
     }
 }
 
+function Test-AnalyzerDependencies {
+    <#
+    .SYNOPSIS
+        Test if an analyzer has all required dependencies available
+    .PARAMETER AnalyzerPath
+        Path to the analyzer DLL to test
+    #>
+    param([string]$AnalyzerPath)
+
+    if (-not (Test-Path -LiteralPath $AnalyzerPath)) {
+        return $false
+    }
+
+    try {
+        # Try to load the analyzer assembly to check for missing dependencies
+        $bytes = [System.IO.File]::ReadAllBytes($AnalyzerPath)
+        $assembly = [System.Reflection.Assembly]::Load($bytes)
+
+        # Check if we can get the types (this will fail if dependencies are missing)
+        $types = $assembly.GetTypes()
+        return $true
+    } catch {
+        Write-Verbose "[albt] Analyzer dependency check failed for $(Split-Path -Leaf $AnalyzerPath): $($_.Exception.Message)"
+        return $false
+    }
+}
+
 function Get-EnabledAnalyzerPath {
     param(
         [string]$AppDir,
@@ -301,13 +416,27 @@ function Get-EnabledAnalyzerPath {
     $workspaceRoot = (Get-Location).Path
     $appFull = try { (Resolve-Path $AppDir -ErrorAction Stop).Path } catch { Join-Path $workspaceRoot $AppDir }
 
+    # Find analyzers directory - check both compiler directory and runtime-specific cache
     $analyzersDir = $null
+    $runtimeAnalyzersDir = $null
+
     if ($CompilerDir -and (Test-Path -LiteralPath $CompilerDir)) {
         $candidate = Join-Path -Path $CompilerDir -ChildPath 'Analyzers'
         if (Test-Path -LiteralPath $candidate) {
             $analyzersDir = (Get-Item -LiteralPath $candidate).FullName
         } else {
             $analyzersDir = (Get-Item -LiteralPath $CompilerDir).FullName
+        }
+    }
+
+    # Also check runtime-specific cache for LinterCop
+    $toolCacheRoot = if ($env:ALBT_TOOL_CACHE) { $env:ALBT_TOOL_CACHE } else { Join-Path $env:USERPROFILE '.bc-tool-cache' }
+    $runtimeCacheDirs = Get-ChildItem -Path (Join-Path $toolCacheRoot 'al') -Directory -Filter 'runtime-*' -ErrorAction SilentlyContinue
+    foreach ($runtimeDir in $runtimeCacheDirs) {
+        $runtimeAnalyzersCandidate = Join-Path $runtimeDir.FullName 'Analyzers'
+        if (Test-Path -LiteralPath $runtimeAnalyzersCandidate) {
+            $runtimeAnalyzersDir = (Get-Item -LiteralPath $runtimeAnalyzersCandidate).FullName
+            break
         }
     }
 
@@ -378,10 +507,11 @@ function Get-EnabledAnalyzerPath {
         if ($name -match '^\$\{([A-Za-z]+)\}$') { $name = $matches[1] }
 
         if ($supported -contains $name) {
-            if ($analyzersDir -or $CompilerDir) {
+            if ($analyzersDir -or $CompilerDir -or $runtimeAnalyzersDir) {
                 $dll = $dllMap[$name]
                 $searchRoots = @()
                 if ($analyzersDir) { $searchRoots += $analyzersDir }
+                if ($runtimeAnalyzersDir) { $searchRoots += $runtimeAnalyzersDir }
                 if ($CompilerDir -and ($searchRoots -notcontains $CompilerDir)) { $searchRoots += $CompilerDir }
 
                 $found = $null
@@ -462,14 +592,25 @@ if ($alcOverride) {
     $alcPath = (Get-Item -LiteralPath $resolvedOverride).FullName
     $compilerRoot = Split-Path -Parent $alcPath
     $compilerVersion = '(override)'
+    $isLocalTool = $false
+    $localToolDirectory = $null
     Write-InfoLine "Status" "Override found" '✅'
 } else {
     Write-InfoLine "Source" "Provisioned tool" '📦'
     try {
-        $compilerInfo = Get-CompilerProvisioningInfo -ToolVersion $requestedToolVersion
+        # Get runtime version for runtime-specific compiler selection
+        $runtimeVersion = if ($appJson -and $appJson.runtime) { [string]$appJson.runtime } else { $null }
+        $compilerInfo = Get-CompilerProvisioningInfo -ToolVersion $requestedToolVersion -RuntimeVersion $runtimeVersion
+
         $alcPath = $compilerInfo.AlcPath
         $compilerVersion = if ($compilerInfo.Version) { $compilerInfo.Version } else { $null }
-        Write-InfoLine "Status" "Found" '✅'
+        $runtimeInfo = if ($compilerInfo.PSObject.Properties.Match('Runtime').Count -gt 0) { $compilerInfo.Runtime } else { $null }
+
+        if ($runtimeInfo) {
+            Write-InfoLine "Status" "Found (Runtime $runtimeInfo)" '✅'
+        } else {
+            Write-InfoLine "Status" "Found" '✅'
+        }
     } catch {
         Write-InfoLine "Status" "Not found" '❌'
         Write-StatusLine $_.Exception.Message '❌'
@@ -484,6 +625,7 @@ Write-InfoLine "Version" $displayVersion '🏷️'
 Write-InfoLine "Path" $alcPath '📁'
 
 Write-Information "⚙️ EXECUTION SETUP:" -InformationAction Continue
+
 # Normalize invocation path for cross-platform execution
 $alcCommand = $alcPath
 $alcLaunchPath = $alcPath
@@ -622,7 +764,9 @@ Write-Section 'Compilation' "$appName v$appVersion"
 Write-Information "⚙️ COMPILER ARGUMENTS:" -InformationAction Continue
 
 # Build analyzer arguments correctly
-$cmdArgs = @("/project:$AppDir", "/out:$outputFullPath", "/packagecachepath:$packageCachePath", "/parallel+")
+# Ensure all paths are absolute for the compiler
+$absoluteAppDir = (Resolve-Path -Path $AppDir).Path
+$cmdArgs = @("/project:$absoluteAppDir", "/out:$outputFullPath", "/packagecachepath:$packageCachePath", "/parallel+")
 
 Write-InfoLine "Project Dir" $AppDir '📁'
 Write-InfoLine "Output File" $outputFile '📄'
@@ -670,9 +814,19 @@ $startTime = Get-Date
 Write-InfoLine "Compiler" $alcCommand '⚡'
 Write-InfoLine "Started" $startTime.ToString('HH:mm:ss') '⏰'
 
-# Execute the compiler
-& $alcCommand @alcInvokeArgs
-$exitCode = $LASTEXITCODE
+# Execute the compiler from its own directory to ensure analyzer dependencies are resolved correctly
+$currentLocation = Get-Location
+try {
+    if ($compilerRoot -and (Test-Path -LiteralPath $compilerRoot)) {
+        Set-Location -LiteralPath $compilerRoot
+        Write-Verbose "[albt] Set working directory to compiler root: $compilerRoot"
+    }
+    & $alcCommand @alcInvokeArgs
+    $exitCode = $LASTEXITCODE
+} finally {
+    Set-Location $currentLocation.Path
+}
+
 $endTime = Get-Date
 $duration = $endTime - $startTime
 
