@@ -1,0 +1,17 @@
+version: "2"
+
+# GitGuardian configuration for al-build-tools
+# Suppress false positives for development/test credentials
+
+paths-ignore:
+  # Ignore generated files and dependencies
+  - "**/.alpackages/**"
+  - "**/bin/**"
+  - "**/obj/**"
+  - "**/.altemplates/**"
+  - "**/.vscode/**"
+
+matches-ignore:
+  # Development container default password - not a secret
+  - name: "Development container default password"
+    match: 'P@ssw0rd'

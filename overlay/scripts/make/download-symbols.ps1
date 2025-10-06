@@ -15,13 +15,10 @@
 .NOTES
     Optional environment variables:
       - ALBT_APP_DIR: override for default app directory when -AppDir omitted.
-      - ALBT_SYMBOL_CACHE_ROOT: override for default ~/.bc-symbol-cache location.
-      - ALBT_SYMBOL_FEEDS: comma-separated list of NuGet feeds to query for symbols.
 #>
 
 param(
-    [string]$AppDir = 'app',
-    [switch]$VerboseSymbols   # Always-on style verbose output (not using PowerShell -Verbose switch so CI logs remain deterministic)
+    [string]$AppDir = 'app'
 )
 
 if (-not $PSBoundParameters.ContainsKey('AppDir') -and $env:ALBT_APP_DIR) {
@@ -30,59 +27,24 @@ if (-not $PSBoundParameters.ContainsKey('AppDir') -and $env:ALBT_APP_DIR) {
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$InformationPreference = 'Continue'
 
-# Store VerboseSymbols parameter in script scope for functions to access
-$script:VerboseSymbols = $VerboseSymbols
+# Import shared utilities
+Import-Module "$PSScriptRoot/../common.psm1" -Force -DisableNameChecking
 
-# --- Formatting Helpers (only used when -VerboseSymbols) ---
-if ($VerboseSymbols) {
-    $script:SymFmt = [pscustomobject]@{
-        Width = $Host.UI.RawUI.WindowSize.Width
-        StartTime = Get-Date
-    }
+$Exit = Get-ExitCode
 
-    function Write-Section {
-        param([string]$Title, [string]$SubInfo = '')
-        $elapsed = "{0:mm\:ss}" -f (New-TimeSpan -Start $script:SymFmt.StartTime -End (Get-Date))
-        $line = ''.PadLeft(($script:SymFmt.Width - 1), '=')
-        Write-Host "" # blank spacer
-        Write-Host ($line.Substring(0, [Math]::Min($line.Length, 80))) -ForegroundColor Green
-        $header = "🔧 SYMBOLS | {0}" -f $Title
-        if ($SubInfo) { $header += " | {0}" -f $SubInfo }
-        $header += " [{0}]" -f $elapsed
-        Write-Host $header -ForegroundColor Yellow
-        Write-Host ($line.Substring(0, [Math]::Min($line.Length, 80))) -ForegroundColor Green
-    }
-    function Write-VerbLine {
-        param(
-            [string]$Tag,
-            [string]$Message,
-            [ConsoleColor]$Color = "Gray",
-            [string]$Icon = '•'
-        )
-        $tagPadded = ($Tag).PadRight(5)
-        Write-Host ("  {0}{1} {2}" -f $Icon, $tagPadded, $Message) -ForegroundColor $Color
-    }
-
-    function Write-Progress {
-        param([string]$Activity, [int]$Current, [int]$Total)
-        $percent = [math]::Round(($Current / $Total) * 100)
-        $bar = ('█' * [math]::Floor($percent / 5)) + ('░' * (20 - [math]::Floor($percent / 5)))
-        Write-Host ("  📦 [{0}] {1}/{2} {3}" -f $bar, $Current, $Total, $Activity) -ForegroundColor Cyan
-    }
-
-    function Write-ColKV {
-        param([string]$Label, [string]$Value, [int]$Pad = 14)
-        return ("{0}: {1}" -f ($Label.PadRight($Pad)), $Value)
-    }
+# Guard: require invocation via make
+if (-not $env:ALBT_VIA_MAKE) {
+    Write-Output "Run via make (e.g., make download-symbols)"
+    exit $Exit.Guard
 }
 
-# Data capture arrays for final compact tables
+# Initialize timing and data capture
+$script:StartTime = Get-Date
 $script:versionWarnings = @{}
-if ($VerboseSymbols) {
-    $summaryRows = New-Object System.Collections.Generic.List[object]
-    $raiseRows = New-Object System.Collections.Generic.List[object]
-}
+$script:summaryRows = New-Object System.Collections.Generic.List[object]
+$script:raiseRows = New-Object System.Collections.Generic.List[object]
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
 
@@ -102,58 +64,9 @@ $DefaultFeeds = @(
     'https://dynamicssmb2.pkgs.visualstudio.com/DynamicsBCPublicFeeds/_packaging/AppSourceSymbols/nuget/v3/index.json'
 )
 
-# --- Helper Functions ---
-function Resolve-AppJsonPath {
-    param([string]$AppDirectory)
-
-    if (-not $AppDirectory) { $AppDirectory = 'app' }
-    $candidate = Join-Path -Path $AppDirectory -ChildPath 'app.json'
-    if (Test-Path -LiteralPath $candidate) {
-        return (Get-Item -LiteralPath $candidate).FullName
-    }
-    if (Test-Path -LiteralPath 'app.json') {
-        return (Get-Item -LiteralPath 'app.json').FullName
-    }
-    throw "app.json not found. Provide -AppDir or run from project root."
-}
-
-function Read-JsonFile {
-    param([string]$Path)
-    try {
-        return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-    } catch {
-        throw "Failed to parse JSON from ${Path}: $($_.Exception.Message)"
-    }
-}
-
-function Expand-FullPath {
-    param([string]$Path)
-    if (-not $Path) { return $null }
-    $expanded = [Environment]::ExpandEnvironmentVariables($Path)
-    try {
-        return (Resolve-Path -LiteralPath $expanded -ErrorAction Stop).ProviderPath
-    } catch {
-        return [System.IO.Path]::GetFullPath($expanded)
-    }
-}
-
-function Get-SymbolCacheRoot {
-    $override = $env:ALBT_SYMBOL_CACHE_ROOT
-    if ($override) {
-        return Expand-FullPath -Path $override
-    }
-    $userHome = $env:HOME
-    if (-not $userHome -and $env:USERPROFILE) { $userHome = $env:USERPROFILE }
-    if (-not $userHome) { throw 'Unable to determine home directory for symbol cache.' }
-    return Join-Path -Path $userHome -ChildPath '.bc-symbol-cache'
-}
-
-function Ensure-Directory {
-    param([string]$Path)
-    if (-not (Test-Path -LiteralPath $Path)) {
-        [void](New-Item -ItemType Directory -Path $Path -Force)
-    }
-}
+# --- Script-Specific Helper Functions ---
+# Note: Common utilities (Read-JsonFile, Expand-FullPath, Ensure-Directory, ConvertTo-SafePathSegment)
+# are imported from common.psm1. Only symbol-download-specific helpers are defined here.
 
 function Compare-Version {
     param(
@@ -199,20 +112,6 @@ function Compare-Version {
     return [string]::Compare($Left, $Right, $true)
 }
 
-function Sanitize-PathSegment {
-    param([string]$Value)
-    if (-not $Value) { return '_' }
-    $invalid = [System.IO.Path]::GetInvalidFileNameChars() + [char]':'
-    $result = $Value
-    foreach ($char in $invalid) {
-        $pattern = [regex]::Escape([string]$char)
-        $result = $result -replace $pattern, '_'
-    }
-    $result = $result -replace '\s+', '_'
-    if ([string]::IsNullOrWhiteSpace($result)) { return '_' }
-    return $result
-}
-
 function Build-PackageMap {
     param($AppJson)
 
@@ -252,10 +151,10 @@ function Test-PackagePresent {
     if ($Version) {
         # Use new naming format with version
         $cleanName = Get-CleanPackageName -PackageId $PackageId
-        $fileName = (Sanitize-PathSegment -Value "$cleanName.$Version") + '.app'
+        $fileName = (ConvertTo-SafePathSegment -Value "$cleanName.$Version") + '.app'
     } else {
         # Fallback to old format for compatibility
-        $fileName = (Sanitize-PathSegment -Value $PackageId) + '.app'
+        $fileName = (ConvertTo-SafePathSegment -Value $PackageId) + '.app'
     }
     $packagePath = Join-Path -Path $CacheDir -ChildPath $fileName
     return Test-Path -LiteralPath $packagePath
@@ -296,19 +195,6 @@ function Select-PackageVersion {
     }
 
     return $ordered[0]
-}
-
-function New-TemporaryDirectory {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    $base = [System.IO.Path]::GetTempPath()
-    $name = 'bc-symbols-' + [System.Guid]::NewGuid().ToString('N')
-    $path = Join-Path -Path $base -ChildPath $name
-    $action = 'Create temporary directory'
-    if (-not $PSCmdlet -or $PSCmdlet.ShouldProcess($path, $action)) {
-        Ensure-Directory -Path $path
-    }
-    return $path
 }
 
 function Get-PackageFeedMetadata {
@@ -381,13 +267,10 @@ function Download-PackageNupkg {
     $downloadUrl = "{0}/flat2/{1}/{2}/{3}" -f $Feed.TrimEnd('/'), $packageIdLower, $Version, $fileName
     $destinationPath = Join-Path -Path $DestinationDirectory -ChildPath $fileName
 
-    # Add verbose output for downloads
-    if ($script:VerboseSymbols) {
-        $cleanPackageName = Get-CleanPackageName -PackageId $PackageId
-        Write-Host "  📥 Downloading: $cleanPackageName" -ForegroundColor Cyan
-        Write-Host "     Version: $Version" -ForegroundColor Gray
-        Write-Host "     Source: $Feed" -ForegroundColor Gray
-    }
+    $cleanPackageName = Get-CleanPackageName -PackageId $PackageId
+    Write-BuildMessage -Type Step -Message "Downloading: $cleanPackageName"
+    Write-BuildMessage -Type Detail -Message "Version: $Version"
+    Write-BuildMessage -Type Detail -Message "Source: $Feed"
 
     try {
         Invoke-WebRequest -Uri $downloadUrl -OutFile $destinationPath -UseBasicParsing -MaximumRedirection 5 -ErrorAction Stop | Out-Null
@@ -513,7 +396,7 @@ function Extract-SymbolApp {
 
     # Create filename using clean package name + version instead of full package ID
     $cleanName = Get-CleanPackageName -PackageId $PackageId
-    $destinationName = (Sanitize-PathSegment -Value "$cleanName.$Version") + '.app'
+    $destinationName = (ConvertTo-SafePathSegment -Value "$cleanName.$Version") + '.app'
     $destinationPath = Join-Path -Path $OutputDirectory -ChildPath $destinationName
 
     $sourceStream = $appEntry.Open()
@@ -528,12 +411,9 @@ function Extract-SymbolApp {
         $sourceStream.Dispose()
     }
 
-    # Add verbose output for successful extraction
-    if ($script:VerboseSymbols) {
-        $cleanPackageName = Get-CleanPackageName -PackageId $PackageId
-        Write-Host "  ✅ Extracted: $cleanPackageName" -ForegroundColor Green
-        Write-Host "     Location: $destinationPath" -ForegroundColor Gray
-    }
+    $cleanPackageName = Get-CleanPackageName -PackageId $PackageId
+    Write-BuildMessage -Type Success -Message "Extracted: $cleanPackageName"
+    Write-BuildMessage -Type Detail -Message "Location: $destinationPath"
 
     return $destinationPath
 }
@@ -624,7 +504,10 @@ function Write-Manifest {
 }
 
 # --- Execution ---
-$appJsonPath = Resolve-AppJsonPath -AppDirectory $AppDir
+$appJsonPath = Get-AppJsonPath $AppDir
+if (-not $appJsonPath) {
+    throw "app.json not found in '$AppDir'"
+}
 $appJson = Read-JsonFile -Path $appJsonPath
 
 if (-not $appJson.id) { throw 'app.json is missing required "id" property.' }
@@ -634,42 +517,39 @@ if (-not $appJson.name) { throw 'app.json is missing required "name" property.' 
 $cacheRoot = Get-SymbolCacheRoot
 Ensure-Directory -Path $cacheRoot
 
-$publisherDir = Join-Path -Path $cacheRoot -ChildPath (Sanitize-PathSegment -Value $appJson.publisher)
+$publisherDir = Join-Path -Path $cacheRoot -ChildPath (ConvertTo-SafePathSegment -Value $appJson.publisher)
 Ensure-Directory -Path $publisherDir
-$appDirPath = Join-Path -Path $publisherDir -ChildPath (Sanitize-PathSegment -Value $appJson.name)
+$appDirPath = Join-Path -Path $publisherDir -ChildPath (ConvertTo-SafePathSegment -Value $appJson.name)
 Ensure-Directory -Path $appDirPath
-$cacheDir = Join-Path -Path $appDirPath -ChildPath (Sanitize-PathSegment -Value $appJson.id)
+$cacheDir = Join-Path -Path $appDirPath -ChildPath (ConvertTo-SafePathSegment -Value $appJson.id)
 Ensure-Directory -Path $cacheDir
 
 $manifestPath = Join-Path -Path $cacheDir -ChildPath 'symbols.lock.json'
 $manifest = Load-Manifest -Path $manifestPath
 $packageMap = Build-PackageMap -AppJson $appJson
 
-if ($VerboseSymbols) {
-    Write-Section 'Processing Packages' ("{0} packages" -f $packageMap.Count)
-    $counter = 0
+Write-BuildHeader 'Package Requirements'
+Write-BuildMessage -Type Info -Message "$($packageMap.Count) packages required"
+
+if ($packageMap.Count -gt 0) {
+    Write-BuildMessage -Type Step -Message "Processing package requirements..."
     foreach ($kvp in $packageMap.GetEnumerator()) {
-        $counter++
-        Write-Progress "Processing requirements" $counter $packageMap.Count
         $cleanName = Get-CleanPackageName -PackageId $kvp.Key
-        Write-VerbLine 'REQ' ("{0} >= {1}" -f $cleanName, ($kvp.Value ? $kvp.Value : '(any)')) Yellow '📋'
+        $versionInfo = if ($kvp.Value) { ">= $($kvp.Value)" } else { "(any)" }
+        Write-BuildMessage -Type Detail -Message "$cleanName $versionInfo"
     }
 }
 
 if ($packageMap.Count -eq 0) {
-    Write-Host 'No symbol packages required based on app.json.'
+    Write-BuildMessage -Type Success -Message 'No symbol packages required'
     Write-Manifest -Path $manifestPath -AppJson $appJson -Packages ([ordered]@{}) -Feeds @()
     exit 0
 }
 
-$feeds = if ($env:ALBT_SYMBOL_FEEDS) {
-    $env:ALBT_SYMBOL_FEEDS.Split([char]',') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() }
-} else {
-    $DefaultFeeds
-}
+$feeds = $DefaultFeeds
 
 if ($feeds.Count -eq 0) {
-    throw 'No symbol feeds configured. Set ALBT_SYMBOL_FEEDS or update script defaults.'
+    throw 'No symbol feeds configured. Update script defaults.'
 }
 
 $downloadsRequired = $false
@@ -746,8 +626,8 @@ while ($queue.Count -gt 0) {
 
     if (-not $resolveResult -and $needsDownload) {
         # Show download section header before first download
-        if ($VerboseSymbols -and -not $downloadSectionShown) {
-            Write-Section 'Symbol Downloads' 'Downloading required packages'
+        if (-not $downloadSectionShown) {
+            Write-BuildHeader 'Symbol Downloads'
             $downloadSectionShown = $true
         }
 
@@ -793,24 +673,22 @@ while ($queue.Count -gt 0) {
         }
     }
 
-    if ($VerboseSymbols) {
-        # Ensure single row per package, update as we learn more (captures latest minReq situation)
-        $existing = $summaryRows | Where-Object { $_.Package -eq $packageId } | Select-Object -First 1
-        $warnFlag = ($minimumVersion -and (Compare-Version -Left $currentVersion -Right $minimumVersion) -lt 0) ? 'Y' : ''
-        if ($existing) {
-            $existing.Resolved = $currentVersion
-            $existing.MinReq = $(if ($minimumVersion) { $minimumVersion } else { '' })
-            $existing.MaxAvail = $(if ($maxAvailableVersion) { $maxAvailableVersion } else { '' })
-            if ($warnFlag -eq 'Y') { $existing.Warn = 'Y' }
-        } else {
-            $summaryRows.Add([pscustomobject]@{
-                Package = $packageId
-                Resolved = $currentVersion
-                MinReq = $(if ($minimumVersion) { $minimumVersion } else { '' })
-                MaxAvail = $(if ($maxAvailableVersion) { $maxAvailableVersion } else { '' })
-                Warn = $warnFlag
-            }) | Out-Null
-        }
+    # Track package resolution for summary
+    $existing = $script:summaryRows | Where-Object { $_.Package -eq $packageId } | Select-Object -First 1
+    $warnFlag = ($minimumVersion -and (Compare-Version -Left $currentVersion -Right $minimumVersion) -lt 0) ? 'Y' : ''
+    if ($existing) {
+        $existing.Resolved = $currentVersion
+        $existing.MinReq = $(if ($minimumVersion) { $minimumVersion } else { '' })
+        $existing.MaxAvail = $(if ($maxAvailableVersion) { $maxAvailableVersion } else { '' })
+        if ($warnFlag -eq 'Y') { $existing.Warn = 'Y' }
+    } else {
+        $script:summaryRows.Add([pscustomobject]@{
+            Package = $packageId
+            Resolved = $currentVersion
+            MinReq = $(if ($minimumVersion) { $minimumVersion } else { '' })
+            MaxAvail = $(if ($maxAvailableVersion) { $maxAvailableVersion } else { '' })
+            Warn = $warnFlag
+        }) | Out-Null
     }
 
     foreach ($dependency in $resolveResult.Dependencies) {
@@ -837,16 +715,14 @@ while ($queue.Count -gt 0) {
             $updated = $true
         }
 
-        if ($VerboseSymbols) {
-            # Always record edge; mark if it updated the minimum
-            $edgeMin = $(if ($requiredMinimums[$depId]) { $requiredMinimums[$depId] } else { '' })
-            $raiseRows.Add([pscustomobject]@{
-                Parent = $packageId
-                Child  = $depId
-                Min    = $edgeMin
-                Raised = $(if ($updated) { 'Y' } else { '' })
-            }) | Out-Null
-        }
+        # Track dependency edges for analysis
+        $edgeMin = $(if ($requiredMinimums[$depId]) { $requiredMinimums[$depId] } else { '' })
+        $script:raiseRows.Add([pscustomobject]@{
+            Parent = $packageId
+            Child  = $depId
+            Min    = $edgeMin
+            Raised = $(if ($updated) { 'Y' } else { '' })
+        }) | Out-Null
 
         if ($updated) {
             if (-not $minimumOrigins.ContainsKey($depId)) { $minimumOrigins[$depId] = @() }
@@ -871,209 +747,155 @@ while ($queue.Count -gt 0) {
     }
 }
 
-if ($VerboseSymbols) {
+Write-BuildHeader 'Package Summary'
 
-    # SUMMARY TABLE
-    $warningCount = ($summaryRows | Where-Object { $_.Warn -eq 'Y' }).Count
-    $successCount = $summaryRows.Count - $warningCount
-    Write-Section 'Package Summary' ("{0} ✅ successful, {1} ⚠️ conflicts resolved" -f $successCount, $warningCount)
+$warningCount = @($script:summaryRows | Where-Object { $_.Warn -eq 'Y' }).Count
+$successCount = $script:summaryRows.Count - $warningCount
+Write-BuildMessage -Type Info -Message "$successCount packages resolved successfully, $warningCount conflicts resolved"
 
-    # Show warnings first for quick scanning
-    $warningPackages = $summaryRows | Where-Object { $_.Warn -eq 'Y' } | Sort-Object Package
-    if ($warningPackages.Count -gt 0) {
-        Write-Host "⚠️  VERSION CONFLICTS (resolved automatically):" -ForegroundColor Yellow
-        Write-Host "   These packages had version conflicts due to dependency requirements:" -ForegroundColor Gray
-        Write-Host ""
-        $hdr = '   {0,-65} {1,-18} {2,-18} {3,-18}' -f 'PACKAGE','RESOLVED','REQUIRED','AVAILABLE'
-        Write-Host $hdr -ForegroundColor Yellow
-        foreach ($r in $warningPackages) {
-            $cleanName = Get-CleanPackageName -PackageId $r.Package
-            $pkgDisp = if ($cleanName.Length -le 65) { $cleanName } else { $cleanName.Substring(0,62) + '...' }
-            $line = '   {0,-65} {1,-18} {2,-18} {3,-18}' -f $pkgDisp,$r.Resolved,$r.MinReq,$r.MaxAvail
-            Write-Host $line -ForegroundColor Red
-        }
-        Write-Host "   🔍 See 'Version Resolution Analysis' below for detailed conflict sources" -ForegroundColor Gray
-        Write-Host ""
-    }
-
-    # Full summary table
-    Write-Host "📋 COMPLETE PACKAGE SUMMARY:" -ForegroundColor Cyan
-    $hdr = '   {0,-65} {1,-18} {2,-18} {3,-18} {4}' -f 'PACKAGE','RESOLVED','MINREQ','MAXAVAIL','STATUS'
-    Write-Host $hdr -ForegroundColor Yellow
-    foreach ($r in ($summaryRows | Sort-Object @{Expression={$_.Warn -eq 'Y'}; Descending=$true}, Package)) {
+# Show warning packages first
+$warningPackages = @($script:summaryRows | Where-Object { $_.Warn -eq 'Y' } | Sort-Object Package)
+if ($warningPackages.Count -gt 0) {
+    Write-BuildMessage -Type Warning -Message "Version conflicts detected (resolved automatically)"
+    foreach ($r in $warningPackages) {
         $cleanName = Get-CleanPackageName -PackageId $r.Package
-        $pkgDisp = if ($cleanName.Length -le 65) { $cleanName } else { $cleanName.Substring(0,62) + '...' }
-        $warnIcon = if ($r.Warn -eq 'Y') { '⚠️' } else { '✅' }
-        $line = '   {0,-65} {1,-18} {2,-18} {3,-18} {4}' -f $pkgDisp,$r.Resolved,$r.MinReq,$r.MaxAvail,$warnIcon
-        if ($r.Warn) { Write-Host $line -ForegroundColor Red } else { Write-Host $line -ForegroundColor Green }
+        Write-BuildMessage -Type Detail -Message "$cleanName - Resolved: $($r.Resolved), Required: $($r.MinReq), Available: $($r.MaxAvail)"
     }
+}
 
-    # VERSION RESOLUTION ANALYSIS - Detailed conflict analysis
-    if ($script:versionWarnings -and $script:versionWarnings.Count -gt 0) {
-        Write-Section 'Version Resolution Analysis' ("{0} conflicts analyzed" -f $script:versionWarnings.Count)
-        Write-Host "🔍 CONFLICT SOURCE ANALYSIS:" -ForegroundColor Cyan
-        Write-Host "   Understanding why these version requirements were raised:" -ForegroundColor Gray
-        Write-Host ""
+# Full package summary
+Write-BuildMessage -Type Step -Message "Package resolution details:"
+foreach ($r in ($script:summaryRows | Sort-Object @{Expression={$_.Warn -eq 'Y'}; Descending=$true}, Package)) {
+    $cleanName = Get-CleanPackageName -PackageId $r.Package
+    $status = if ($r.Warn -eq 'Y') { 'Conflict' } else { 'OK' }
+    Write-BuildMessage -Type Detail -Message "$cleanName - Resolved: $($r.Resolved) ($status)"
+}
 
-        foreach ($pkg in ($script:versionWarnings.Keys | Sort-Object)) {
-            $w = $script:versionWarnings[$pkg]
-            $cleanName = Get-CleanPackageName -PackageId $pkg
-            $pkgDisp = if ($cleanName.Length -le 75) { $cleanName } else { $cleanName.Substring(0,72) + '...' }
-            Write-Host "   📦 $pkgDisp" -ForegroundColor White
-            Write-Host "      Requested: $($w.Requested) (from dependency chain)" -ForegroundColor Yellow
-            Write-Host "      Available: $($w.Available) (best version on feed)" -ForegroundColor Cyan
-            Write-Host "      Resolved:  $($w.Resolved) ✅ (build compatible)" -ForegroundColor Green
+# VERSION RESOLUTION ANALYSIS
+if ($script:versionWarnings -and $script:versionWarnings.Count -gt 0) {
+    Write-BuildHeader 'Version Resolution Analysis'
+    Write-BuildMessage -Type Info -Message "$($script:versionWarnings.Count) conflicts analyzed"
 
-            # Show which dependencies are causing this requirement
-            $origins = $minimumOrigins[$pkg]
-            if ($origins) {
-                $dependencyOrigins = $origins | Where-Object { $_.Source -like 'dependency:*' }
-                if ($dependencyOrigins) {
-                    Write-Host "      Triggered by:" -ForegroundColor Gray
-                    foreach ($origin in ($dependencyOrigins | Select-Object -First 3)) {
-                        $sourcePkg = $origin.Source -replace 'dependency:', ''
-                        $sourcePkgClean = Get-CleanPackageName -PackageId $sourcePkg
-                        $sourcePkgDisp = if ($sourcePkgClean.Length -le 50) { $sourcePkgClean } else { $sourcePkgClean.Substring(0,47) + '...' }
-                        Write-Host "        → $sourcePkgDisp" -ForegroundColor DarkYellow
-                    }
+    foreach ($pkg in ($script:versionWarnings.Keys | Sort-Object)) {
+        $w = $script:versionWarnings[$pkg]
+        $cleanName = Get-CleanPackageName -PackageId $pkg
+        Write-BuildMessage -Type Warning -Message "Conflict: $cleanName"
+        Write-BuildMessage -Type Detail -Message "Requested: $($w.Requested) (from dependency chain)"
+        Write-BuildMessage -Type Detail -Message "Available: $($w.Available) (best version on feed)"
+        Write-BuildMessage -Type Detail -Message "Resolved: $($w.Resolved) (build compatible)"
+
+        # Show which dependencies are causing this requirement
+        $origins = $minimumOrigins[$pkg]
+        if ($origins) {
+            $dependencyOrigins = @($origins | Where-Object { $_.Source -like 'dependency:*' })
+            if ($dependencyOrigins.Count -gt 0) {
+                foreach ($origin in ($dependencyOrigins | Select-Object -First 3)) {
+                    $sourcePkg = $origin.Source -replace 'dependency:', ''
+                    $sourcePkgClean = Get-CleanPackageName -PackageId $sourcePkg
+                    Write-BuildMessage -Type Detail -Message "Triggered by: $sourcePkgClean"
                 }
             }
-            Write-Host ""
-        }
-
-        Write-Host "   ✅ All conflicts resolved automatically - build will work correctly!" -ForegroundColor Green
-        Write-Host ""
-    }
-
-    # DEPENDENCY RAISES TABLE
-    $raiseCount = ($raiseRows | Where-Object { $_.Raised -eq 'Y' }).Count
-    $totalDependencies = $raiseRows.Count
-    if ($raiseCount -gt 0) {
-        Write-Section 'Dependency Analysis' ("{0} version raises detected" -f $raiseCount)
-        Write-Host "🔗 DEPENDENCY VERSION RAISES:" -ForegroundColor Cyan
-        Write-Host "   These dependencies actually raised minimum version requirements:" -ForegroundColor Gray
-        $hdr2 = '   {0,-60} {1,-60} {2,-15} {3}' -f 'PARENT','CHILD','MIN VER','RAISED'
-        Write-Host $hdr2 -ForegroundColor Yellow
-        # Only show the ones that actually raised versions (consistent with count)
-        $actualRaises = $raiseRows | Where-Object { $_.Raised -eq 'Y' } | Sort-Object Parent, Child
-        foreach ($d in $actualRaises) {
-            $pFull = $d.Parent
-            $cFull = $d.Child
-            $pClean = Get-CleanPackageName -PackageId $pFull
-            $cClean = Get-CleanPackageName -PackageId $cFull
-            $p = if ($pClean.Length -le 60) { $pClean } else { $pClean.Substring(0,57) + '...' }
-            $c = if ($cClean.Length -le 60) { $cClean } else { $cClean.Substring(0,57) + '...' }
-            $raiseIcon = '📈'  # We know it's raised since we filtered for it
-            $line = '   {0,-60} {1,-60} {2,-15} {3}' -f $p,$c,$d.Min,$raiseIcon
-            $color = 'Yellow'  # All are raises, so all yellow
-            Write-Host $line -ForegroundColor $color
-        }
-        if ($totalDependencies -gt $raiseCount) {
-            Write-Host ""
-            Write-Host "   📊 Total dependency relationships: $totalDependencies (only $raiseCount actually raised versions)" -ForegroundColor DarkCyan
         }
     }
 
-    # VERSION REQUIREMENT ORIGINS - Enhanced format for better scanning
-    Write-Section 'Version Requirement Origins' ("{0} packages analyzed" -f $requiredMinimums.Keys.Count)
-    Write-Host "📊 REQUIREMENT SOURCES:" -ForegroundColor Cyan
-    Write-Host "   Understanding where each package version requirement originated:" -ForegroundColor Gray
-    Write-Host ""
+    Write-BuildMessage -Type Success -Message "All conflicts resolved automatically - build will work correctly"
+}
 
-    # Group packages by origin type for better organization
-    $initialRequirements = @()
-    $dependencyRequirements = @()
+# DEPENDENCY ANALYSIS
+$raiseCount = @($script:raiseRows | Where-Object { $_.Raised -eq 'Y' }).Count
+$totalDependencies = $script:raiseRows.Count
+if ($raiseCount -gt 0) {
+    Write-BuildHeader 'Dependency Analysis'
+    Write-BuildMessage -Type Info -Message "$raiseCount version raises detected (out of $totalDependencies total dependencies)"
 
-    foreach ($pkg in ($requiredMinimums.Keys | Sort-Object)) {
-        $finalMin = $requiredMinimums[$pkg]
-        $origList = $minimumOrigins[$pkg]
-        if (-not $origList) { $origList = @() }
+    $actualRaises = @($script:raiseRows | Where-Object { $_.Raised -eq 'Y' } | Sort-Object Parent, Child)
+    foreach ($d in $actualRaises) {
+        $pClean = Get-CleanPackageName -PackageId $d.Parent
+        $cClean = Get-CleanPackageName -PackageId $d.Child
+        Write-BuildMessage -Type Detail -Message "$pClean → $cClean (Min: $($d.Min))"
+    }
+}
 
-        $hasInitial = $origList | Where-Object { $_.Source -eq 'app.json' }
-        $hasDependencies = $origList | Where-Object { $_.Source -like 'dependency:*' }
+# VERSION REQUIREMENT ORIGINS
+Write-BuildHeader 'Version Requirement Origins'
+Write-BuildMessage -Type Info -Message "$($requiredMinimums.Keys.Count) packages analyzed"
 
-        if ($hasInitial) {
-            $initialRequirements += [pscustomobject]@{
-                Package = $pkg
-                Version = $finalMin
-                Sources = $origList
-            }
-        }
+# Group packages by origin type
+$initialRequirements = @()
+$dependencyRequirements = @()
 
-        if ($hasDependencies) {
-            $dependencyRequirements += [pscustomobject]@{
-                Package = $pkg
-                Version = $finalMin
-                Sources = $origList
-            }
+foreach ($pkg in ($requiredMinimums.Keys | Sort-Object)) {
+    $finalMin = $requiredMinimums[$pkg]
+    $origList = $minimumOrigins[$pkg]
+    if (-not $origList) { $origList = @() }
+
+    $hasInitial = @($origList | Where-Object { $_.Source -eq 'app.json' })
+    $hasDependencies = @($origList | Where-Object { $_.Source -like 'dependency:*' })
+
+    if ($hasInitial.Count -gt 0) {
+        $initialRequirements += [pscustomobject]@{
+            Package = $pkg
+            Version = $finalMin
+            Sources = $origList
         }
     }
 
-    # Show initial requirements first
-    if ($initialRequirements.Count -gt 0) {
-        Write-Host "   📋 INITIAL REQUIREMENTS (from app.json):" -ForegroundColor Green
-        foreach ($req in $initialRequirements) {
-            $cleanName = Get-CleanPackageName -PackageId $req.Package
-            $pkgDisp = if ($cleanName.Length -le 70) { $cleanName } else { $cleanName.Substring(0,67) + '...' }
-            Write-Host "      ✓ $pkgDisp → $($req.Version)" -ForegroundColor Green
-        }
-        Write-Host ""
-    }
-
-    # Show dependency-driven requirements
-    if ($dependencyRequirements.Count -gt 0) {
-        Write-Host "   🔗 DEPENDENCY-DRIVEN REQUIREMENTS:" -ForegroundColor Yellow
-        foreach ($req in ($dependencyRequirements | Sort-Object Package)) {
-            $cleanName = Get-CleanPackageName -PackageId $req.Package
-            $pkgDisp = if ($cleanName.Length -le 70) { $cleanName } else { $cleanName.Substring(0,67) + '...' }
-            Write-Host "      📦 $pkgDisp → $($req.Version)" -ForegroundColor Yellow
-
-            # Show unique dependency sources (avoid duplicates)
-            $dependencySources = $req.Sources | Where-Object { $_.Source -like 'dependency:*' } |
-                ForEach-Object { $_.Source -replace 'dependency:', '' } |
-                Sort-Object -Unique | Select-Object -First 3
-
-            foreach ($source in $dependencySources) {
-                $sourceClean = Get-CleanPackageName -PackageId $source
-                $sourceDisp = if ($sourceClean.Length -le 60) { $sourceClean } else { $sourceClean.Substring(0,57) + '...' }
-                Write-Host "         ← $sourceDisp" -ForegroundColor DarkYellow
-            }
-            Write-Host ""
+    if ($hasDependencies.Count -gt 0) {
+        $dependencyRequirements += [pscustomobject]@{
+            Package = $pkg
+            Version = $finalMin
+            Sources = $origList
         }
     }
 }
 
-# Final status with timing
-if ($VerboseSymbols) {
-    $totalElapsed = New-TimeSpan -Start $script:SymFmt.StartTime -End (Get-Date)
-} else {
-    $totalElapsed = New-TimeSpan -Seconds 0
+# Show initial requirements
+if ($initialRequirements.Count -gt 0) {
+    Write-BuildMessage -Type Step -Message "Initial requirements (from app.json):"
+    foreach ($req in $initialRequirements) {
+        $cleanName = Get-CleanPackageName -PackageId $req.Package
+        Write-BuildMessage -Type Detail -Message "$cleanName → $($req.Version)"
+    }
 }
+
+# Show dependency-driven requirements
+if ($dependencyRequirements.Count -gt 0) {
+    Write-BuildMessage -Type Step -Message "Dependency-driven requirements:"
+    foreach ($req in ($dependencyRequirements | Sort-Object Package)) {
+        $cleanName = Get-CleanPackageName -PackageId $req.Package
+        Write-BuildMessage -Type Detail -Message "$cleanName → $($req.Version)"
+
+        # Show unique dependency sources
+        $dependencySources = @($req.Sources | Where-Object { $_.Source -like 'dependency:*' } |
+            ForEach-Object { $_.Source -replace 'dependency:', '' } |
+            Sort-Object -Unique | Select-Object -First 3)
+
+        foreach ($source in $dependencySources) {
+            $sourceClean = Get-CleanPackageName -PackageId $source
+            Write-BuildMessage -Type Detail -Message "  ← $sourceClean"
+        }
+    }
+}
+
+Write-BuildHeader 'Summary'
+
+$totalElapsed = New-TimeSpan -Start $script:StartTime -End (Get-Date)
+$elapsedFormatted = "{0:mm\:ss}" -f $totalElapsed
+
 if (-not $downloadsRequired) {
-    if ($VerboseSymbols) {
-        Write-Host ""
-        Write-Host ("✅ Symbol cache already up to date! [{0:mm\:ss}]" -f $totalElapsed) -ForegroundColor Green
-    } else {
-        Write-Host "✅ Symbol cache already up to date."
-    }
+    Write-BuildMessage -Type Success -Message "Symbol cache already up to date! (Elapsed: $elapsedFormatted)"
 } else {
-    if ($VerboseSymbols) {
-        Write-Host ""
-        Write-Host ("✅ Symbol cache updated successfully! [{0:mm\:ss}]" -f $totalElapsed) -ForegroundColor Green
-    } else {
-        Write-Host "✅ Symbol cache updated successfully."
-    }
+    Write-BuildMessage -Type Success -Message "Symbol cache updated successfully! (Elapsed: $elapsedFormatted)"
 }
-if ($VerboseSymbols) {
-    $successCount = ($summaryRows | Where-Object { $_.Warn -ne 'Y' }).Count
-    $warningCount = ($summaryRows | Where-Object { $_.Warn -eq 'Y' }).Count
-    $totalCount = $summaryRows.Count
 
-    if ($warningCount -eq 0) {
-        Write-Host "🎯 Ready for build: All $totalCount packages resolved successfully!" -ForegroundColor Green
-    } else {
-        Write-Host "🎯 Ready for build: $successCount packages OK, $warningCount version conflicts resolved (using best available)" -ForegroundColor Cyan
-    }
+$successCount = @($script:summaryRows | Where-Object { $_.Warn -ne 'Y' }).Count
+$warningCount = @($script:summaryRows | Where-Object { $_.Warn -eq 'Y' }).Count
+$totalCount = $script:summaryRows.Count
+
+if ($warningCount -eq 0) {
+    Write-BuildMessage -Type Success -Message "Ready for build: All $totalCount packages resolved successfully"
+} else {
+    Write-BuildMessage -Type Info -Message "Ready for build: $successCount packages OK, $warningCount version conflicts resolved (using best available)"
 }
 
 Write-Manifest -Path $manifestPath -AppJson $appJson -Packages $resolvedPackages -Feeds $feeds
