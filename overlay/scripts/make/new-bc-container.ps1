@@ -95,6 +95,7 @@ try {
         -includeTestLibrariesOnly `
         -dns '8.8.8.8' `
         -useBestContainerOS `
+        -memoryLimit 8g `
         -isolation 'process' `
         -updateHosts
 

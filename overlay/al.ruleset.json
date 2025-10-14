@@ -2,6 +2,7 @@
   "name": "DefaultRuleSet",
   "description": "Promote Info-level diagnostics from LinterCop, CodeCop, UICop, and AppSourceCop to Warning (auto-synced 75 rules on 2025-09-09)",
   "rules": [
+    { "id": "AA0005", "action": "Hidden" },
     { "id": "AA0072", "action": "Hidden" },
     { "id": "AA0210", "action": "Warning" },
     { "id": "AA0219", "action": "Warning" },
