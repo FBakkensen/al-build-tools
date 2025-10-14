@@ -861,81 +861,6 @@ function Import-BCContainerHelper {
 }
 
 # =============================================================================
-# VSCode Extension Utilities
-# =============================================================================
-
-function Get-ALTestRunnerModulePath {
-    <#
-    .SYNOPSIS
-        Find ALTestRunner PowerShell module from VSCode extension installations
-    .DESCRIPTION
-        Searches for the ALTestRunner.psm1 module across all VSCode installation types:
-        - VSCode Stable (.vscode)
-        - VSCode Insiders (.vscode-insiders)
-        - Custom installations (.vscode-*)
-
-        Returns the highest version installation if multiple are found.
-    .OUTPUTS
-        FileInfo object for ALTestRunner.psm1, or $null if not found
-    .EXAMPLE
-        $modulePath = Get-ALTestRunnerModulePath
-        if ($modulePath) { Import-Module $modulePath.FullName }
-    #>
-    [CmdletBinding()]
-    param()
-
-    $userProfile = $env:USERPROFILE
-    if (-not $userProfile) {
-        return $null
-    }
-
-    # Search all VSCode extension directories
-    $searchPatterns = @('.vscode', '.vscode-insiders', '.vscode-*')
-    $candidates = @()
-
-    foreach ($pattern in $searchPatterns) {
-        $extensionDirs = Get-ChildItem -Path $userProfile -Filter $pattern -Directory -ErrorAction SilentlyContinue
-
-        foreach ($dir in $extensionDirs) {
-            $modulePath = Join-Path -Path $dir.FullName -ChildPath 'extensions\jamespearson.al-test-runner-*\PowerShell\ALTestRunner.psm1'
-            $found = Get-ChildItem -Path $modulePath -File -ErrorAction SilentlyContinue
-
-            if ($found) {
-                foreach ($module in $found) {
-                    # Extract version from path: jamespearson.al-test-runner-X.Y.Z
-                    if ($module.FullName -match 'jamespearson\.al-test-runner-(\d+\.\d+\.\d+)') {
-                        $version = [version]$matches[1]
-                        $candidates += [pscustomobject]@{
-                            Path = $module
-                            Version = $version
-                        }
-                    } else {
-                        # If version can't be parsed, use 0.0.0 as fallback
-                        $candidates += [pscustomobject]@{
-                            Path = $module
-                            Version = [version]'0.0.0'
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if ($candidates.Count -eq 0) {
-        return $null
-    }
-
-    # Return highest version if multiple found
-    $selected = $candidates | Sort-Object Version -Descending | Select-Object -First 1
-
-    if ($candidates.Count -gt 1) {
-        Write-BuildMessage -Type Detail -Message "Multiple AL Test Runner installations found, using version $($selected.Version)"
-    }
-
-    return $selected.Path
-}
-
-# =============================================================================
 # Module Exports
 # =============================================================================
 
@@ -984,7 +909,4 @@ Export-ModuleMember -Function @(
     'Get-BCCredential'
     'Get-BCContainerName'
     'Import-BCContainerHelper'
-
-    # VSCode Extension Utilities
-    'Get-ALTestRunnerModulePath'
 )

@@ -138,11 +138,35 @@ $ScriptCmd = @('pwsh', '-NoLogo', '-NoProfile', '-Command')
 
 # Load common helper functions used across build scripts
 # This eliminates code duplication and provides a single source of truth
+# Use concise error rendering to avoid verbose PowerShell location banners
+$global:ErrorView = 'CategoryView'
 Import-Module "$PSScriptRoot/scripts/common.psm1" -Force -DisableNameChecking
 
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
+function Get-FailureMessage {
+    param(
+        [string]$ScriptName,
+        [int]$ExitCode
+    )
+
+    switch -Regex ($ScriptName) {
+        '^run-tests\.ps1$'                { return 'AL tests failed. See summary above.' }
+        '^build\.ps1$'                    { return 'Build failed. See details above.' }
+        '^publish-app\.ps1$'              { return 'Publish failed. See details above.' }
+        '^download-symbols\.ps1$'         { return 'Symbol download failed.' }
+        '^download-compiler\.ps1$'        { return 'Compiler provisioning failed.' }
+        '^provision-local-symbols\.ps1$'  { return 'Local symbol provisioning failed.' }
+        '^clean\.ps1$'                    { return 'Clean failed.' }
+        '^show-config\.ps1$'              { return 'Show config failed.' }
+        '^show-analyzers\.ps1$'           { return 'Analyzer discovery failed.' }
+        '^new-bc-container\.ps1$'         { return 'BC container setup failed.' }
+        '^validate-breaking-changes\.ps1$'{ return 'Breaking change validation failed.' }
+        default                            { return 'Task failed.' }
+    }
+}
 
 function Invoke-BuildScript {
     param(
@@ -152,7 +176,7 @@ function Invoke-BuildScript {
 
     $scriptPath = Join-Path 'scripts' 'make' $ScriptName
     if (-not (Test-Path $scriptPath)) {
-        throw "Build script not found: $scriptPath"
+        throw "Build configuration error: Script not found: $scriptPath"
     }
 
     # Set guard environment variable
@@ -177,7 +201,8 @@ function Invoke-BuildScript {
         & $allArgs[0] $allArgs[1..($allArgs.Count-1)]
 
         if ($LASTEXITCODE -ne 0) {
-            throw "Script $ScriptName failed with exit code $LASTEXITCODE"
+            $friendly = Get-FailureMessage -ScriptName $ScriptName -ExitCode $LASTEXITCODE
+            throw $friendly
         }
     }
     finally {
@@ -194,14 +219,17 @@ function Invoke-BuildScript {
 task help {
     Write-TaskHeader "HELP" "AL Project Build System"
 
-    Write-BuildMessage -Type Info -Message "AVAILABLE TASKS:"
-    Write-BuildMessage -Type Detail -Message "download-compiler - Install/update the AL compiler dotnet tool"
-    Write-BuildMessage -Type Detail -Message "download-symbols  - Download required Business Central symbol packages"
-    Write-BuildMessage -Type Detail -Message "build             - Compile the AL project (requires provisioning first)"
+    Write-BuildMessage -Type Info -Message "MAIN TASKS:"
+    Write-BuildMessage -Type Detail -Message "test              - Run full test workflow (build → test → publish → run tests)"
+    Write-BuildMessage -Type Detail -Message "build             - Compile the main app only"
+    Write-BuildMessage -Type Detail -Message "publish           - Publish main app to BC server (builds first)"
+    Write-BuildMessage -Type Detail -Message "provision         - Set up environment (compiler + symbols)"
     Write-BuildMessage -Type Detail -Message "clean             - Remove build artifacts"
+
+    Write-BuildMessage -Type Info -Message "UTILITY TASKS:"
     Write-BuildMessage -Type Detail -Message "show-config       - Display current configuration"
     Write-BuildMessage -Type Detail -Message "show-analyzers    - Show discovered analyzers"
-    Write-BuildMessage -Type Detail -Message "provision         - Run full provisioning (compiler + symbols)"
+    Write-BuildMessage -Type Detail -Message "new-bc-container  - Create and configure BC Docker container"
     Write-BuildMessage -Type Detail -Message "help              - Show this help message"
 
     Write-BuildHeader 'Configuration Options'
@@ -209,9 +237,10 @@ task help {
     Write-BuildMessage -Type Detail -Message "RulesetPath=$RulesetPath - Optional ruleset file passed to ALC if present"
 
     Write-BuildHeader 'Getting Started'
-    Write-BuildMessage -Type Step -Message "Daily workflow: Invoke-Build (just builds)"
-    Write-BuildMessage -Type Step -Message "New environment: First run 'Invoke-Build provision', then 'Invoke-Build'"
-    Write-BuildMessage -Type Step -Message "Complete setup: Invoke-Build all (provision + build)"
+    Write-BuildMessage -Type Step -Message "Daily workflow:     Invoke-Build test"
+    Write-BuildMessage -Type Step -Message "Main app only:      Invoke-Build build"
+    Write-BuildMessage -Type Step -Message "New environment:    Invoke-Build provision (first time only)"
+    Write-BuildMessage -Type Step -Message "Complete setup:     Invoke-Build all"
 
     Write-BuildHeader 'Additional Commands'
     Write-BuildMessage -Type Detail -Message "Invoke-Build ?                    - Show all tasks with synopses"
@@ -256,21 +285,41 @@ task show-analyzers {
     Invoke-BuildScript 'show-analyzers.ps1' @($AppDir, $TestDir)
 }
 
+# =============================================================================
+# Main App Task Chain (Standalone, Production-Ready)
+# =============================================================================
+
+# Synopsis: Publish main app to BC server
+task publish build, {
+    Write-TaskHeader "PUBLISH" "Main App Publishing"
+    Invoke-BuildScript 'publish-app.ps1' @($AppDir, $ServerUrl, $ServerInstance)
+}
+
+# =============================================================================
+# Test Workflow Task Chain (Sequential, Independent)
+# =============================================================================
+
 # Synopsis: Download symbols for test app
 task download-symbols-test {
     Write-TaskHeader "DOWNLOAD-SYMBOLS-TEST" "Test App Symbol Provisioning"
     Invoke-BuildScript 'download-symbols.ps1' @($TestDir)
 }
 
-# Synopsis: Provision freshly-built main app as symbol for test app
-task provision-test-dependencies build, {
-    Write-TaskHeader "PROVISION-TEST-DEPENDENCIES" "Local Symbol Provisioning"
+# Synopsis: Build main app (test workflow)
+task test-build {
+    Write-TaskHeader "TEST-BUILD" "Main App Compilation (Test Workflow)"
+    Invoke-BuildScript 'build.ps1' @($AppDir)
+}
+
+# Synopsis: Provision main app as symbol for test app
+task test-provision-symbols test-build, {
+    Write-TaskHeader "TEST-PROVISION-SYMBOLS" "Local Symbol Provisioning"
     Invoke-BuildScript 'provision-local-symbols.ps1' @($AppDir, $TestDir)
 }
 
-# Synopsis: Compile the test app
-task build-test provision-test-dependencies, {
-    Write-TaskHeader "BUILD-TEST" "Test App Compilation"
+# Synopsis: Build test app
+task test-build-test test-provision-symbols, {
+    Write-TaskHeader "TEST-BUILD-TEST" "Test App Compilation"
     # Allow warnings for test app (don't treat as errors)
     $savedWarnAsError = $env:WARN_AS_ERROR
     try {
@@ -281,20 +330,21 @@ task build-test provision-test-dependencies, {
     }
 }
 
-# Synopsis: Publish main app to BC server
-task publish build, {
-    Write-TaskHeader "PUBLISH" "Main App Publishing"
+# Synopsis: Publish main app to BC server (test workflow)
+task test-publish test-build-test, {
+    Write-TaskHeader "TEST-PUBLISH" "Main App Publishing (Test Workflow)"
     Invoke-BuildScript 'publish-app.ps1' @($AppDir, $ServerUrl, $ServerInstance)
 }
 
 # Synopsis: Publish test app to BC server
-task publish-test build-test, {
-    Write-TaskHeader "PUBLISH-TEST" "Test App Publishing"
+task test-publish-test test-publish, {
+    Write-TaskHeader "TEST-PUBLISH-TEST" "Test App Publishing"
     Invoke-BuildScript 'publish-app.ps1' @($TestDir, $ServerUrl, $ServerInstance)
 }
 
-# Synopsis: Run AL tests (builds, publishes, and executes tests)
-task test build, build-test, publish, publish-test, {
+# Synopsis: Run AL tests with full sequential workflow
+# Execution order: test-build → test-provision-symbols → test-build-test → test-publish → test-publish-test → test
+task test test-publish-test, {
     Write-TaskHeader "TEST" "AL Test Execution"
     Invoke-BuildScript 'run-tests.ps1' @($TestDir, $null, $null, $ServerUrl, $ServerInstance)
 }

@@ -6,7 +6,7 @@
 
 .DESCRIPTION
     Publishes a compiled AL app (.app file) to a Business Central server
-    using the ALTestRunner module's Publish-App functionality.
+    using BcContainerHelper PowerShell module.
 
 .PARAMETER AppDir
     Directory containing the app to publish (passed from al.build.ps1)
@@ -20,10 +20,8 @@
     Falls back to $env:ALBT_BC_SERVER_INSTANCE, then defaults to 'BC'
 
 .NOTES
-    This script uses the ALTestRunner PowerShell module which must be installed
-    via the AL Test Runner VS Code extension.
-
-    Server configuration is read from the test directory's launch.json configuration.
+    This script requires BcContainerHelper PowerShell module.
+    Install: Install-Module BcContainerHelper -Scope CurrentUser
 #>
 
 param(
@@ -87,24 +85,6 @@ $fileSize = if ($appFile.Length -lt 1024) {
 }
 Write-BuildMessage -Type Detail -Message "Status: Found ($fileSize)"
 
-Write-BuildHeader 'Loading ALTestRunner Module'
-
-# Import ALTestRunner module
-$alTestRunnerPath = Get-ALTestRunnerModulePath
-
-if (-not $alTestRunnerPath) {
-    Write-BuildMessage -Type Error -Message "ALTestRunner PowerShell module not found."
-    Write-BuildMessage -Type Detail -Message "Install the AL Test Runner VS Code extension from:"
-    Write-BuildMessage -Type Detail -Message "https://marketplace.visualstudio.com/items?itemName=jamespearson.al-test-runner"
-    Write-BuildMessage -Type Detail -Message "Supported VSCode installations: stable (.vscode), insiders (.vscode-insiders)"
-    exit 1
-}
-
-Write-BuildMessage -Type Detail -Message "Module Path: $($alTestRunnerPath.FullName)"
-
-Import-Module $alTestRunnerPath.FullName -DisableNameChecking -Force
-Write-BuildMessage -Type Success -Message "Module loaded successfully"
-
 Write-BuildHeader 'Server Configuration'
 
 # Three-tier resolution: parameter → environment variable → documented default
@@ -116,9 +96,7 @@ $resolvedServerInstance = ($ServerInstance | Where-Object { $_ }) ??
                           ($env:ALBT_BC_SERVER_INSTANCE | Where-Object { $_ }) ??
                           'BC'
 
-# Launch configuration
 $Tenant = ($env:ALBT_BC_TENANT | Where-Object { $_ }) ?? 'default'
-$launchConfig = New-BCLaunchConfig -ServerUrl $resolvedServerUrl -ServerInstance $resolvedServerInstance -Tenant $Tenant | ConvertTo-Json -Compress
 
 Write-BuildMessage -Type Detail -Message "Server: $resolvedServerUrl/$resolvedServerInstance"
 Write-BuildMessage -Type Detail -Message "Tenant: $Tenant"
@@ -136,11 +114,10 @@ try {
     Write-BuildMessage -Type Detail -Message "App: $($appJson.name)"
     Write-BuildMessage -Type Detail -Message "File: $appFileName"
 
-    # Use unified BC helpers for credential and container management
-    $launchConfigObj = $launchConfig | ConvertFrom-Json
-    $Credential = Get-BCCredential -Username $env:ALBT_BC_CONTAINER_USERNAME -Password $env:ALBT_BC_CONTAINER_PASSWORD
-    $ContainerName = Get-BCContainerName -LaunchConfig $launchConfigObj
+    # Load BcContainerHelper and prepare credentials
     Import-BCContainerHelper
+    $Credential = Get-BCCredential -Username $env:ALBT_BC_CONTAINER_USERNAME -Password $env:ALBT_BC_CONTAINER_PASSWORD
+    $ContainerName = ($env:ALBT_BC_CONTAINER_NAME | Where-Object { $_ }) ?? 'bctest'
 
     Publish-BcContainerApp -containerName $ContainerName `
                           -appFile $appFileName `
