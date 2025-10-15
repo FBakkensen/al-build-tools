@@ -33,11 +33,36 @@ if ($unknownArgs.Count -gt 0) {
     Write-Error "Installation failed: Unknown parameter '$argName'. Use: Install-AlBuildTools [-Url <url>] [-Ref <ref>] [-Dest <path>] [-Source <folder>]"
 }
 
-function Write-Note($msg) { Write-Host "[al-build-tools] $msg" -ForegroundColor Cyan }
-function Write-Ok($msg)   { Write-Host "[ok] $msg" -ForegroundColor Green }
-function Write-Warn2($m)  { Write-Warning $m }
+# Standardized output functions (matching common.psm1 style)
+function Write-BuildMessage {
+    param(
+        [ValidateSet('Info', 'Success', 'Warning', 'Error', 'Step', 'Detail')]
+        [string]$Type = 'Info',
+        [Parameter(Mandatory=$true)]
+        [string]$Message
+    )
+    switch ($Type) {
+        'Info'    { Write-Host "[INFO] " -NoNewline -ForegroundColor Cyan; Write-Host $Message }
+        'Success' { Write-Host "[✓] " -NoNewline -ForegroundColor Green; Write-Host $Message }
+        'Warning' { Write-Host "[!] " -NoNewline -ForegroundColor Yellow; Write-Host $Message }
+        'Error'   { Write-Host "[✗] " -NoNewline -ForegroundColor Red; Write-Host $Message }
+        'Step'    { Write-Host "[→] " -NoNewline -ForegroundColor Magenta; Write-Host $Message }
+        'Detail'  { Write-Host "    • " -NoNewline -ForegroundColor Gray; Write-Host $Message -ForegroundColor Gray }
+    }
+}
+
+function Write-BuildHeader {
+    param([Parameter(Mandatory=$true)][string]$Title)
+    Write-Host ""
+    Write-Host ("=" * 80) -ForegroundColor DarkGray
+    Write-Host "  $Title" -ForegroundColor White
+    Write-Host ("=" * 80) -ForegroundColor DarkGray
+    Write-Host ""
+}
+
+# Legacy functions for backward compatibility with diagnostics
 function Write-Step($n, $msg) {
-    Write-Host ("[{0}] {1}" -f $n, $msg)
+    Write-BuildMessage -Type Step -Message $msg
     # Emit standardized step diagnostic for cross-platform parity testing
     $stepName = $msg -replace '[^\w\s]', '' -replace '\s+', '_' -replace '^_|_$', ''
     Write-Host ("[install] step index={0} name={1}" -f $n, $stepName)
@@ -195,6 +220,189 @@ function Resolve-DownloadFailureDetails {
     return [pscustomobject]@{ Category = $category; Hint = $hint }
 }
 
+function Confirm-Installation {
+    param(
+        [string]$ToolName,
+        [string]$Purpose
+    )
+
+    # Detect non-interactive mode
+    $isInteractive = $true
+    try {
+        if ($null -eq $Host.UI.RawUI -or $Host.Name -eq 'ServerRemoteHost') {
+            $isInteractive = $false
+        }
+    } catch {
+        $isInteractive = $false
+    }
+
+    if (-not $isInteractive) {
+        Write-Verbose "[install] Non-interactive mode detected - skipping prompt for $ToolName"
+        return $false
+    }
+
+    Write-Host ""
+    Write-Host "$ToolName is required for: $Purpose" -ForegroundColor Yellow
+    Write-Host "Install $ToolName now? (Y/n): " -NoNewline -ForegroundColor Cyan
+    $response = Read-Host
+
+    if ([string]::IsNullOrWhiteSpace($response) -or $response -ieq 'y' -or $response -ieq 'yes') {
+        return $true
+    }
+
+    return $false
+}
+
+function Test-DotNetSdk {
+    Write-Verbose "[install] Checking for .NET SDK"
+    try {
+        $dotnetPath = Get-Command dotnet -ErrorAction SilentlyContinue
+        if ($null -eq $dotnetPath) {
+            return $false
+        }
+
+        $versionOutput = & dotnet --version 2>&1
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($versionOutput)) {
+            Write-Verbose "[install] .NET SDK found: version $versionOutput"
+            return $true
+        }
+        return $false
+    } catch {
+        Write-Verbose "[install] .NET SDK check failed: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Install-DotNetSdk {
+    Write-Host "[install] prerequisite tool=`"dotnet`" status=`"installing`""
+    Write-BuildMessage -Type Info -Message "Installing .NET SDK 8..."
+
+    try {
+        # Check if winget is available
+        $wingetPath = Get-Command winget -ErrorAction SilentlyContinue
+        if ($null -eq $wingetPath) {
+            Write-Error "winget is not available. Please ensure Windows 11 is up to date."
+            return $false
+        }
+
+        $installArgs = @(
+            'install'
+            '--id', 'Microsoft.DotNet.SDK.8'
+            '--source', 'winget'
+            '--silent'
+            '--accept-source-agreements'
+            '--accept-package-agreements'
+        )
+
+        $process = Start-Process -FilePath 'winget' -ArgumentList $installArgs -NoNewWindow -Wait -PassThru
+
+        if ($process.ExitCode -eq 0) {
+            Write-Host "[install] prerequisite tool=`"dotnet`" status=`"installed`""
+            Write-BuildMessage -Type Success -Message ".NET SDK 8 installed successfully"
+            return $true
+        } else {
+            Write-Warning ".NET SDK installation returned exit code: $($process.ExitCode)"
+            return $false
+        }
+    } catch {
+        Write-Warning "Failed to install .NET SDK: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Test-InvokeBuildModule {
+    Write-Verbose "[install] Checking for InvokeBuild module"
+    try {
+        $module = Get-Module -ListAvailable -Name InvokeBuild -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -ne $module) {
+            Write-Verbose "[install] InvokeBuild found: version $($module.Version)"
+            return $true
+        }
+        return $false
+    } catch {
+        Write-Verbose "[install] InvokeBuild check failed: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Install-InvokeBuildModule {
+    Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"installing`""
+    Write-BuildMessage -Type Info -Message "Installing InvokeBuild PowerShell module..."
+
+    try {
+        # Ensure PSGallery is trusted
+        $psGallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
+        if ($null -ne $psGallery -and $psGallery.InstallationPolicy -ne 'Trusted') {
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+        }
+
+        Install-Module -Name InvokeBuild -Scope CurrentUser -Force -Repository PSGallery -ErrorAction Stop
+
+        Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"installed`""
+        Write-BuildMessage -Type Success -Message "InvokeBuild module installed successfully"
+        return $true
+    } catch {
+        Write-Warning "Failed to install InvokeBuild module: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Test-PowerShellVersion {
+    param(
+        [System.Version]$MinimumVersion = [System.Version]'7.2'
+    )
+
+    $psVersion = if ($env:ALBT_TEST_FORCE_PSVERSION) {
+        [System.Version]$env:ALBT_TEST_FORCE_PSVERSION
+    } else {
+        $PSVersionTable.PSVersion
+    }
+
+    Write-Verbose "[install] PowerShell version: $psVersion (minimum required: $MinimumVersion)"
+    return $psVersion -ge $MinimumVersion
+}
+
+function Install-PowerShell {
+    Write-Host "[install] prerequisite tool=`"pwsh`" status=`"installing`""
+    Write-BuildMessage -Type Info -Message "Installing PowerShell 7..."
+
+    try {
+        # Check if winget is available
+        $wingetPath = Get-Command winget -ErrorAction SilentlyContinue
+        if ($null -eq $wingetPath) {
+            Write-Error "winget is not available. Please ensure Windows 11 is up to date."
+            return $false
+        }
+
+        $installArgs = @(
+            'install'
+            '--id', 'Microsoft.PowerShell'
+            '--source', 'winget'
+            '--silent'
+            '--accept-source-agreements'
+            '--accept-package-agreements'
+        )
+
+        $process = Start-Process -FilePath 'winget' -ArgumentList $installArgs -NoNewWindow -Wait -PassThru
+
+        if ($process.ExitCode -eq 0) {
+            Write-Host "[install] prerequisite tool=`"pwsh`" status=`"installed`" relaunch_required=true"
+            Write-BuildMessage -Type Success -Message "PowerShell 7 installed successfully"
+            Write-Host ""
+            Write-Host "IMPORTANT: PowerShell 7 has been installed." -ForegroundColor Yellow
+            Write-Host "Please close this window and rerun this script in PowerShell 7." -ForegroundColor Yellow
+            Write-Host "You can start PowerShell 7 by running: pwsh" -ForegroundColor Cyan
+            return $true
+        } else {
+            Write-Warning "PowerShell installation returned exit code: $($process.ExitCode)"
+            return $false
+        }
+    } catch {
+        Write-Warning "Failed to install PowerShell: $($_.Exception.Message)"
+        return $false
+    }
+}
+
 function Install-AlBuildTools {
     [CmdletBinding()]
     param(
@@ -211,9 +419,27 @@ function Install-AlBuildTools {
     } else {
         $PSVersionTable.PSVersion
     }
-    if ($psVersion -lt [System.Version]'7.0') {
-        Write-Host "[install] guard PowerShellVersionUnsupported"
-        Write-Error "Installation failed: PowerShell 7.0 or later is required. Current version: $psVersion"
+
+    Write-Host "[install] prerequisite tool=`"pwsh`" status=`"check`" version=$psVersion"
+
+    if ($psVersion -lt [System.Version]'7.2') {
+        Write-Host "[install] prerequisite tool=`"pwsh`" status=`"insufficient`" required=7.2"
+
+        $shouldInstall = Confirm-Installation -ToolName "PowerShell 7.2+" -Purpose "AL Build Tools installation and build operations"
+
+        if ($shouldInstall) {
+            $installed = Install-PowerShell
+            if ($installed) {
+                # PowerShell was installed, but we need to exit and let the user relaunch
+                exit 0
+            } else {
+                Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=false install_failed=true"
+                Write-Error "Installation failed: Could not install PowerShell 7. Please install manually from https://aka.ms/powershell"
+            }
+        } else {
+            Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=true"
+            Write-Error "Installation failed: PowerShell 7.2 or later is required. Current version: $psVersion. Install from https://aka.ms/powershell"
+        }
     }
 
     $effectiveTimeoutSec = $HttpTimeoutSec
@@ -239,7 +465,7 @@ function Install-AlBuildTools {
         $created = New-Item -ItemType Directory -Force -Path $Dest
         $destFull = (Resolve-Path -Path $created.FullName).Path
     }
-    Write-Note "Install/update from $Url into $destFull (source: $Source)"
+    Write-BuildMessage -Type Info -Message "Install/update from $Url into $destFull (source: $Source)"
 
     $step++; Write-Step $step "Detect git repository"
     $gitOk = $false
@@ -280,7 +506,59 @@ function Install-AlBuildTools {
             }
         }
     }
-    Write-Ok "Working in: $destFull"
+    Write-BuildMessage -Type Success -Message "Working in: $destFull"
+
+    $step++; Write-Step $step "Verify prerequisites"
+
+    # Check .NET SDK
+    Write-Host "[install] prerequisite tool=`"dotnet`" status=`"check`""
+    $hasDotNet = Test-DotNetSdk
+    if ($hasDotNet) {
+        $dotnetVersion = & dotnet --version 2>&1
+        Write-Host "[install] prerequisite tool=`"dotnet`" status=`"present`" version=$dotnetVersion"
+        Write-BuildMessage -Type Success -Message ".NET SDK is installed (version $dotnetVersion)"
+    } else {
+        Write-Host "[install] prerequisite tool=`"dotnet`" status=`"missing`""
+
+        $shouldInstall = Confirm-Installation -ToolName ".NET SDK 8" -Purpose "Building AL projects and downloading symbols from NuGet"
+
+        if ($shouldInstall) {
+            $installed = Install-DotNetSdk
+            if (-not $installed) {
+                Write-Host "[install] guard MissingPrerequisite tool=`"dotnet`" declined=false install_failed=true"
+                Write-Error "Installation failed: Could not install .NET SDK. Please install manually from https://dotnet.microsoft.com/download"
+            }
+            Write-BuildMessage -Type Success -Message ".NET SDK is now installed"
+        } else{
+            Write-Host "[install] guard MissingPrerequisite tool=`"dotnet`" declined=true"
+            Write-Error "Installation failed: .NET SDK is required. Install from https://dotnet.microsoft.com/download"
+        }
+    }
+
+    # Check InvokeBuild module
+    Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"check`""
+    $hasInvokeBuild = Test-InvokeBuildModule
+    if ($hasInvokeBuild) {
+        $ibModule = Get-Module -ListAvailable -Name InvokeBuild -ErrorAction SilentlyContinue | Select-Object -First 1
+        Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"present`" version=$($ibModule.Version)"
+        Write-BuildMessage -Type Success -Message "InvokeBuild module is installed (version $($ibModule.Version))"
+    } else{
+        Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"missing`""
+
+        $shouldInstall = Confirm-Installation -ToolName "InvokeBuild module" -Purpose "Running build tasks and orchestrating the build process"
+
+        if ($shouldInstall) {
+            $installed = Install-InvokeBuildModule
+            if (-not $installed) {
+                Write-Host "[install] guard MissingPrerequisite tool=`"InvokeBuild`" declined=false install_failed=true"
+                Write-Error "Installation failed: Could not install InvokeBuild module. Please install manually with: Install-Module InvokeBuild -Scope CurrentUser"
+            }
+            Write-BuildMessage -Type Success -Message "InvokeBuild module is now installed"
+        } else{
+            Write-Host "[install] guard MissingPrerequisite tool=`"InvokeBuild`" declined=true"
+            Write-Error "Installation failed: InvokeBuild module is required. Install with: Install-Module InvokeBuild -Scope CurrentUser"
+        }
+    }
 
     $tmp = New-Item -ItemType Directory -Path ([System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetRandomFileName()))
     Write-Host "[install] temp workspace=`"$($tmp.FullName)`""
@@ -421,7 +699,7 @@ function Install-AlBuildTools {
             Write-Error "Installation failed: Release asset download URL is missing or invalid."
         }
 
-        Write-Note "Selected release: $selectedReleaseTag (asset: $assetName)"
+        Write-BuildMessage -Type Info -Message "Selected release: $selectedReleaseTag (asset: $assetName)"
 
         $step++; Write-Step $step "Download release asset"
         $zip = Join-Path $tmp.FullName 'overlay.zip'
@@ -481,7 +759,7 @@ function Install-AlBuildTools {
             Write-Error "Installation failed: Source directory contains no files to install."
         }
 
-        Write-Ok "Source directory: $src"
+        Write-BuildMessage -Type Success -Message "Source directory: $src"
 
         $step++; Write-Step $step "Copy files into destination"
 
@@ -505,12 +783,86 @@ function Install-AlBuildTools {
             Write-Host "[install] guard PermissionDenied"
             Write-Error "Installation failed: Permission denied. Please check that you have write permissions to the destination directory."
         }
-        Write-Ok "Copied $fileCount files across $dirCount directories"
+        Write-BuildMessage -Type Success -Message "Copied $fileCount files across $dirCount directories"
 
         $endTime = Get-Date
         $durationSeconds = ($endTime - $startTime).TotalSeconds
         Write-Host "[install] success ref=`"$selectedReleaseTag`" overlay=`"$Source`" asset=`"$assetName`" duration=$($durationSeconds.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture))"
-        Write-Note "Completed: $Source from $Url@$selectedReleaseTag into $destFull"
+        Write-BuildMessage -Type Success -Message "Completed: $Source from $Url@$selectedReleaseTag into $destFull"
+
+        # Offer to run provision task
+        $step++; Write-Step $step "Optional: Run environment provisioning"
+
+        # Detect non-interactive mode
+        $isInteractive = $true
+        try {
+            if ($null -eq $Host.UI.RawUI -or $Host.Name -eq 'ServerRemoteHost') {
+                $isInteractive = $false
+            }
+        } catch {
+            $isInteractive = $false
+        }
+
+        if ($isInteractive) {
+            Write-Host ""
+            Write-Host "NEXT STEP: Environment Provisioning" -ForegroundColor Yellow
+            Write-Host "The 'provision' task will:" -ForegroundColor Cyan
+            Write-Host "  - Download and install the AL compiler as a .NET tool" -ForegroundColor White
+            Write-Host "  - Download Business Central symbol packages based on your app.json" -ForegroundColor White
+            Write-Host "  - Cache everything in your user profile for reuse across projects" -ForegroundColor White
+            Write-Host ""
+            Write-Host "This is a one-time setup per machine (or when dependencies change)." -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host "Run provision now? (Y/n): " -NoNewline -ForegroundColor Yellow
+            $response = Read-Host
+
+            if ([string]::IsNullOrWhiteSpace($response) -or $response -ieq 'y' -or $response -ieq 'yes') {
+                Write-Host "[install] provision accepted=true"
+                Write-Host ""
+                Write-BuildMessage -Type Info -Message "Running: Invoke-Build provision"
+                Write-Host ""
+
+                # Change to destination directory and run provision
+                Push-Location $destFull
+                try {
+                    $provisionResult = & pwsh -NoProfile -Command "Invoke-Build provision"
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host ""
+                        Write-BuildMessage -Type Success -Message "Provision completed successfully!"
+                        Write-Host ""
+                        Write-Host "You're all set! Try building your project:" -ForegroundColor Green
+                        Write-Host "  Invoke-Build build" -ForegroundColor Cyan
+                    } else {
+                        Write-Warning "Provision task completed with errors (exit code: $LASTEXITCODE)"
+                        Write-Host ""
+                        Write-Host "You can retry manually by running:" -ForegroundColor Yellow
+                        Write-Host "  Invoke-Build provision" -ForegroundColor Cyan
+                    }
+                } catch {
+                    Write-Warning "Failed to run provision: $($_.Exception.Message)"
+                    Write-Host ""
+                    Write-Host "You can run it manually by executing:" -ForegroundColor Yellow
+                    Write-Host "  Invoke-Build provision" -ForegroundColor Cyan
+                } finally {
+                    Pop-Location
+                }
+            } else {
+                Write-Host "[install] provision accepted=false"
+                Write-Host ""
+                Write-BuildMessage -Type Info -Message "Skipping provision step"
+                Write-Host ""
+                Write-Host "To provision your environment later, run:" -ForegroundColor Cyan
+                Write-Host "  Invoke-Build provision" -ForegroundColor Yellow
+                Write-Host ""
+                Write-Host "Or provision and build in one command:" -ForegroundColor Cyan
+                Write-Host "  Invoke-Build all" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "[install] provision skipped (non-interactive mode)"
+            Write-Verbose "[install] Non-interactive mode - skipping provision prompt"
+            Write-Host ""
+            Write-BuildMessage -Type Info -Message "Installation complete. To provision your environment, run: Invoke-Build provision"
+        }
     } finally {
         try { Remove-Item -Recurse -Force -LiteralPath $tmp.FullName -ErrorAction SilentlyContinue } catch { Write-Verbose "[install] cleanup failed: $($_.Exception.Message)" }
     }
