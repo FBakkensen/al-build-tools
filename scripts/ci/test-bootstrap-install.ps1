@@ -8,10 +8,16 @@
     and JSON summary artifacts. Ensures first-time user scenarios work correctly.
 
 .PARAMETER Help
-    Display this help message.
+    Display this help message and exit.
+
+.PARAMETER ?
+    Display this help message and exit (short form).
 
 .EXAMPLE
-    powershell -File scripts/ci/test-bootstrap-install.ps1 -Verbose
+    pwsh -File scripts/ci/test-bootstrap-install.ps1 -Verbose
+
+.EXAMPLE
+    pwsh -File scripts/ci/test-bootstrap-install.ps1 -Help
 
 .EXAMPLE
     $env:ALBT_TEST_RELEASE_TAG = 'v1.2.3'; pwsh -File scripts/ci/test-bootstrap-install.ps1
@@ -39,6 +45,65 @@
 #>
 
 #requires -Version 7.2
+
+# T038: Add usage/help output (-Help or -?)
+param(
+    [switch]$Help
+)
+
+# Support both -Help and -? for getting help
+if ($Help -or ($args -contains '-?')) {
+    Write-Host @"
+SYNOPSIS
+    Validates bootstrap/install.ps1 within an ephemeral Docker container environment.
+
+DESCRIPTION
+    Provisions a clean Windows Server Core container, downloads and installs the latest
+    (or specified) release overlay.zip, and verifies successful installation with transcript
+    and JSON summary artifacts. Ensures first-time user scenarios work correctly.
+
+USAGE
+    pwsh -File scripts/ci/test-bootstrap-install.ps1 [OPTIONS]
+
+OPTIONS
+    -Help, -?              Display this help message and exit.
+
+ENVIRONMENT VARIABLES
+    ALBT_TEST_RELEASE_TAG           - GitHub release tag (default: latest non-draft release)
+    ALBT_TEST_IMAGE                 - Docker image reference (default: mcr.microsoft.com/windows/servercore:ltsc2022)
+    ALBT_TEST_KEEP_CONTAINER        - Set to '1' to skip auto-remove container for debugging
+    ALBT_TEST_EXPECTED_SHA256       - Expected SHA256 of overlay.zip for integrity validation
+    ALBT_AUTO_INSTALL               - Set to '1' inside container to enable non-interactive PowerShell 7 install
+    VERBOSE                         - Set to enable verbose logging
+    GITHUB_TOKEN                    - Optional GitHub token for higher API rate limits
+
+EXAMPLES
+    # Run with latest release
+    pwsh -File scripts/ci/test-bootstrap-install.ps1 -Verbose
+
+    # Test specific release tag
+    `$env:ALBT_TEST_RELEASE_TAG = 'v1.2.3'
+    pwsh -File scripts/ci/test-bootstrap-install.ps1
+
+    # Debug mode: preserve container for inspection
+    `$env:ALBT_TEST_KEEP_CONTAINER = '1'
+    pwsh -File scripts/ci/test-bootstrap-install.ps1
+
+EXIT CODES
+    0 - Success: Installer exited cleanly and all artifacts present
+    1 - General Error: Installation failed or artifacts missing
+    2 - Guard: Invoked without required execution context
+    6 - MissingTool: Docker not available or running on non-Windows host
+
+ARTIFACTS
+    out/test-install/install.transcript.txt  - PowerShell transcript
+    out/test-install/summary.json            - Execution summary (schema-aligned)
+    out/test-install/provision.log           - Container provisioning details (on failure)
+
+"@
+    exit 0
+}
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -828,6 +893,16 @@ try {
 
     $image = Resolve-ContainerImage
 
+    # T042: Print resolved configuration at start (validation step)
+    Write-Verbose '[albt] === Configuration Summary ==='
+    Write-Verbose "[albt] Release Tag:       $($releaseInfo.releaseTag)"
+    Write-Verbose "[albt] Asset URL:        $($releaseInfo.assetUrl)"
+    Write-Verbose "[albt] Container Image:  $image"
+    if (-not [string]::IsNullOrWhiteSpace($env:ALBT_TEST_EXPECTED_SHA256)) {
+        Write-Verbose "[albt] Expected SHA256:  $($env:ALBT_TEST_EXPECTED_SHA256)"
+    }
+    Write-Verbose '[albt] === End Configuration ==='
+
     # T024: Build container run command with bootstrap install sequence
     # The container should run the ACTUAL bootstrap installer to validate the real install path
     # T026: Invoke the real bootstrap/install.ps1 script inside container
@@ -856,7 +931,7 @@ try {
 
             # Invoke the actual bootstrap installer
             # The installer will:
-            # - Download overlay.zip (or use pre-staged if ALBT_TEST_RELEASE_ASSET_URL set)
+            # - Download overlay.zip
             # - Extract to destination
             # - Validate installation
             & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass `

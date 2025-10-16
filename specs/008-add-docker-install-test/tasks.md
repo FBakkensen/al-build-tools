@@ -79,13 +79,12 @@ Enable frictionless local execution mirroring future CI behavior.
 Story Goal: Single documented command replicates CI results on maintainer machine.
 Independent Test Criteria: Local execution yields same artifacts & exit semantics as CI.
 
-- [ ] T038 [US3] Add usage/help output (`-Help` or `-?`) to `scripts/ci/test-bootstrap-install.ps1`
-- [ ] T039 [P] [US3] Add detection of missing Docker engine with clear message and exit code 6 (MissingTool)
-- [ ] T040 [US3] Add quickstart reproduction snippet update with env variable examples in `specs/008-add-docker-install-test/quickstart.md`
-- [ ] T041 [P] [US3] Add optional env `ALBT_TEST_RELEASE_ASSET_URL` override path for local offline testing
-- [ ] T042 [P] [US3] Add validation step printing resolved configuration block (image, release tag) at start
-- [ ] T043 [US3] Add safety check preventing execution on non-Windows host (exit code 6) if attempted
- - [ ] T043a [US3] Document integrity verification (gh digest + `ALBT_TEST_EXPECTED_SHA256`) in `quickstart.md`
+- [x] T038 [US3] Add usage/help output (`-Help` or `-?`) to `scripts/ci/test-bootstrap-install.ps1`
+- [x] T039 [P] [US3] Add detection of missing Docker engine with clear message and exit code 6 (MissingTool)
+- [x] T040 [US3] Add quickstart reproduction snippet update with env variable examples in `specs/008-add-docker-install-test/quickstart.md`
+- [x] T042 [P] [US3] Add validation step printing resolved configuration block (image, release tag) at start
+- [x] T043 [US3] Add safety check preventing execution on non-Windows host (exit code 6) if attempted
+ - [x] T043a [US3] Document integrity verification (gh digest + `ALBT_TEST_EXPECTED_SHA256`) in `quickstart.md`
 
 ## Phase 6 – CI Integration
 Introduce GitHub Actions workflow only after local harness is fully validated and reproducible. (No user story label – automation layer.)
@@ -114,7 +113,7 @@ Examples:
 - During Phase 2: T009 (latest release lookup) parallel with T011 (checksum logging), T014 (error trap), T016 (keep flag), T019 (strict mode)
 - Phase 3: T022 (docker cp) parallel with T024 (exit capture) and T028 (doc update)
 - Phase 4: T030 (timed sections) parallel with T032 (retry) and T034 (IDs)
-- Phase 5: T038 (Docker detection) parallel with T040 (asset override) and T042 (config print)
+- Phase 5: T038 (Docker detection) parallel with T040 (doc update) and T042 (config print)
 
 ## Implementation Strategy
 1. MVP (Complete after Phase 3): Provides baseline automated installer validation (US1) – sufficient to block releases on installer failure.
@@ -127,12 +126,12 @@ All tasks follow required checklist format: `- [ ] T### [P?] [US#?] Description 
 Story phases (3–5) include `[US#]` labels; other phases omit them per rules. All tasks include concrete file paths.
 
 ## Task Counts
- - Total Tasks: 62
+ - Total Tasks: 61
  - Phase 1 (Setup Local): 7
  - Phase 2 (Foundational): 24
  - Phase 3 (US1 Local Validation): 7
  - Phase 4 (US2 Diagnostics): 7
- - Phase 5 (US3 Local Repro): 7
+ - Phase 5 (US3 Local Repro): 6
  - Phase 6 (CI Integration): 4
  - Final Polish: 7
 
