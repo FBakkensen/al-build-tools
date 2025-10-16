@@ -1,5 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "G14: Minimal schema intentionally excludes optional enrichment fields; see spec 'Schema Alignment Note (G14)'.",
   "title": "Installer Test Summary",
   "type": "object",
   "required": [
@@ -21,9 +22,12 @@
     "durationSeconds": { "type": "integer", "minimum": 0 },
     "releaseTag": { "type": "string" },
     "assetName": { "type": "string" },
-    "exitCode": { "type": "integer", "minimum": 0 },
+  "exitCode": { "type": "integer", "enum": [0,1,2,6], "description": "Process exit code (restricted set)." },
     "success": { "type": "boolean" },
     "psVersion": { "type": "string", "pattern": "^7\\.(?:[2-9]|[1-9][0-9])\\.\\d+$" },
+    "runId": { "type": "string", "description": "Optional short unique identifier for this harness execution." },
+  "imagePullSeconds": { "type": "integer", "minimum": 0, "description": "Wall-clock seconds (floor) spent pulling the container image." },
+  "containerCreateSeconds": { "type": "integer", "minimum": 0, "description": "Wall-clock seconds (floor) spent creating & starting container after pull." },
     "errorSummary": { "type": "string" },
     "logs": {
       "type": "object",

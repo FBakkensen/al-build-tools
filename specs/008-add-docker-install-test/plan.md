@@ -17,7 +17,6 @@ Automate an end-to-end validation of `bootstrap/install.ps1` inside a clean Wind
 **Testing**: Exit code + log inspection (Pester optional future) – MVP avoids extra dependency
 **Target Platform**: Windows Server Core (container) running on a Windows host with Windows container support
 **Project Type**: Test harness (planned future PowerShell script under `scripts/ci/` plus thin GitHub Actions workflow) – DECIDED (no code implemented during planning phase)
-**Performance Goals**: Complete baseline successful install within 20 minutes (SC-001); stretch goal < 10 minutes typical
 **Constraints**: Must not modify public overlay contract; must avoid persisting host caches; network-only access to GitHub releases; minimal base image footprint; deterministic reproducibility
 **Scale/Scope**: Single container per test execution; no parallel orchestration required initially
 
