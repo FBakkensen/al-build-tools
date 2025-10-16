@@ -12,6 +12,15 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+if (-not $IsWindows) {
+    $linuxInstaller = Join-Path $PSScriptRoot 'install-linux.ps1'
+    if (Test-Path $linuxInstaller) {
+        & $linuxInstaller @PSBoundParameters
+        return
+    }
+    Write-Error "Installation failed: Windows installer invoked on a non-Windows platform. Run install-linux.ps1 instead."
+}
+
     # FR-008: Reject unsupported parameters (usage guard)
 if (-not (Get-Variable -Name 'args' -Scope 0 -ErrorAction SilentlyContinue)) {
     $scriptArgs = @()
@@ -58,6 +67,142 @@ function Write-BuildHeader {
     Write-Host "  $Title" -ForegroundColor White
     Write-Host ("=" * 80) -ForegroundColor DarkGray
     Write-Host ""
+}
+
+$script:AutoInstallPrereqs = $false
+if ($env:ALBT_AUTO_INSTALL -and $env:ALBT_AUTO_INSTALL.ToString().ToLowerInvariant() -in @('1','true','yes')) {
+    $script:AutoInstallPrereqs = $true
+}
+
+function Get-ChocolateyExecutable {
+    $candidates = @()
+    if ($env:ProgramData) { $candidates += Join-Path $env:ProgramData 'chocolatey\bin\choco.exe' }
+    if ($env:ProgramFiles) { $candidates += Join-Path $env:ProgramFiles 'chocolatey\bin\choco.exe' }
+    $programFilesX86 = ${env:ProgramFiles(x86)}
+    if ($programFilesX86) { $candidates += Join-Path $programFilesX86 'chocolatey\bin\choco.exe' }
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path $candidate)) {
+            return $candidate
+        }
+    }
+
+    $command = Get-Command choco -ErrorAction SilentlyContinue
+    if ($command) { return $command.Path }
+
+    return $null
+}
+
+function Install-Chocolatey {
+    Write-Host "[install] prerequisite tool=`"choco`" status=`"installing`""
+    Write-BuildMessage -Type Info -Message "Installing Chocolatey..."
+
+    $installScript = 'https://community.chocolatey.org/install.ps1'
+    $processArgs = "Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex ((New-Object System.Net.WebClient).DownloadString(`'$installScript`'))"
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'powershell'
+    $psi.Arguments = "-NoLogo -NoProfile -Command $processArgs"
+    $psi.RedirectStandardError = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.UseShellExecute = $false
+
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $stdout = $proc.StandardOutput.ReadToEnd()
+    $stderr = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+
+    if ($stdout) { Write-Verbose "[install] choco install stdout: $stdout" }
+    if ($stderr) { Write-Verbose "[install] choco install stderr: $stderr" }
+
+    if ($proc.ExitCode -ne 0) {
+        throw "Chocolatey installation failed with exit code $($proc.ExitCode)"
+    }
+}
+
+function Ensure-Chocolatey {
+    $chocoPath = Get-ChocolateyExecutable
+    if ($chocoPath) {
+        return $chocoPath
+    }
+
+    if (-not $script:AutoInstallPrereqs) {
+        $approved = Confirm-Installation -ToolName 'Chocolatey' -Purpose 'Installing Git and .NET SDK prerequisites'
+        if (-not $approved) {
+            Write-Host "[install] guard MissingPrerequisite tool=`"choco`" declined=true"
+            Write-Error 'Installation failed: Chocolatey is required to install prerequisites. Please install Chocolatey from https://chocolatey.org/install and retry.'
+        }
+    }
+
+    Install-Chocolatey
+
+    $chocoPath = Get-ChocolateyExecutable
+    if (-not $chocoPath) {
+        Write-Error 'Installation failed: Chocolatey installation completed but choco.exe was not found on disk.'
+    }
+
+    try {
+        $proc = Start-Process -FilePath $chocoPath -ArgumentList 'feature','enable','-n=allowGlobalConfirmation' -NoNewWindow -Wait -PassThru
+        if ($proc.ExitCode -ne 0) {
+            Write-Verbose "[install] Failed to enable allowGlobalConfirmation (exit $($proc.ExitCode))"
+        }
+    } catch {
+        Write-Verbose "[install] Unable to enable Chocolatey allowGlobalConfirmation: $($_.Exception.Message)"
+    }
+
+    return $chocoPath
+}
+
+function Invoke-ChocolateyCommand {
+    param(
+        [Parameter(Mandatory=$true)][string[]]$Arguments
+    )
+
+    $chocoPath = Ensure-Chocolatey
+    $chocoArgs = $Arguments + @('--no-progress')
+    $proc = Start-Process -FilePath $chocoPath -ArgumentList $chocoArgs -NoNewWindow -Wait -PassThru
+    if ($proc.ExitCode -ne 0) {
+        throw "Chocolatey command '$($Arguments -join ' ')'' exited with code $($proc.ExitCode)"
+    }
+}
+
+function Test-Git {
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    return [bool]$gitCmd
+}
+
+function Install-Git {
+    Write-Host "[install] prerequisite tool=`"git`" status=`"installing`""
+    Write-BuildMessage -Type Info -Message "Installing Git via Chocolatey..."
+    Invoke-ChocolateyCommand -Arguments @('install','git','--yes')
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $gitCmd) {
+        throw 'Git installation completed but git.exe not found in PATH.'
+    }
+    return $true
+}
+
+function Ensure-Git {
+    if (Test-Git) {
+        $gitVersion = (& git --version 2>$null)
+        if ($gitVersion) {
+            Write-Host "[install] prerequisite tool=`"git`" status=`"present`" version=$gitVersion"
+        } else {
+            Write-Host "[install] prerequisite tool=`"git`" status=`"present`""
+        }
+        return $true
+    }
+
+    if (-not $script:AutoInstallPrereqs) {
+        $approve = Confirm-Installation -ToolName 'Git' -Purpose 'Managing repository overlays during installation'
+        if (-not $approve) {
+            Write-Host "[install] guard MissingPrerequisite tool=`"git`" declined=true"
+            Write-Error 'Installation failed: Git is required to manage the destination repository.'
+        }
+    }
+
+    Install-Git
+    return $true
 }
 
 # Legacy functions for backward compatibility with diagnostics
@@ -226,6 +371,11 @@ function Confirm-Installation {
         [string]$Purpose
     )
 
+    if ($script:AutoInstallPrereqs) {
+        Write-Verbose "[install] Auto-approving installation for $ToolName"
+        return $true
+    }
+
     # Detect non-interactive mode
     $isInteractive = $true
     try {
@@ -275,37 +425,21 @@ function Test-DotNetSdk {
 
 function Install-DotNetSdk {
     Write-Host "[install] prerequisite tool=`"dotnet`" status=`"installing`""
-    Write-BuildMessage -Type Info -Message "Installing .NET SDK 8..."
+    Write-BuildMessage -Type Info -Message "Installing .NET SDK 8 via Chocolatey..."
+
+    $packageName = 'dotnet-8.0-sdk'
+    $additionalArgs = @()
+    if ($env:ALBT_DOTNET_PACKAGE_VERSION) {
+        $additionalArgs += @('--version', $env:ALBT_DOTNET_PACKAGE_VERSION)
+    }
 
     try {
-        # Check if winget is available
-        $wingetPath = Get-Command winget -ErrorAction SilentlyContinue
-        if ($null -eq $wingetPath) {
-            Write-Error "winget is not available. Please ensure Windows 11 is up to date."
-            return $false
-        }
-
-        $installArgs = @(
-            'install'
-            '--id', 'Microsoft.DotNet.SDK.8'
-            '--source', 'winget'
-            '--silent'
-            '--accept-source-agreements'
-            '--accept-package-agreements'
-        )
-
-        $process = Start-Process -FilePath 'winget' -ArgumentList $installArgs -NoNewWindow -Wait -PassThru
-
-        if ($process.ExitCode -eq 0) {
-            Write-Host "[install] prerequisite tool=`"dotnet`" status=`"installed`""
-            Write-BuildMessage -Type Success -Message ".NET SDK 8 installed successfully"
-            return $true
-        } else {
-            Write-Warning ".NET SDK installation returned exit code: $($process.ExitCode)"
-            return $false
-        }
+        Invoke-ChocolateyCommand -Arguments (@('install', $packageName, '--yes') + $additionalArgs)
+        Write-Host "[install] prerequisite tool=`"dotnet`" status=`"installed`""
+        Write-BuildMessage -Type Success -Message ".NET SDK 8 installed successfully"
+        return $true
     } catch {
-        Write-Warning "Failed to install .NET SDK: $($_.Exception.Message)"
+        Write-Warning "Failed to install .NET SDK via Chocolatey: $($_.Exception.Message)"
         return $false
     }
 }
@@ -364,41 +498,19 @@ function Test-PowerShellVersion {
 
 function Install-PowerShell {
     Write-Host "[install] prerequisite tool=`"pwsh`" status=`"installing`""
-    Write-BuildMessage -Type Info -Message "Installing PowerShell 7..."
+    Write-BuildMessage -Type Info -Message "Installing PowerShell 7 via Chocolatey..."
 
     try {
-        # Check if winget is available
-        $wingetPath = Get-Command winget -ErrorAction SilentlyContinue
-        if ($null -eq $wingetPath) {
-            Write-Error "winget is not available. Please ensure Windows 11 is up to date."
-            return $false
-        }
-
-        $installArgs = @(
-            'install'
-            '--id', 'Microsoft.PowerShell'
-            '--source', 'winget'
-            '--silent'
-            '--accept-source-agreements'
-            '--accept-package-agreements'
-        )
-
-        $process = Start-Process -FilePath 'winget' -ArgumentList $installArgs -NoNewWindow -Wait -PassThru
-
-        if ($process.ExitCode -eq 0) {
-            Write-Host "[install] prerequisite tool=`"pwsh`" status=`"installed`" relaunch_required=true"
-            Write-BuildMessage -Type Success -Message "PowerShell 7 installed successfully"
-            Write-Host ""
-            Write-Host "IMPORTANT: PowerShell 7 has been installed." -ForegroundColor Yellow
-            Write-Host "Please close this window and rerun this script in PowerShell 7." -ForegroundColor Yellow
-            Write-Host "You can start PowerShell 7 by running: pwsh" -ForegroundColor Cyan
-            return $true
-        } else {
-            Write-Warning "PowerShell installation returned exit code: $($process.ExitCode)"
-            return $false
-        }
+        Invoke-ChocolateyCommand -Arguments @('install','powershell','--yes')
+        Write-Host "[install] prerequisite tool=`"pwsh`" status=`"installed`" relaunch_required=true"
+        Write-BuildMessage -Type Success -Message "PowerShell 7 installed successfully"
+        Write-Host ""
+        Write-Host "IMPORTANT: PowerShell 7 has been installed." -ForegroundColor Yellow
+        Write-Host "Please close this window and rerun this script in PowerShell 7." -ForegroundColor Yellow
+        Write-Host "You can start PowerShell 7 by running: pwsh" -ForegroundColor Cyan
+        return $true
     } catch {
-        Write-Warning "Failed to install PowerShell: $($_.Exception.Message)"
+        Write-Warning "Failed to install PowerShell via Chocolatey: $($_.Exception.Message)"
         return $false
     }
 }
@@ -467,48 +579,16 @@ function Install-AlBuildTools {
     }
     Write-BuildMessage -Type Info -Message "Install/update from $Url into $destFull (source: $Source)"
 
-    $step++; Write-Step $step "Detect git repository"
-    $gitOk = $false
-    try {
-        $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-        $pinfo.FileName = 'git'
-        $pinfo.Arguments = "-C `"$destFull`" rev-parse --git-dir"
-        $pinfo.RedirectStandardOutput = $true
-        $pinfo.RedirectStandardError = $true
-        $pinfo.UseShellExecute = $false
-        $p = [System.Diagnostics.Process]::Start($pinfo)
-        $p.WaitForExit()
-        if ($p.ExitCode -eq 0) { $gitOk = $true }
-    } catch {
-        Write-Verbose "[install] git check failed: $($_.Exception.Message)"
-    }
-    # FR-023: Abort when destination is not a git repository
-    if (-not $gitOk -and -not (Test-Path (Join-Path $destFull '.git'))) {
-        Write-Host "[install] guard GitRepoRequired"
-        Write-Error "Installation failed: Destination '$destFull' is not a git repository. Please initialize git first with 'git init' or clone an existing repository."
-    }
-
-    # FR-024: Require clean working tree before copying overlay
-    if ($gitOk -or (Test-Path (Join-Path $destFull '.git'))) {
-        $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-        $pinfo.FileName = 'git'
-        $pinfo.Arguments = "-C `"$destFull`" status --porcelain"
-        $pinfo.RedirectStandardOutput = $true
-        $pinfo.RedirectStandardError = $true
-        $pinfo.UseShellExecute = $false
-        $p = [System.Diagnostics.Process]::Start($pinfo)
-        $p.WaitForExit()
-        if ($p.ExitCode -eq 0) {
-            $statusOutput = $p.StandardOutput.ReadToEnd().Trim()
-            if (-not [string]::IsNullOrEmpty($statusOutput)) {
-                Write-Host "[install] guard WorkingTreeNotClean"
-                Write-Error "Installation failed: Working tree is not clean. Please commit or stash your changes before running the installation."
-            }
-        }
-    }
-    Write-BuildMessage -Type Success -Message "Working in: $destFull"
-
     $step++; Write-Step $step "Verify prerequisites"
+
+    Write-Host "[install] prerequisite tool=`"choco`" status=`"check`""
+    $chocoPath = Ensure-Chocolatey
+    if ($chocoPath) {
+        Write-BuildMessage -Type Success -Message "Chocolatey available at $chocoPath"
+    }
+
+    Write-Host "[install] prerequisite tool=`"git`" status=`"check`""
+    Ensure-Git | Out-Null
 
     # Check .NET SDK
     Write-Host "[install] prerequisite tool=`"dotnet`" status=`"check`""
@@ -559,6 +639,47 @@ function Install-AlBuildTools {
             Write-Error "Installation failed: InvokeBuild module is required. Install with: Install-Module InvokeBuild -Scope CurrentUser"
         }
     }
+
+    $step++; Write-Step $step "Detect git repository"
+    $gitOk = $false
+    try {
+        $pinfo = New-Object System.Diagnostics.ProcessStartInfo
+        $pinfo.FileName = 'git'
+        $pinfo.Arguments = "-C `"$destFull`" rev-parse --git-dir"
+        $pinfo.RedirectStandardOutput = $true
+        $pinfo.RedirectStandardError = $true
+        $pinfo.UseShellExecute = $false
+        $p = [System.Diagnostics.Process]::Start($pinfo)
+        $p.WaitForExit()
+        if ($p.ExitCode -eq 0) { $gitOk = $true }
+    } catch {
+        Write-Verbose "[install] git check failed: $($_.Exception.Message)"
+    }
+    # FR-023: Abort when destination is not a git repository
+    if (-not $gitOk -and -not (Test-Path (Join-Path $destFull '.git'))) {
+        Write-Host "[install] guard GitRepoRequired"
+        Write-Error "Installation failed: Destination '$destFull' is not a git repository. Please initialize git first with 'git init' or clone an existing repository."
+    }
+
+    # FR-024: Require clean working tree before copying overlay
+    if ($gitOk -or (Test-Path (Join-Path $destFull '.git'))) {
+        $pinfo = New-Object System.Diagnostics.ProcessStartInfo
+        $pinfo.FileName = 'git'
+        $pinfo.Arguments = "-C `"$destFull`" status --porcelain"
+        $pinfo.RedirectStandardOutput = $true
+        $pinfo.RedirectStandardError = $true
+        $pinfo.UseShellExecute = $false
+        $p = [System.Diagnostics.Process]::Start($pinfo)
+        $p.WaitForExit()
+        if ($p.ExitCode -eq 0) {
+            $statusOutput = $p.StandardOutput.ReadToEnd().Trim()
+            if (-not [string]::IsNullOrEmpty($statusOutput)) {
+                Write-Host "[install] guard WorkingTreeNotClean"
+                Write-Error "Installation failed: Working tree is not clean. Please commit or stash your changes before running the installation."
+            }
+        }
+    }
+    Write-BuildMessage -Type Success -Message "Working in: $destFull"
 
     $tmp = New-Item -ItemType Directory -Path ([System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetRandomFileName()))
     Write-Host "[install] temp workspace=`"$($tmp.FullName)`""
