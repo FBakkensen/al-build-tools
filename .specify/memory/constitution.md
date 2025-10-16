@@ -1,37 +1,50 @@
-# AL Build Tools Constitution
+# [PROJECT_NAME] Constitution
+<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
 
-## Core Tenets
+## Core Principles
 
-### 1. Cross-Platform Parity
-Every user-facing capability ships with Linux and Windows entry points that share names, arguments, exit semantics, and observable output. Launching a task on one platform must feel indistinguishable from the other. Shipping a feature on a single OS violates this charter.
+### [PRINCIPLE_1_NAME]
+<!-- Example: I. Library-First -->
+[PRINCIPLE_1_DESCRIPTION]
+<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
 
-### 2. Repeatable Operations
-Build, clean, and inspection commands are safe to run repeatedly. They act only on declared artifacts, leave unrelated files untouched, and produce deterministic results. Automation and humans can rerun the toolkit without fear of drift.
+### [PRINCIPLE_2_NAME]
+<!-- Example: II. CLI Interface -->
+[PRINCIPLE_2_DESCRIPTION]
+<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
 
-### 3. Workspace Purity
-Tooling honors the repository as the source of truth. Behavior derives strictly from checked-in files, supplied arguments, and explicit environment variables. No hidden caches, implicit configuration, or silent mutation of user files are permitted.
+### [PRINCIPLE_3_NAME]
+<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
+[PRINCIPLE_3_DESCRIPTION]
+<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
 
-### 4. Transparent Contracts
-Published scripts emit clear status signals: documented exit codes, actionable errors routed to stderr, and stable stdout intended for chaining. Any change to those contracts requires deliberate versioning and communication before release.
+### [PRINCIPLE_4_NAME]
+<!-- Example: IV. Integration Testing -->
+[PRINCIPLE_4_DESCRIPTION]
+<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
 
-### 5. Overlay Minimalism
-The copied `overlay/` payload remains a thin, self-contained surface. Everything inside is treated as an external contract, stays free of internal coupling, avoids network access, and exposes only the entry points end users must invoke.
+### [PRINCIPLE_5_NAME]
+<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
+[PRINCIPLE_5_DESCRIPTION]
+<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
 
-## Non-Negotiable Guardrails
-- **Security First**: Secrets are never embedded; credentials flow only through environment variables or tooling already managed by users.
-- **Environment Isolation**: Child processes must not leak or overwrite caller environment state. Any temporary context stays process-scoped or lives under disposable directories.
-- **Deterministic Artifacts**: Output names, locations, and cleanup rules are predictable and reversible. Artifacts belong under the target app directory, with collisions resolved safely.
-- **Analyzer Discipline**: Analyzers run only when explicitly configured. Discovery favors reporting over guessing; absence of configuration means analyzers stay disabled.
-- **Safety Checks**: Scripts validate paths and inputs before deleting files or invoking compilers. Guard clauses prevent destructive operations outside the app boundary.
+## [SECTION_2_NAME]
+<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
 
-## Delivery Discipline
-1. **Spec Before Build**: Significant work begins with a numbered spec describing motivation, scope, parity expectations, and verification strategy.
-2. **Focused Changes**: Contributions touch only the files required for the stated objective. Opportunistic refactors or feature creep are deferred.
-3. **Symmetric Testing**: Contributors validate Linux and Windows flows, including double-run idempotence, before declaring a change complete.
-4. **Documentation in Lockstep**: Any new flag, behavior, or contract adjustment updates user guidance and agent instructions in the same change set.
-5. **Observable Failures**: Errors are concise, single-line summaries with optional diagnostics beneath. Success paths are equally explicit about what occurred.
+[SECTION_2_CONTENT]
+<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+
+## [SECTION_3_NAME]
+<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+
+[SECTION_3_CONTENT]
+<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
 
 ## Governance
-This Constitution outranks ancillary notes when conflicts arise. Amending a tenet or guardrail demands: clear motivation, downstream impact analysis, parity verification, and documented maintainer approval. Emergency fixes may bypass documentation only to stop an active regression; remediation notes and (if needed) constitutional updates follow immediately.
+<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-**Version**: 1.1.0 | **Ratified**: 2025-09-10 | **Last Amended**: 2025-09-16
+[GOVERNANCE_RULES]
+<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+
+**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
+<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
