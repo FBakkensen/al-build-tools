@@ -340,25 +340,60 @@ function Invoke-ContainerWithTiming {
     # T013: Capture container create timing
     $createStart = Get-Date
     try {
-        # Build docker run command
         $keepContainer = if ($env:ALBT_TEST_KEEP_CONTAINER -eq '1') { '' } else { '--rm' }
         $mnt = 'C:\albt-workspace'
 
-        $dockerArgs = @(
-            'run'
-            $keepContainer
+        # First, create the container
+        Write-Verbose "[albt] Creating container: $containerName"
+        $createArgs = @(
+            'create'
             '--name', $containerName
             '--isolation', 'process'
-            '--entrypoint', 'powershell'
-            '-v', "$($script:OutputDir):$mnt"
+            '--entrypoint', 'cmd.exe'
+            '-v', "$($PSScriptRoot):$mnt"
             '-e', 'ALBT_AUTO_INSTALL=1'
+            '-e', "ALBT_TEST_RELEASE_TAG=$($script:ReleaseTag)"
             "-w", "$mnt"
             $Image
+            '/c', 'echo created'
+        ) | Where-Object { $_ }
+
+        $createOutput = & docker @createArgs 2>&1
+        Write-Verbose "[albt] Container created: $createOutput"
+
+        # T025: Copy bootstrap directory into container (not just overlay.zip)
+        # The container needs the actual bootstrap/install.ps1 script to execute
+        Write-Verbose "[albt] Copying bootstrap installer into container..."
+        $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+        $bootstrapPath = Join-Path $repoRoot 'bootstrap'
+        if (-not (Test-Path $bootstrapPath)) {
+            throw "bootstrap directory not found at $bootstrapPath"
+        }
+
+        $cpArgs = @(
+            'cp'
+            '-r'
+            "$bootstrapPath"
+            "$($containerName):C:\albt-workspace\bootstrap"
+        )
+
+        & docker @cpArgs 2>&1 | ForEach-Object { Write-Verbose "[docker cp] $_" }
+        Write-Verbose "[albt] bootstrap directory copied successfully"
+
+        # Start the container with the actual command
+        Write-Verbose "[albt] Starting container execution..."
+        $execArgs = @(
+            'exec'
+            '-w', $mnt
+            '-e', 'ALBT_AUTO_INSTALL=1'
+            '-e', "ALBT_TEST_RELEASE_TAG=$($script:ReleaseTag)"
+            $containerName
+            'powershell'
             '-NoLogo', '-NoProfile', '-Command', $ContainerCommand
         ) | Where-Object { $_ }
 
-        Write-Verbose "[albt] Executing: docker $($dockerArgs -join ' ')"
-        $output = & docker @dockerArgs 2>&1
+        Write-Verbose "[albt] Executing: docker $($execArgs -join ' ')"
+        $output = & docker @execArgs 2>&1
         $ExitCode.Value = $LASTEXITCODE
 
         $output | ForEach-Object { Write-Verbose "[container] $_" }
@@ -667,44 +702,64 @@ try {
     }
     Write-Verbose "[albt] Release: $($releaseInfo.releaseTag), Asset: $($releaseInfo.assetUrl)"
 
-    Write-Verbose '[albt] === Artifact Download Phase ==='
-    $sha256Hash = $null
-    $retryCount = 0
-    $downloadSuccess = Get-OverlayArtifact -AssetUrl $releaseInfo.assetUrl -ReleaseTag $releaseInfo.releaseTag -RetryCount ([ref]$retryCount) -SHA256Hash ([ref]$sha256Hash)
-    if (-not $downloadSuccess) {
-        throw "Artifact download failed (retries: $retryCount)"
-    }
+    # Store release tag for passing to container
+    $script:ReleaseTag = $releaseInfo.releaseTag
 
     Write-Verbose '[albt] === Container Provisioning Phase ==='
     $image = Resolve-ContainerImage
 
+    # T024: Build container run command with bootstrap install sequence
+    # The container should run the ACTUAL bootstrap installer to validate the real install path
+    # T026: Invoke the real bootstrap/install.ps1 script inside container
     # T020: Export ALBT_AUTO_INSTALL=1 for container run
     $containerCommand = @'
-        # Inside container: validate and install
-        Write-Host '[container] Validating overlay.zip presence...'
-        if (-not (Test-Path 'C:\albt-workspace\overlay.zip')) {
-            throw 'overlay.zip not found in workspace'
+        #requires -Version 5.1
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = 'Stop'
+
+        Write-Host '[container] === Bootstrap Installer Inside Container ==='
+
+        # Validate bootstrap installer script exists
+        Write-Host '[container] Validating bootstrap installer in workspace...'
+        $bootstrapScript = 'C:\albt-workspace\bootstrap\install.ps1'
+        if (-not (Test-Path $bootstrapScript)) {
+            Write-Error 'bootstrap/install.ps1 not found in workspace mount'
+            exit 1
         }
 
-        # Expand and run installer
-        Write-Host '[container] Expanding overlay.zip...'
-        Expand-Archive -Path 'C:\albt-workspace\overlay.zip' -DestinationPath 'C:\albt' -Force
+        Write-Host "[container] Running bootstrap installer: $bootstrapScript"
+        Write-Host '[container] Install destination: C:\albt-repo'
 
-        # T021: Validate PowerShell 7 presence and version
-        Write-Host '[container] Checking PowerShell...'
-        $psPath = 'C:\Program Files\PowerShell\7\pwsh.exe'
-        if (-not (Test-Path $psPath)) {
-            Write-Host '[container] PowerShell 7 not found, attempting install...'
-            # Auto-install logic would go here; for now, we record the attempt
+        try {
+            # T021: Track PowerShell version being used
+            Write-Host "[container] PowerShell version: $($PSVersionTable.PSVersion)"
+
+            # Invoke the actual bootstrap installer
+            # The installer will:
+            # - Download overlay.zip (or use pre-staged if ALBT_TEST_RELEASE_ASSET_URL set)
+            # - Extract to destination
+            # - Validate installation
+            & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass `
+                -File $bootstrapScript `
+                -Dest 'C:\albt-repo' `
+                -Ref $env:ALBT_TEST_RELEASE_TAG
+
+            $installerExitCode = $LASTEXITCODE
+            Write-Host "[container] Bootstrap installer exited with code: $installerExitCode"
+
+            exit $installerExitCode
         }
-
-        Write-Host '[container] Installation sequence complete'
+        catch {
+            Write-Error "Failed to execute bootstrap installer: $_"
+            exit 1
+        }
 '@
 
     $imagePullSeconds = 0
     $containerCreateSeconds = 0
     $containerId = $null
     $exitCode = 1
+    $containerOutput = $null
 
     $containerSuccess = Invoke-ContainerWithTiming -Image $image -ContainerCommand $containerCommand `
         -ImagePullSeconds ([ref]$imagePullSeconds) `
@@ -718,29 +773,52 @@ try {
 
     Write-Verbose "[albt] Container exit code: $exitCode"
 
+    # T027: Capture container process exit code (already done via Invoke-ContainerWithTiming)
     # T021: Extract PowerShell version from container output
     $psVersion = Extract-PSVersionFromOutput -Output $output
     if (-not $psVersion) {
-        Write-Verbose '[albt] PowerShell version not captured; using default 7.2.0'
+        Write-Verbose '[albt] PowerShell version not captured from output; using fallback'
         $psVersion = '7.2.0'
     }
 
     Write-Verbose '[albt] === Summary Generation Phase ==='
     $endTime = Get-Date
 
+    # T028: Populate summary with success fields (exitCode, success, durationSeconds)
     $summary = New-TestSummary -Image $image -ContainerId $containerId -StartTime $startTime -EndTime $endTime `
-        -ReleaseTag $releaseInfo.releaseTag -AssetName $releaseInfo.assetName -ExitCode $exitCode `
+        -ReleaseTag $releaseInfo.releaseTag -AssetName 'overlay.zip' -ExitCode $exitCode `
         -PSVersion $psVersion -ImagePullSeconds $imagePullSeconds -ContainerCreateSeconds $containerCreateSeconds `
-        -TranscriptPath $transcriptPath -Retries $retryCount
+        -TranscriptPath $transcriptPath -Retries 0
 
     if ($exitCode -ne 0) {
         $summary['errorSummary'] = "Container execution failed with exit code $exitCode"
         $script:ErrorCategory = 'integration'
     }
+    else {
+        Write-Verbose '[albt] Installation succeeded; validating artifacts'
+        # Verify transcript and summary will be present
+        if (-not (Test-Path $transcriptPath)) {
+            Write-Error "Transcript file not found: $transcriptPath"
+            $script:ErrorCategory = 'integration'
+            $exitCode = 1
+            $summary['exitCode'] = $exitCode
+            $summary['success'] = $false
+            $summary['errorSummary'] = 'Transcript file missing after successful container exit'
+        }
+    }
 
+    # T029: Validate summary JSON conforms to schema (basic key presence)
     $summarySuccess = Write-TestSummary -Summary $summary
     if (-not $summarySuccess) {
         throw 'Failed to write summary JSON'
+    }
+
+    Write-Verbose "[albt] === Installation Complete ==="
+    if ($exitCode -eq 0) {
+        Write-Verbose '[albt] Installation successful'
+    }
+    else {
+        Write-Verbose "[albt] Installation failed with exit code: $exitCode"
     }
 
     # $finalExitCode assignment is handled in finally block
