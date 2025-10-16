@@ -4,49 +4,39 @@ When amending the constitution (`/memory/constitution.md`), ensure all dependent
 
 ## Templates to Update
 
-### When adding/modifying ANY article:
+### When adding/modifying ANY principle:
 - [ ] `/templates/plan-template.md` - Update Constitution Check section
 - [ ] `/templates/spec-template.md` - Update if requirements/scope affected
 - [ ] `/templates/tasks-template.md` - Update if new task types needed
-- [ ] `/.claude/commands/plan.md` - Update if planning process changes
-- [ ] `/.claude/commands/tasks.md` - Update if task generation affected
+- [ ] `/.claude/commands/stage-commit-push.md` - Update if commit workflow references governance changes
 - [ ] `/CLAUDE.md` - Update runtime development guidelines
 
-### Article-specific updates:
+### Principle-specific updates:
 
-#### Article I (Library-First):
-- [ ] Ensure templates emphasize library creation
-- [ ] Update CLI command examples
-- [ ] Add llms.txt documentation requirements
+#### Principle 1 – Overlay Is The Product
+- [ ] Highlight that `overlay/` content is the public contract
+- [ ] Remind contributors to document any compatibility risks
+- [ ] Ensure no internal-only assets leak into release artifacts
 
-#### Article II (CLI Interface):
-- [ ] Update CLI flag requirements in templates
-- [ ] Add text I/O protocol reminders
+#### Principle 2 – Self-Contained Cross-Platform Scripts
+- [ ] Call out Windows/Linux parity expectations in templates
+- [ ] Require scripts to avoid repo-internal dependencies
+- [ ] Document justified exceptions to parity in planning docs
 
-#### Article III (Test-First):
-- [ ] Update test order in all templates
-- [ ] Emphasize TDD requirements
-- [ ] Add test approval gates
+#### Principle 3 – Guarded Execution & Exit Codes
+- [ ] Verify guard (`ALBT_VIA_MAKE`) messaging appears in relevant flows
+- [ ] List standard exit codes in runtime guidance
+- [ ] Require plans/specs to preserve guard behavior when touched
 
-#### Article IV (Integration Testing):
-- [ ] List integration test triggers
-- [ ] Update test type priorities
-- [ ] Add real dependency requirements
+#### Principle 4 – Deterministic Provisioning & Cache Hygiene
+- [ ] Reference cache location environment variables and sentinel files
+- [ ] Emphasize reproducible installs with clean environments
+- [ ] Capture expectations for log collection during provisioning
 
-#### Article V (Observability):
-- [ ] Add logging requirements to templates
-- [ ] Include multi-tier log streaming
-- [ ] Update performance monitoring sections
-
-#### Article VI (Versioning):
-- [ ] Add version increment reminders
-- [ ] Include breaking change procedures
-- [ ] Update migration requirements
-
-#### Article VII (Simplicity):
-- [ ] Update project count limits
-- [ ] Add pattern prohibition examples
-- [ ] Include YAGNI reminders
+#### Principle 5 – Copy-Only Release Discipline
+- [ ] Reinforce copy-only installer flow and artifact composition
+- [ ] Document release packaging (overlay zip) and semantic versioning
+- [ ] Ensure templates require pre-release dry runs and artifact validation
 
 ## Validation Steps
 
@@ -76,9 +66,9 @@ Watch for these often-forgotten updates:
 
 ## Template Sync Status
 
-Last sync check: 2025-07-16
-- Constitution version: 2.1.1
-- Templates aligned: ❌ (missing versioning, observability details)
+Last sync check: 2025-10-16
+- Constitution version: 1.0.0
+- Templates aligned: ✅ (plan/spec/tasks templates refreshed for new principles)
 
 ---
 
