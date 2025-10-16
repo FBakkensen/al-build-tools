@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Installer Test Summary",
+  "type": "object",
+  "required": [
+    "image",
+    "startTime",
+    "endTime",
+    "durationSeconds",
+    "releaseTag",
+    "assetName",
+    "exitCode",
+    "success",
+    "psVersion"
+  ],
+  "properties": {
+    "image": { "type": "string", "description": "Container image reference used." },
+    "containerId": { "type": "string", "description": "Docker container ID." },
+    "startTime": { "type": "string", "format": "date-time" },
+    "endTime": { "type": "string", "format": "date-time" },
+    "durationSeconds": { "type": "integer", "minimum": 0 },
+    "releaseTag": { "type": "string" },
+    "assetName": { "type": "string" },
+    "exitCode": { "type": "integer", "minimum": 0 },
+    "success": { "type": "boolean" },
+    "psVersion": { "type": "string", "pattern": "^7\\.(?:[2-9]|[1-9][0-9])\\.\\d+$" },
+    "errorSummary": { "type": "string" },
+    "logs": {
+      "type": "object",
+      "required": ["transcript"],
+      "properties": {
+        "transcript": { "type": "string" },
+        "additional": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "additionalProperties": false
+}
