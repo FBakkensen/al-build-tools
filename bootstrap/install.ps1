@@ -1,4 +1,4 @@
-#requires -Version 7.0
+# Allow execution under Windows PowerShell 5.1; script performs its own PS 7+ installation logic when needed.
 [CmdletBinding()]
 param(
     [string]$Url = 'https://api.github.com/repos/FBakkensen/al-build-tools',
