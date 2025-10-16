@@ -9,13 +9,13 @@ Phased implementation plan to deliver an independently testable containerized va
 ## Phase 1 – Setup (Local-First)
 Establish local harness scaffolding only (no CI workflow yet) to enable iterative local development before automation.
 
-- [ ] T001 Create output directory placeholder `out/test-install/.gitkeep`
-- [ ] T002 Create script scaffold for harness in `scripts/ci/test-bootstrap-install.ps1`
-- [ ] T003 Ensure JSON schema file present `specs/008-add-docker-install-test/contracts/installer-test-summary.schema.json`
-- [ ] T004 [P] Add helper PowerShell function section headers inside `scripts/ci/test-bootstrap-install.ps1` (Parse-Release, Invoke-ContainerRun, Write-Summary)
-- [ ] T005 Write schema validation note in `scripts/ci/test-bootstrap-install.ps1` comments referencing `contracts/installer-test-summary.schema.json`
-- [ ] T005a Add G14 schema alignment explanatory note to spec (no schema expansion)
-- [ ] T006 Add `.gitignore` rule (if absent) for `out/test-install/` in root `.gitignore`
+- [x] T001 Create output directory placeholder `out/test-install/.gitkeep`
+- [x] T002 Create script scaffold for harness in `scripts/ci/test-bootstrap-install.ps1`
+- [x] T003 Ensure JSON schema file present `specs/008-add-docker-install-test/contracts/installer-test-summary.schema.json`
+- [x] T004 [P] Add helper PowerShell function section headers inside `scripts/ci/test-bootstrap-install.ps1` (Parse-Release, Invoke-ContainerRun, Write-Summary)
+- [x] T005 Write schema validation note in `scripts/ci/test-bootstrap-install.ps1` comments referencing `contracts/installer-test-summary.schema.json`
+- [x] T005a Add G14 schema alignment explanatory note to spec (no schema expansion)
+- [x] T006 Add `.gitignore` rule (if absent) for `out/test-install/` in root `.gitignore`
 
 ## Phase 2 – Foundational
 Core mechanics & resilience primitives that all stories rely upon (container provisioning, release asset selection, logging, cleanup). No story labels per rules.
