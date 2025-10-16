@@ -29,6 +29,7 @@ Resolved Decisions Summary (see research.md for rationale):
 - **Harness copies `bootstrap/` directory to container; container runs actual installer** (does NOT manually extract overlay.zip)
 - Installer handles all logic: downloading release overlay, extracting, validating
 - Artifacts exported to `out/test-install/` and uploaded as `installer-test-logs`.
+ - Refactor (2025-10-16): Removed previously added harness-level overlay download & checksum validation to eliminate duplication. Responsibility for asset integrity remains solely inside `bootstrap/install.ps1`. Timed phases now exclude a download phase.
 
 Local/CI Parity Commitment: The GitHub Actions workflow MUST perform no logic beyond calling the harness script and uploading artifacts; all execution logic lives in the harness and installer to guarantee identical local reproduction.
 

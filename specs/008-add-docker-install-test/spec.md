@@ -22,7 +22,7 @@
 
 ### User Story 1 - Validate Installer In Clean Container (Priority: P1)
 
-Release maintainers can trigger an automated check that provisions a clean Windows Docker container, runs the bootstrap install script end-to-end, and confirms the overlay installs without manual steps.
+Release maintainers can trigger an automated check that provisions a clean Windows Docker container, runs the bootstrap install script end-to-end, and confirms the overlay installs without manual steps. Harness delegates all overlay acquisition & integrity verification to the installer itself (no duplicated download logic).
 
 **Why this priority**: Proves that the public installer still works for new consumers, preventing shipping a broken release.
 
@@ -75,13 +75,13 @@ Maintainers can run the same containerized installer check on a local Windows ma
 ### Functional Requirements
 
 - **FR-001**: The test harness MUST provision an ephemeral Windows Docker container with only the prerequisites needed to execute `bootstrap/install.ps1`.
-- **FR-002**: The harness MUST execute the **actual** `bootstrap/install.ps1` script exactly as a new consumer would (letting the installer download the release artifact and extract the overlay) without pre-populating caches or bypassing the installer's own logic.
- - **FR-003**: The harness MUST capture: (a) exit code, (b) console transcript file `install.transcript.txt`, and (c) installer summary file `summary.json` (plus `provision.log` only when a failure occurs), marking the test as failed when the installer exits non-zero.
- - **FR-004**: The harness MUST publish those captured artifacts (`install.transcript.txt`, `summary.json`, and on failure `provision.log`) as part of the test result for both success and failure cases.
+- **FR-002**: The harness MUST execute the **actual** `bootstrap/install.ps1` script exactly as a new consumer would, allowing the installer to perform overlay download, integrity checks, and extraction (harness MUST NOT replicate these steps).
+- **FR-003**: The harness MUST capture: (a) exit code, (b) console transcript file `install.transcript.txt`, and (c) installer summary file `summary.json` (plus `provision.log` only when a failure occurs), marking the test as failed when the installer exits non-zero.
+- **FR-004**: The harness MUST publish those captured artifacts (`install.transcript.txt`, `summary.json`, and on failure `provision.log`) as part of the test result for both success and failure cases.
 - **FR-005**: The harness MUST clean up containers and temporary assets after each run to avoid cross-test contamination and excessive resource use.
- - **FR-006**: The harness MUST ensure PowerShell 7.2+ is available (validate OR install). If the base image lacks it, the harness MUST enable non-interactive installation by exporting `ALBT_AUTO_INSTALL=1` before invoking `bootstrap/install.ps1` so the existing installer logic performs the upgrade without user prompts.
- - **FR-007**: The harness SHOULD enrich the summary (when data is obtainable) with early lifecycle timing metrics (`imagePullSeconds`, `containerCreateSeconds`). Absence of these optional fields MUST NOT cause the test to fail.
- - **FR-008**: The harness SHOULD verify the integrity of the downloaded overlay asset when an authoritative digest is available. It MAY obtain this digest via the GitHub CLI asset metadata (`gh release view --json assets` -> asset `digest`) or an explicit environment variable `ALBT_TEST_EXPECTED_SHA256`. On mismatch it MUST fail early with an `asset-integrity` classification and before attempting container execution. If no authoritative digest is obtainable, the harness proceeds after logging the computed hash.
+- **FR-006**: The harness MUST ensure PowerShell 7.2+ is available (validate OR install). If the base image lacks it, the harness MUST enable non-interactive installation by exporting `ALBT_AUTO_INSTALL=1` before invoking `bootstrap/install.ps1` so the existing installer logic performs the upgrade without user prompts.
+- **FR-007**: The harness SHOULD enrich the summary (when data is obtainable) with early lifecycle timing metrics (`imagePullSeconds`, `containerCreateSeconds`). Absence of these optional fields MUST NOT cause the test to fail.
+- **FR-008**: (Refactored) Integrity verification of the overlay asset is the responsibility of `bootstrap/install.ps1`; the harness MUST NOT perform independent checksum or digest validation to avoid divergence. The harness MAY still surface installer failures related to integrity via exit code and transcript.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -124,9 +124,9 @@ Rationale (G15): Align spec with existing schema guardrails so implementers have
 
 OPTIONAL (enrichment; absence MUST NOT fail harness):
 - `errorSummary` (string) – populated on failure scenarios
-- `failingStage` (string) – if determinable
 - `imagePullSeconds`, `containerCreateSeconds` – timing metrics (FR-007)
 - `runId` (string) – short unique identifier per harness execution
+- `imageDigest`, `timedPhases` – container/environment diagnostics
 - Future additive fields (timing, identifiers) may be introduced without breaking consumers.
 
 No schema version field is included in MVP (per G7:A minimal clarification). A future version field may be added only if a breaking change (removal/rename of a REQUIRED field) is contemplated; until then the presence of REQUIRED keys defines compatibility.
@@ -186,11 +186,9 @@ The summary does not enumerate every artifact; artifact publication (transcript,
 
 The schema now restricts `exitCode` to the set `[0,1,2,6]` (success, general failure, guard violation, missing tool). This enforces the current minimal taxonomy and prevents accidental emission of unintended codes. Introduction of additional standardized exit codes (e.g., 3–5 for analysis/contract/integration categories) will require a new gap and schema update before harness emission.
 
-## Error Category Removal (G21)
+## Error Category Scope (Updated Post-Refactor)
 
-Earlier draft planning introduced an optional `errorCategory` field for machine-readable failure classification (e.g., pull, container-create, asset-integrity). Per decision G21:D this field is removed from the MVP to reduce complexity and avoid locking an early taxonomy. Implementations MUST rely solely on standardized exit codes (including MissingTool precedence) and MAY express human-readable context via `errorSummary`.
-
-If future operational experience demonstrates clear diagnostic value beyond exit codes, a new gap will re-propose a classification field with accompanying schema changes.
+The harness relies on standardized exit codes plus human-readable `errorSummary`. Asset integrity classification is no longer emitted directly by the harness (delegated to installer). If future experience shows value in restoring structured categories, a new gap will re-propose with schema changes.
 
 ## Cleanup Guarantees (G10)
 
@@ -200,18 +198,14 @@ The harness MUST attempt deterministic container cleanup exactly once at script 
 - Cleanup logic SHOULD be idempotent: repeated calls MUST NOT error if the container is already removed or never created.
 - On cleanup failure (non-zero removal exit) the harness MAY log a warning but MUST still exit with the primary run exit code.
 
-## Timeout & Retry Policy (G11)
+## Timeout & Retry Policy (G11 – Refactored)
 
-Minimal standardized policy:
-- Network request timeout: 30 seconds (download release asset, release metadata lookup, digest retrieval).
-- Overlay download retry: 1 additional attempt after fixed 5 second delay (see T010).
-- Release metadata fetch retry: 1 additional attempt after fixed 5 second delay (see T034).
-- Digest fetch (gh CLI): no retry (fast fail; integrity check then aborts if mismatch).
+Minimal harness policy:
+- Network request timeout: 30 seconds (release metadata lookup only).
+- Release metadata fetch retry: 1 additional attempt after fixed 2 second delay (see T034).
 - Container pull/create: rely on Docker internal mechanisms; no harness-level retry.
 
-Rationale: Keep runtime predictable and fail fast rather than extending job duration with exponential backoff. Policy may be revisited if empirical failure data indicates need.
-
-MVP deliberately excludes environment overrides to avoid premature complexity; future addition requires separate spec change.
+Overlay download & digest retries are owned by the installer and outside harness scope after refactor. Harness maintains a lean responsibility set.
 
 ## Clarifications
 

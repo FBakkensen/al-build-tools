@@ -18,15 +18,15 @@ Establish local harness scaffolding only (no CI workflow yet) to enable iterativ
 - [x] T006 Add `.gitignore` rule (if absent) for `out/test-install/` in root `.gitignore`
 
 ## Phase 2 – Foundational
-Core mechanics & resilience primitives that all stories rely upon (container provisioning, release asset selection, logging, cleanup). No story labels per rules.
+Core mechanics & resilience primitives (container provisioning, release tag resolution, logging, cleanup). NOTE: Download + checksum tasks (T009–T011b) were implemented initially but later removed via refactor; installer now exclusively owns overlay acquisition & integrity. Their historical completion remains marked for traceability but harness no longer executes that logic.
 
 - [x] T007 Implement release tag resolution (env `ALBT_TEST_RELEASE_TAG` else latest) in `scripts/ci/test-bootstrap-install.ps1`
 - [x] T008 [P] Implement latest release lookup via GitHub API (unauth or token) in `scripts/ci/test-bootstrap-install.ps1`
-- [x] T009 Implement artifact download to `out/test-install/overlay.zip` using `Invoke-WebRequest`
- - [x] T010 Add retry (second attempt after fixed 5s delay) for overlay.zip download with attempt logging in `scripts/ci/test-bootstrap-install.ps1`
- - [x] T011 [P] Implement checksum logging (SHA256) for downloaded `overlay.zip` in `scripts/ci/test-bootstrap-install.ps1`
- - [x] T011a [P] Attempt asset digest retrieval via `gh release view` (if `gh` present) capturing authoritative `expectedSha256`
- - [x] T011b Verify computed SHA256 against authoritative digest OR env `ALBT_TEST_EXPECTED_SHA256` (fail early on mismatch; set `errorCategory=asset-integrity`)
+- [x] T009 (Deprecated) Harness artifact download (removed; handled by bootstrap installer)
+ - [x] T010 (Deprecated) Retry logic for harness download (removed)
+ - [x] T011 (Deprecated) Harness checksum logging (removed)
+ - [x] T011a (Deprecated) gh digest retrieval (removed)
+ - [x] T011b (Deprecated) Integrity verification inside harness (removed)
  - [x] T012 Implement container image resolution (env `ALBT_TEST_IMAGE` fallback `mcr.microsoft.com/windows/servercore:ltsc2022`)
  - [x] T013 Capture image pull & container create timing; add `imagePullSeconds`,`containerCreateSeconds` to summary
  - [x] T014 [P] Early failure classification for image pull vs container create populating `errorCategory`
@@ -62,16 +62,16 @@ Independent Test Criteria: Local run; expect exit code 0, presence of transcript
 ## Phase 4 – User Story 2 (P2) Surface Actionable Failures (Local Diagnostics)
 Augment harness to produce rich diagnostics for failing runs (still local-focused; CI hooks deferred to later phase).
 
-Story Goal: Provide concise failure summaries and comprehensive logs/artifacts when install fails.
+Story Goal: Provide concise failure summaries and comprehensive logs/artifacts when install fails. (Refactor note: Timed phases no longer include download phase since harness delegates overlay download to installer.)
 Independent Test Criteria: Simulate failure (e.g., set bad release tag) and confirm non-zero exit code plus summary `errorSummary` and artifact presence.
 
-- [ ] T031 [US2] Add failure classification (network vs install) populating `errorSummary` in `scripts/ci/test-bootstrap-install.ps1`
-- [ ] T032 [P] [US2] Add timed sections with start/stop timestamps for phases (download, container start, install) appended to summary
-- [ ] T033 [US2] Add container stdout/stderr tail extraction on failure appended to transcript file
-- [ ] T034 [P] [US2] Add retry (1 attempt) for release metadata fetch before failing hard
-- [ ] T035 [US2] Persist container provisioning log segment into `out/test-install/provision.log`
-- [ ] T036 [P] [US2] Include hashed image ID and container ID in summary JSON
-- [ ] T037 [P] [US2] Add guard to truncate overly large transcript (>5MB) with note
+- [x] T031 [US2] Add failure classification (network vs install) populating `errorSummary` in `scripts/ci/test-bootstrap-install.ps1`
+- [x] T032 [P] [US2] Add timed sections with start/stop timestamps for phases (release-resolution, container-provisioning) appended to summary (download phase removed in refactor)
+- [x] T033 [US2] Add container stdout/stderr tail extraction on failure appended to transcript file
+- [x] T034 [P] [US2] Add retry (1 attempt) for release metadata fetch before failing hard
+- [x] T035 [US2] Persist container provisioning log segment into `out/test-install/provision.log`
+- [x] T036 [P] [US2] Include hashed image ID and container ID in summary JSON
+- [x] T037 [P] [US2] Add guard to truncate overly large transcript (>5MB) with note
 
 ## Phase 5 – User Story 3 (P3) Reproduce Test Locally
 Enable frictionless local execution mirroring future CI behavior.

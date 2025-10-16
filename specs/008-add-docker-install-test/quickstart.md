@@ -41,15 +41,20 @@ pwsh -File scripts/ci/test-bootstrap-install.ps1
 
 ## How It Works
 
-1. **Host**: The harness resolves the release tag and copies the `bootstrap/` directory into the container
-2. **Container**: Runs `bootstrap/install.ps1` inside a clean Windows Server Core environment
-3. **Installer**: Downloads the overlay for the specified release, extracts it, and validates installation
-4. **Host**: Captures exit code and artifacts (transcript, summary JSON)
+Refactored flow (harness delegates all overlay acquisition to installer):
 
-This validates the complete first-time user path in isolation.
+1. **Host**: Harness resolves (or accepts) release tag and copies only the `bootstrap/` directory into a fresh container.
+2. **Container**: Executes the real `bootstrap/install.ps1` script.
+3. **Installer (inside container)**: Handles overlay.zip download, integrity checks, extraction, and post‑install validation.
+4. **Host**: Collects exit code plus artifacts (transcript, summary). Timed phases cover release-resolution and container-provisioning (no separate download timing in harness).
+
+This isolates the authentic end‑user install path without duplicating download or checksum logic outside the installer.
 
 ## Expected Output
 
 - Transcript: `out/test-install/install.transcript.txt`
-- Summary JSON: `out/test-install/summary.json` (matches `contracts/installer-test-summary.schema.json`)
-- Exit code 0 on success, non-zero on failure
+- Summary JSON: `out/test-install/summary.json` (schema-aligned; includes timed phases and optional imageDigest)
+- Provision log: `out/test-install/provision.log` (only on failure for diagnostics)
+- Exit code 0 on success; mapped non‑zero on failure (network/integration/missing-tool)
+
+Download duration and checksum fields are intentionally absent from harness diagnostics (owned by installer). The summary retains static `assetName` for schema compliance.

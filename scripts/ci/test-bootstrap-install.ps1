@@ -48,7 +48,6 @@ $ErrorActionPreference = 'Stop'
 
 $script:DefaultImage = 'mcr.microsoft.com/windows/servercore:ltsc2022'
 $script:OutputDir = 'out/test-install'
-$script:OverlayZipName = 'overlay.zip'
 $script:TranscriptFile = 'install.transcript.txt'
 $script:SummaryFile = 'summary.json'
 $script:ProvisionLogFile = 'provision.log'
@@ -64,9 +63,51 @@ $script:ErrorCategoryMap = @{
     'missing-tool'      = 6
 }
 
+# Timed sections tracking (release-resolution, container-provisioning only)
+$script:TimedPhases = @{}
+
 # ============================================================================
-# SECTION: Parse-Release
-# Responsible for resolving release metadata and artifact URLs
+# SECTION: Timing & Diagnostics
+# Tracks start/stop for limited phases (no download phase; installer handles overlay)
+# ============================================================================
+
+<#
+.SYNOPSIS
+    Records start time for a named phase.
+.DESCRIPTION
+    T032: Tracks phase start/stop timestamps for download, container, install phases.
+#>
+function Invoke-TimedPhaseStart {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$PhaseName
+    )
+    $script:TimedPhases[$PhaseName] = @{
+        'start' = Get-Date
+        'end'   = $null
+    }
+    Write-Verbose "[albt] Phase started: $PhaseName"
+}
+
+<#
+.SYNOPSIS
+    Records stop time for a named phase.
+#>
+function Invoke-TimedPhaseStop {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$PhaseName
+    )
+    if ($script:TimedPhases.ContainsKey($PhaseName)) {
+        $script:TimedPhases[$PhaseName]['end'] = Get-Date
+        $duration = [int]($script:TimedPhases[$PhaseName]['end'] - $script:TimedPhases[$PhaseName]['start']).TotalSeconds
+        Write-Verbose "[albt] Phase completed: $PhaseName ($duration seconds)"
+    }
+}
+
+# ============================================================================
+# SECTION: Release Tag (Optional)
+# Only resolves latest tag if env ALBT_TEST_RELEASE_TAG not set, to pass -Ref to installer
 # ============================================================================
 
 <#
@@ -82,185 +123,53 @@ function Resolve-ReleaseTag {
     [CmdletBinding()]
     param()
 
-    # T007: Release tag resolution (env override or latest)
     $releaseTag = $env:ALBT_TEST_RELEASE_TAG
     if ([string]::IsNullOrWhiteSpace($releaseTag)) {
         Write-Verbose '[albt] Resolving latest release tag from GitHub API'
 
         # T008: Latest release lookup via GitHub API (unauth or token)
+        # T034: Add retry (1 attempt) for release metadata fetch before failing hard
         $apiUrl = 'https://api.github.com/repos/FBakkensen/al-build-tools/releases/latest'
-        $headers = @{}
-        if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
-            $headers['Authorization'] = "token $($env:GITHUB_TOKEN)"
-            Write-Verbose '[albt] Using GITHUB_TOKEN for higher rate limits'
-        }
+        $attempt = 0
+        $maxAttempts = 2
 
-        try {
-            $response = Invoke-WebRequest -Uri $apiUrl -Headers $headers -TimeoutSec $script:NetworkTimeout -ErrorAction Stop
-            $release = ConvertFrom-Json -InputObject $response.Content
-            $releaseTag = $release.tag_name
-            Write-Verbose "[albt] Resolved latest release: $releaseTag"
-        }
-        catch {
-            Write-Error "Failed to fetch latest release from GitHub API: $_"
-            return $null
+        while ($attempt -lt $maxAttempts) {
+            $attempt++
+            $headers = @{}
+            if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+                $headers['Authorization'] = "token $($env:GITHUB_TOKEN)"
+                Write-Verbose '[albt] Using GITHUB_TOKEN for higher rate limits'
+            }
+
+            try {
+                Write-Verbose "[albt] Release metadata fetch attempt $attempt of $maxAttempts"
+                $response = Invoke-WebRequest -Uri $apiUrl -Headers $headers -TimeoutSec $script:NetworkTimeout -ErrorAction Stop
+                $release = ConvertFrom-Json -InputObject $response.Content
+                $releaseTag = $release.tag_name
+                Write-Verbose "[albt] Resolved latest release: $releaseTag"
+                break
+            }
+            catch {
+                if ($attempt -lt $maxAttempts) {
+                    Write-Verbose "[albt] Release metadata fetch attempt $attempt failed: $_; retrying..."
+                    Start-Sleep -Seconds 2
+                }
+                else {
+                    Write-Error "Failed to fetch latest release from GitHub API after $maxAttempts attempts: $_"
+                    $script:ErrorCategory = 'network'
+                    return $null
+                }
+            }
         }
     }
     else {
         Write-Verbose "[albt] Using release tag from env: $releaseTag"
     }
 
-    # T008: Find asset URL for overlay.zip
-    $assetUrl = Get-ReleaseAssetUrl -ReleaseTag $releaseTag -AssetName $script:OverlayZipName
-    if (-not $assetUrl) {
-        Write-Error "Asset '$($script:OverlayZipName)' not found in release '$releaseTag'"
-        return $null
-    }
-
-    return @{
-        releaseTag = $releaseTag
-        assetUrl   = $assetUrl
-        assetName  = $script:OverlayZipName
-    }
+    return @{ releaseTag = $releaseTag }
 }
 
-<#
-.SYNOPSIS
-    Retrieves the download URL for a specific asset in a GitHub release.
-#>
-function Get-ReleaseAssetUrl {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)] [string]$ReleaseTag,
-        [Parameter(Mandatory = $true)] [string]$AssetName
-    )
-
-    $apiUrl = "https://api.github.com/repos/FBakkensen/al-build-tools/releases/tags/$ReleaseTag"
-    $headers = @{}
-    if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
-        $headers['Authorization'] = "token $($env:GITHUB_TOKEN)"
-    }
-
-    try {
-        $response = Invoke-WebRequest -Uri $apiUrl -Headers $headers -TimeoutSec $script:NetworkTimeout -ErrorAction Stop
-        $release = ConvertFrom-Json -InputObject $response.Content
-        $asset = $release.assets | Where-Object { $_.name -eq $AssetName }
-        if ($asset) {
-            return $asset.browser_download_url
-        }
-        return $null
-    }
-    catch {
-        Write-Error "Failed to fetch release asset info: $_"
-        return $null
-    }
-}
-
-# ============================================================================
-# SECTION: Download & Validate Artifacts
-# ============================================================================
-
-<#
-.SYNOPSIS
-    Downloads overlay.zip with retry logic and checksum validation.
-.DESCRIPTION
-    T009, T010, T011, T011a, T011b: Downloads overlay.zip to output dir,
-    attempts to validate SHA256 against authoritative source or env variable.
-    Implements single retry with 5s delay.
-.OUTPUTS
-    [bool] $true if download successful and validated, $false otherwise.
-#>
-function Get-OverlayArtifact {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)] [string]$AssetUrl,
-        [Parameter(Mandatory = $true)] [string]$ReleaseTag,
-        [ref]$RetryCount,
-        [ref]$SHA256Hash
-    )
-
-    $outPath = Join-Path $script:OutputDir $script:OverlayZipName
-    $attempt = 0
-    $maxAttempts = 2
-
-    while ($attempt -lt $maxAttempts) {
-        $attempt++
-        Write-Verbose "[albt] Download attempt $attempt of $maxAttempts for $($script:OverlayZipName)"
-
-        try {
-            Invoke-WebRequest -Uri $AssetUrl -OutFile $outPath -TimeoutSec 60 -ErrorAction Stop
-            Write-Verbose "[albt] Successfully downloaded to $outPath"
-
-            # T011: Checksum logging (SHA256)
-            $hash = (Get-FileHash -Path $outPath -Algorithm SHA256).Hash
-            $SHA256Hash.Value = $hash
-            Write-Verbose "[albt] SHA256: $hash"
-
-            # T011a: Attempt asset digest retrieval via gh release view
-            $expectedHash = Get-ExpectedAssetHash -ReleaseTag $ReleaseTag
-
-            # T011b: Verify computed SHA256 against authoritative digest
-            if (-not [string]::IsNullOrWhiteSpace($expectedHash)) {
-                if ($hash -ne $expectedHash) {
-                    Write-Error "SHA256 mismatch: computed=$hash, expected=$expectedHash"
-                    $script:ErrorCategory = 'asset-integrity'
-                    return $false
-                }
-                Write-Verbose '[albt] SHA256 validation passed'
-            }
-            elseif (-not [string]::IsNullOrWhiteSpace($env:ALBT_TEST_EXPECTED_SHA256)) {
-                if ($hash -ne $env:ALBT_TEST_EXPECTED_SHA256) {
-                    Write-Error "SHA256 mismatch: computed=$hash, expected=$($env:ALBT_TEST_EXPECTED_SHA256)"
-                    $script:ErrorCategory = 'asset-integrity'
-                    return $false
-                }
-                Write-Verbose '[albt] SHA256 validation passed (via env)'
-            }
-
-            $RetryCount.Value = $attempt - 1
-            return $true
-        }
-        catch {
-            Write-Verbose "[albt] Download attempt $attempt failed: $_"
-            if ($attempt -lt $maxAttempts) {
-                Write-Verbose '[albt] Waiting 5 seconds before retry...'
-                Start-Sleep -Seconds 5
-            }
-        }
-    }
-
-    Write-Error "Failed to download overlay.zip after $maxAttempts attempts"
-    $script:ErrorCategory = 'network'
-    return $false
-}
-
-<#
-.SYNOPSIS
-    Attempts to retrieve expected SHA256 from gh CLI or GitHub API.
-#>
-function Get-ExpectedAssetHash {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)] [string]$ReleaseTag
-    )
-
-    # Try gh CLI first if available
-    if (Get-Command gh -ErrorAction SilentlyContinue) {
-        try {
-            $ghOutput = & gh release view $ReleaseTag --json body -q .body
-            if ($ghOutput -match 'overlay\.zip.*?([A-Fa-f0-9]{64})') {
-                $hash = $Matches[1]
-                Write-Verbose "[albt] Retrieved expected SHA256 from gh: $hash"
-                return $hash
-            }
-        }
-        catch {
-            Write-Verbose "[albt] gh release view failed or no hash found: $_"
-        }
-    }
-
-    return $null
-}
+# (Removed overlay download & checksum logic – installer handles fetching overlay)
 
 # ============================================================================
 # SECTION: Container Lifecycle & Provisioning
@@ -304,6 +213,39 @@ function Resolve-ContainerImage {
 
 <#
 .SYNOPSIS
+    Extracts image digest (hash) from docker image metadata.
+.DESCRIPTION
+    T036: Include hashed image ID in summary JSON.
+#>
+function Get-ImageDigest {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Image
+    )
+
+    try {
+        $inspectOutput = & docker inspect $Image 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $imageData = ConvertFrom-Json -InputObject $inspectOutput
+            # Get the first 12 characters of the RepoDigest as a hash representation
+            if ($imageData[0].RepoDigests -and $imageData[0].RepoDigests.Count -gt 0) {
+                $digest = $imageData[0].RepoDigests[0] -replace '.*@', ''
+                $digest = $digest.Substring(0, [Math]::Min(16, $digest.Length))
+                return $digest
+            }
+            # Fallback to image ID
+            $imageId = $imageData[0].Id -replace 'sha256:', ''
+            return $imageId.Substring(0, [Math]::Min(16, $imageId.Length))
+        }
+    }
+    catch {
+        Write-Verbose "[albt] Failed to get image digest: $_"
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
     Captures timing for image pull and container creation.
 #>
 function Invoke-ContainerWithTiming {
@@ -314,31 +256,50 @@ function Invoke-ContainerWithTiming {
         [ref]$ImagePullSeconds,
         [ref]$ContainerCreateSeconds,
         [ref]$ContainerId,
-        [ref]$ExitCode
+        [ref]$ExitCode,
+        [ref]$ImageDigest,
+        [ref]$ContainerOutput,
+        [ref]$ProvisionLog
     )
 
     $randomSuffix = -join ((0..9) + ('a'..'f') | Get-Random -Count 8)
     $containerName = "albt-test-$randomSuffix"
+    $provisionLogLines = @()
+
+    # T035: Log provisioning details
+    $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container provisioning started"
+    $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container name: $containerName"
+    $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Image: $Image"
 
     Write-Verbose "[albt] Starting container: $containerName"
 
     # T013: Capture image pull timing
     $pullStart = Get-Date
+    $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Image pull started"
     try {
         Write-Verbose "[albt] Pulling image: $Image"
-        docker pull $Image 2>&1 | ForEach-Object { Write-Verbose "[docker] $_" }
+        docker pull $Image 2>&1 | ForEach-Object {
+            Write-Verbose "[docker] $_"
+            $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [docker] $_"
+        }
     }
     catch {
         # T014: Early failure classification for image pull
         Write-Error "Failed to pull image '$Image': $_"
+        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Image pull failed: $_"
+        $ProvisionLog.Value = $provisionLogLines -join "`n"
         $script:ErrorCategory = 'network'
         return $false
     }
     $pullEnd = Get-Date
     $ImagePullSeconds.Value = [int]($pullEnd - $pullStart).TotalSeconds
 
+    $ImageDigest.Value = Get-ImageDigest -Image $Image
+    $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Image pull completed in $($ImagePullSeconds.Value) seconds"
+
     # T013: Capture container create timing
     $createStart = Get-Date
+    $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container creation started"
     try {
         $keepContainer = if ($env:ALBT_TEST_KEEP_CONTAINER -eq '1') { '' } else { '--rm' }
         $mnt = 'C:\albt-workspace'
@@ -360,10 +321,12 @@ function Invoke-ContainerWithTiming {
 
         $createOutput = & docker @createArgs 2>&1
         Write-Verbose "[albt] Container created: $createOutput"
+        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container created: $createOutput"
 
         # T025: Copy bootstrap directory into container (not just overlay.zip)
         # The container needs the actual bootstrap/install.ps1 script to execute
         Write-Verbose "[albt] Copying bootstrap installer into container..."
+        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Copying bootstrap directory"
         $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
         $bootstrapPath = Join-Path $repoRoot 'bootstrap'
         if (-not (Test-Path $bootstrapPath)) {
@@ -377,11 +340,16 @@ function Invoke-ContainerWithTiming {
             "$($containerName):C:\albt-workspace\bootstrap"
         )
 
-        & docker @cpArgs 2>&1 | ForEach-Object { Write-Verbose "[docker cp] $_" }
+        & docker @cpArgs 2>&1 | ForEach-Object {
+            Write-Verbose "[docker cp] $_"
+            $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [docker cp] $_"
+        }
         Write-Verbose "[albt] bootstrap directory copied successfully"
+        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] bootstrap directory copied successfully"
 
         # Start the container with the actual command
         Write-Verbose "[albt] Starting container execution..."
+        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container execution started"
         $execArgs = @(
             'exec'
             '-w', $mnt
@@ -395,26 +363,39 @@ function Invoke-ContainerWithTiming {
         Write-Verbose "[albt] Executing: docker $($execArgs -join ' ')"
         $output = & docker @execArgs 2>&1
         $ExitCode.Value = $LASTEXITCODE
+        $ContainerOutput.Value = $output
 
-        $output | ForEach-Object { Write-Verbose "[container] $_" }
+        $output | ForEach-Object {
+            Write-Verbose "[container] $_"
+            $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [container] $_"
+        }
+        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container execution completed with exit code: $($ExitCode.Value)"
     }
     catch {
         # T014: Early failure classification
         Write-Error "Failed to run container: $_"
+        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container execution failed: $_"
+        $ProvisionLog.Value = $provisionLogLines -join "`n"
         $script:ErrorCategory = 'integration'
         return $false
     }
     finally {
         $createEnd = Get-Date
         $ContainerCreateSeconds.Value = [int]($createEnd - $createStart).TotalSeconds
+        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container teardown started"
 
         # T019: Container cleanup (remove on success/failure unless keep flag)
         if ($env:ALBT_TEST_KEEP_CONTAINER -ne '1') {
             Remove-ContainerSafely -ContainerName $containerName
+            $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container removed"
         }
         else {
             Write-Verbose "[albt] Keeping container for debugging: $containerName"
+            $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container preserved for debugging: $containerName"
         }
+
+        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Provisioning completed in $($ContainerCreateSeconds.Value) seconds"
+        $ProvisionLog.Value = $provisionLogLines -join "`n"
     }
 
     $ContainerId.Value = $containerName
@@ -490,6 +471,50 @@ function Stop-InstallTranscript {
     }
 }
 
+<#
+.SYNOPSIS
+    Appends container output tail to transcript file on failure.
+.DESCRIPTION
+    T033: Add container stdout/stderr tail extraction on failure appended to transcript file.
+#>
+function Invoke-TranscriptAppendContainerOutput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$TranscriptPath,
+        [Parameter(Mandatory = $true)] [object[]]$ContainerOutput,
+        [Parameter(Mandatory = $true)] [int]$ExitCode
+    )
+
+    if ($ExitCode -eq 0) {
+        return  # Only append on failure
+    }
+
+    if (-not $ContainerOutput -or $ContainerOutput.Count -eq 0) {
+        return
+    }
+
+    try {
+        # T033: Tail the output (last 50 lines)
+        $tail = @()
+        $tail += "`n=================== CONTAINER OUTPUT TAIL ==================="
+        $tail += "[Exit Code: $ExitCode]"
+
+        if ($ContainerOutput.Count -le 50) {
+            $tail += $ContainerOutput
+        }
+        else {
+            $tail += $ContainerOutput[($ContainerOutput.Count - 50)..($ContainerOutput.Count - 1)]
+        }
+        $tail += "=================== END CONTAINER OUTPUT ==================="
+
+        Add-Content -Path $TranscriptPath -Value ($tail -join "`n") -Encoding UTF8
+        Write-Verbose "[albt] Container output appended to transcript"
+    }
+    catch {
+        Write-Verbose "[albt] Failed to append container output to transcript: $_"
+    }
+}
+
 # ============================================================================
 # SECTION: Write-Summary
 # Responsible for JSON summary generation and schema validation
@@ -517,7 +542,8 @@ function New-TestSummary {
         [Parameter(Mandatory = $false)] [int]$ContainerCreateSeconds = 0,
         [Parameter(Mandatory = $false)] [string]$ErrorSummary = '',
         [Parameter(Mandatory = $false)] [string]$TranscriptPath = '',
-        [Parameter(Mandatory = $false)] [int]$Retries = 0
+        [Parameter(Mandatory = $false)] [string]$ImageDigest = '',
+        [Parameter(Mandatory = $false)] [hashtable]$TimedPhases = @{}
     )
 
     $durationSeconds = [int]($EndTime - $StartTime).TotalSeconds
@@ -536,15 +562,39 @@ function New-TestSummary {
         runId                 = "run-$(Get-Date -Format 'yyyyMMdd-HHmmss')-$([guid]::NewGuid().ToString().Substring(0,8))"
         imagePullSeconds      = $ImagePullSeconds
         containerCreateSeconds = $ContainerCreateSeconds
-        retries               = $Retries
+        retries               = 0
     }
 
     if ($ContainerId) {
         $summary['containerId'] = $ContainerId
     }
 
+    # T036: Include hashed image ID in summary JSON
+    if ($ImageDigest) {
+        $summary['imageDigest'] = $ImageDigest
+    }
+
     if ($ErrorSummary) {
         $summary['errorSummary'] = $ErrorSummary
+    }
+
+    # T032: Include timed phases in summary
+    if ($TimedPhases.Count -gt 0) {
+        $phases = @{}
+        foreach ($phaseName in $TimedPhases.Keys) {
+            $phase = $TimedPhases[$phaseName]
+            if ($phase['end']) {
+                $phaseDuration = [int]($phase['end'] - $phase['start']).TotalSeconds
+                $phases[$phaseName] = @{
+                    'startTime'  = $phase['start'].ToUniversalTime().ToString('o')
+                    'endTime'    = $phase['end'].ToUniversalTime().ToString('o')
+                    'durationSeconds' = $phaseDuration
+                }
+            }
+        }
+        if ($phases.Count -gt 0) {
+            $summary['timedPhases'] = $phases
+        }
     }
 
     if ($TranscriptPath) {
@@ -594,6 +644,69 @@ function Write-TestSummary {
     catch {
         Write-Error "Failed to write summary JSON: $_"
         return $false
+    }
+}
+
+<#
+.SYNOPSIS
+    Writes provision log to file.
+.DESCRIPTION
+    T035: Persist container provisioning log to out/test-install/provision.log
+#>
+function Write-ProvisionLog {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)] [string]$ProvisionLog
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ProvisionLog)) {
+        return
+    }
+
+    $provisionPath = Join-Path $script:OutputDir $script:ProvisionLogFile
+    try {
+        Set-Content -Path $provisionPath -Value $ProvisionLog -Encoding UTF8 -Force
+        Write-Verbose "[albt] Provision log written: $provisionPath"
+    }
+    catch {
+        Write-Verbose "[albt] Failed to write provision log: $_"
+    }
+}
+
+<#
+.SYNOPSIS
+    Checks and truncates large transcript files.
+.DESCRIPTION
+    T037: Add guard to truncate overly large transcript (>5MB) with note.
+#>
+function Invoke-TranscriptSizeProtection {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$TranscriptPath
+    )
+
+    if (-not (Test-Path $TranscriptPath)) {
+        return
+    }
+
+    try {
+        $file = Get-Item -Path $TranscriptPath -ErrorAction Stop
+        $maxSize = 5MB
+
+        if ($file.Length -gt $maxSize) {
+            Write-Verbose "[albt] Transcript exceeds 5MB ($($file.Length / 1MB)MB); truncating..."
+
+            $content = Get-Content -Path $TranscriptPath -Raw -ErrorAction Stop
+            $truncated = "[TRANSCRIPT TRUNCATED - Original size: $('{0:N2}' -f ($file.Length / 1MB)) MB]`n`n"
+            $truncated += $content.Substring([Math]::Max(0, $content.Length - (4MB)))
+            $truncated += "`n`n[END OF TRUNCATED TRANSCRIPT]"
+
+            Set-Content -Path $TranscriptPath -Value $truncated -Encoding UTF8 -Force
+            Write-Verbose "[albt] Transcript truncated to approximately 4MB"
+        }
+    }
+    catch {
+        Write-Verbose "[albt] Failed to check/truncate transcript: $_"
     }
 }
 
@@ -695,17 +808,24 @@ try {
     # Start transcript for logging
     $transcriptPath = Start-InstallTranscript
 
+    $errorSummary = $null
+
     Write-Verbose '[albt] === Release Resolution Phase ==='
+    Invoke-TimedPhaseStart -PhaseName 'release-resolution'
+
     $releaseInfo = Resolve-ReleaseTag
     if (-not $releaseInfo) {
         throw 'Failed to resolve release tag'
     }
     Write-Verbose "[albt] Release: $($releaseInfo.releaseTag), Asset: $($releaseInfo.assetUrl)"
+    Invoke-TimedPhaseStop -PhaseName 'release-resolution'
 
-    # Store release tag for passing to container
+    # Store release tag for passing to container (optional)
     $script:ReleaseTag = $releaseInfo.releaseTag
 
     Write-Verbose '[albt] === Container Provisioning Phase ==='
+    Invoke-TimedPhaseStart -PhaseName 'container-provisioning'
+
     $image = Resolve-ContainerImage
 
     # T024: Build container run command with bootstrap install sequence
@@ -760,18 +880,30 @@ try {
     $containerId = $null
     $exitCode = 1
     $containerOutput = $null
+    $imageDigest = $null
+    $containerProvisionLog = $null
 
     $containerSuccess = Invoke-ContainerWithTiming -Image $image -ContainerCommand $containerCommand `
         -ImagePullSeconds ([ref]$imagePullSeconds) `
         -ContainerCreateSeconds ([ref]$containerCreateSeconds) `
         -ContainerId ([ref]$containerId) `
-        -ExitCode ([ref]$exitCode)
+        -ExitCode ([ref]$exitCode) `
+        -ImageDigest ([ref]$imageDigest) `
+        -ContainerOutput ([ref]$containerOutput) `
+        -ProvisionLog ([ref]$containerProvisionLog)
+
+    Invoke-TimedPhaseStop -PhaseName 'container-provisioning'
 
     if (-not $containerSuccess) {
+        # T031: Failure classification for container/integration failures
+        $errorSummary = 'Container execution failed'
         throw "Container execution failed"
     }
 
     Write-Verbose "[albt] Container exit code: $exitCode"
+
+    # T031: Classify install failures
+    if ($exitCode -ne 0) { $errorSummary = "Installer exited with code $exitCode" }
 
     # T027: Capture container process exit code (already done via Invoke-ContainerWithTiming)
     # T021: Extract PowerShell version from container output
@@ -784,14 +916,26 @@ try {
     Write-Verbose '[albt] === Summary Generation Phase ==='
     $endTime = Get-Date
 
+    if ($exitCode -ne 0 -and $containerOutput) {
+        Invoke-TranscriptAppendContainerOutput -TranscriptPath $transcriptPath -ContainerOutput $containerOutput -ExitCode $exitCode
+    }
+
+    # T035: Write provision log
+    if ($containerProvisionLog) { Write-ProvisionLog -ProvisionLog $containerProvisionLog }
+
     # T028: Populate summary with success fields (exitCode, success, durationSeconds)
+    # T032: Pass timed phases to summary
+    # T036: Include image digest in summary
+
     $summary = New-TestSummary -Image $image -ContainerId $containerId -StartTime $startTime -EndTime $endTime `
         -ReleaseTag $releaseInfo.releaseTag -AssetName 'overlay.zip' -ExitCode $exitCode `
         -PSVersion $psVersion -ImagePullSeconds $imagePullSeconds -ContainerCreateSeconds $containerCreateSeconds `
-        -TranscriptPath $transcriptPath -Retries 0
+        -TranscriptPath $transcriptPath -ImageDigest $imageDigest -TimedPhases $script:TimedPhases
 
     if ($exitCode -ne 0) {
-        $summary['errorSummary'] = "Container execution failed with exit code $exitCode"
+        # T031: Include failure classification in summary
+        $errorMsg = if ($errorSummary) { $errorSummary } else { "Installation failed with exit code $exitCode" }
+        $summary['errorSummary'] = $errorMsg
         $script:ErrorCategory = 'integration'
     }
     else {
@@ -813,6 +957,9 @@ try {
         throw 'Failed to write summary JSON'
     }
 
+    # T037: Protect transcript from becoming too large
+    Invoke-TranscriptSizeProtection -TranscriptPath $transcriptPath
+
     Write-Verbose "[albt] === Installation Complete ==="
     if ($exitCode -eq 0) {
         Write-Verbose '[albt] Installation successful'
@@ -832,6 +979,7 @@ finally {
     Stop-InstallTranscript
     $finalExitCode = Get-ExitCodeForCategory -Category $script:ErrorCategory
     Write-Verbose "[albt] === Execution Complete === Exit Code: $finalExitCode"
+    Write-Verbose "[albt] Artifacts available in: $script:OutputDir"
 }
 
 exit $finalExitCode
