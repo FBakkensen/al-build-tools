@@ -48,16 +48,16 @@ Core mechanics & resilience primitives that all stories rely upon (container pro
 ## Phase 3 – User Story 1 (P1) Validate Installer In Clean Container (Local)
 Deliver minimal successful end-to-end install path locally before introducing CI automation.
 
-Story Goal: Execute installer inside a clean Windows container and confirm success with artifacts.
+Story Goal: Execute the **actual** `bootstrap/install.ps1` inside a clean Windows container and confirm success with artifacts.
 Independent Test Criteria: Local run; expect exit code 0, presence of transcript & summary with `success=true`.
 
-- [ ] T024 [US1] Add container run command building from base image executing bootstrap install sequence in `scripts/ci/test-bootstrap-install.ps1`
-- [ ] T025 [P] [US1] Inject logic to copy downloaded `overlay.zip` into container via `docker cp` prior to execution
-- [ ] T026 [US1] Implement inside-container extraction & invocation command string in `scripts/ci/test-bootstrap-install.ps1`
-- [ ] T027 [P] [US1] Capture container process exit code and map to harness exit
-- [ ] T028 [US1] Populate `out/test-install/summary.json` with success fields (`exitCode`,`success`,`durationSeconds`) and reference artifacts (`install.transcript.txt`, `summary.json`, failure-only `provision.log`)
-- [ ] T029 [P] [US1] Validate summary JSON conforms to schema fields subset (basic key presence) before script exit
-- [ ] T030 [P] [US1] Document local run instructions appendix in `quickstart.md` referencing harness script (update existing section)
+- [x] T024 [US1] Add container run command building from base image executing bootstrap install sequence in `scripts/ci/test-bootstrap-install.ps1` (invokes actual bootstrap/install.ps1)
+- [x] T025 [P] [US1] Inject logic to copy `bootstrap/` directory into container via `docker cp` (not overlay.zip)
+- [x] T026 [US1] Implement inside-container invocation command string in `scripts/ci/test-bootstrap-install.ps1` (runs installer with appropriate parameters)
+- [x] T027 [P] [US1] Capture container process exit code and map to harness exit
+- [x] T028 [US1] Populate `out/test-install/summary.json` with success fields (`exitCode`,`success`,`durationSeconds`) and reference artifacts (`install.transcript.txt`, `summary.json`, failure-only `provision.log`)
+- [x] T029 [P] [US1] Validate summary JSON conforms to schema fields subset (basic key presence) before script exit
+- [x] T030 [P] [US1] Document local run instructions appendix in `quickstart.md` referencing harness script (update existing section)
 
 ## Phase 4 – User Story 2 (P2) Surface Actionable Failures (Local Diagnostics)
 Augment harness to produce rich diagnostics for failing runs (still local-focused; CI hooks deferred to later phase).

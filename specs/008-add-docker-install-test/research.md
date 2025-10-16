@@ -58,16 +58,17 @@ Each section lists: Decision, Rationale, Alternatives Considered.
 
 ## Implementation Notes (Derived from Decisions)
 
-1. Script responsibilities: pull latest release metadata, select asset (overlay.zip), run container with mounted temp workspace, copy asset inside, execute install.
-2. Container run: Use `docker run --rm -v <hostTemp>:\workspace -w C:\workspace mcr.microsoft.com/windows/servercore:ltsc2022 powershell -NoLogo -NoProfile -Command <bootstrap sequence>`
+1. Script responsibilities: Resolve release tag, copy `bootstrap/` directory into container, run container executing the actual `bootstrap/install.ps1` script, capture exit code and artifacts.
+2. Container run: Use `docker create` + `docker cp` + `docker exec` to mount the repo root and copy only the bootstrap directory, then execute the installer inside the container.
 3. Inside container sequence:
-   - Download & install PowerShell 7 if not present (`Test-Path 'C:/Program Files/PowerShell/7/pwsh.exe'`)
-   - Re-invoke harness portion in pwsh for consistent environment
-   - Download release asset via REST, Expand-Archive, run `bootstrap/install.ps1`.
-4. Logging: Wrap install with `Start-Transcript` to `install.transcript.txt`; capture exit code; emit summary JSON (fields: image, start/end, exitCode, durationSeconds, releaseTag, assetName).
-5. Export: Ensure transcript & summary copied back to host mounted volume.
-6. Failure handling: Non-zero exit triggers script exit code 1 after writing summary; workflow step uploads artifacts in `always()` block.
-7. Environment overrides for local use: `ALBT_TEST_RELEASE_TAG`, `ALBT_TEST_IMAGE` (default windows/servercore:ltsc2022), `ALBT_TEST_KEEP_CONTAINER=1` (debug; skip --rm), `ALBT_TEST_VERBOSE=1` enabling `-Verbose`.
+   - Harness copies `bootstrap/install.ps1` into container
+   - Container runs the actual installer: `powershell -File bootstrap/install.ps1 -Dest C:\albt-repo -Ref $releaseTag`
+   - Installer handles all logic: downloading overlay.zip, extracting, validating installation
+   - Container execution validates the real first-time user path without bypassing installer logic
+4. Logging: Harness wraps execution with `Start-Transcript` to `install.transcript.txt`; captures exit code; emits summary JSON (fields: image, start/end, exitCode, durationSeconds, releaseTag, assetName, psVersion).
+5. Export: Container transcript and summary are written to host-mounted output directory, automatically available on host.
+6. Failure handling: Non-zero exit triggers script exit code 1 after writing summary; CI workflow uploads artifacts in `always()` block.
+7. Environment overrides for local use: `ALBT_TEST_RELEASE_TAG`, `ALBT_TEST_IMAGE` (default windows/servercore:ltsc2022), `ALBT_TEST_KEEP_CONTAINER=1` (debug; skip --rm), `VERBOSE=1` enabling verbose logging.
 
 ## Open Follow-Ups (Deferred)
 - Add optional Pester assertions verifying expected overlay file set after install.

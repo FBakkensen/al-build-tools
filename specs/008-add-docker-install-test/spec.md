@@ -75,7 +75,7 @@ Maintainers can run the same containerized installer check on a local Windows ma
 ### Functional Requirements
 
 - **FR-001**: The test harness MUST provision an ephemeral Windows Docker container with only the prerequisites needed to execute `bootstrap/install.ps1`.
-- **FR-002**: The harness MUST execute the bootstrap installer exactly as a new consumer would (download release artifact, copy overlay) without pre-populating caches or environment variables.
+- **FR-002**: The harness MUST execute the **actual** `bootstrap/install.ps1` script exactly as a new consumer would (letting the installer download the release artifact and extract the overlay) without pre-populating caches or bypassing the installer's own logic.
  - **FR-003**: The harness MUST capture: (a) exit code, (b) console transcript file `install.transcript.txt`, and (c) installer summary file `summary.json` (plus `provision.log` only when a failure occurs), marking the test as failed when the installer exits non-zero.
  - **FR-004**: The harness MUST publish those captured artifacts (`install.transcript.txt`, `summary.json`, and on failure `provision.log`) as part of the test result for both success and failure cases.
 - **FR-005**: The harness MUST clean up containers and temporary assets after each run to avoid cross-test contamination and excessive resource use.

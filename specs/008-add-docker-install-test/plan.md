@@ -7,30 +7,30 @@
 
 ## Summary
 
-Automate an end-to-end validation of `bootstrap/install.ps1` inside a clean Windows Docker container (Server Core LTSC 2022) to ensure each release ships with a working installer. The harness provisions an ephemeral container, installs PowerShell 7.2+ if missing, downloads the latest release artifact, executes the installer exactly like a first‑time consumer, captures transcripts and key artifacts, and surfaces success/failure (with diagnostics) both in CI and for local reproducibility.
+Automate an end-to-end validation of `bootstrap/install.ps1` inside a clean Windows Docker container (Server Core LTSC 2022) to ensure each release ships with a working installer. The harness provisions an ephemeral container, copies the **actual** bootstrap installer script, and lets the installer execute its real logic (downloading the release overlay, extracting, validating) exactly as a first-time consumer would. The harness captures transcripts and key artifacts, and surfaces success/failure (with diagnostics) both in CI and for local reproducibility.
 
 ## Technical Context
 
 **Language/Version**: PowerShell (may start under Windows PowerShell 5.1; installer self-installs PowerShell 7.2+), Docker Windows containers (Server Core LTSC 2022)
-**Primary Dependencies**: Docker (Windows), PowerShell, Git (for optional validation), Invoke-WebRequest (built-in), Expand-Archive, Release asset download (GitHub), existing `bootstrap/install.ps1`
+**Primary Dependencies**: Docker (Windows), PowerShell 5.1+, existing `bootstrap/install.ps1` and `bootstrap/` directory
 **Storage**: N/A (ephemeral container filesystem only; artifacts exported to host/CI workspace)
 **Testing**: Exit code + log inspection (Pester optional future) – MVP avoids extra dependency
 **Target Platform**: Windows Server Core (container) running on a Windows host with Windows container support
-**Project Type**: Test harness (planned future PowerShell script under `scripts/ci/` plus thin GitHub Actions workflow) – DECIDED (no code implemented during planning phase)
-**Constraints**: Must not modify public overlay contract; must avoid persisting host caches; network-only access to GitHub releases; minimal base image footprint; deterministic reproducibility
+**Project Type**: Test harness (PowerShell script under `scripts/ci/` plus thin GitHub Actions workflow)
+**Constraints**: Must not modify public overlay contract; must not bypass installer's own logic; must validate real first-time user path; deterministic reproducibility
 **Scale/Scope**: Single container per test execution; no parallel orchestration required initially
 
 UNKNOWNS / NEEDS CLARIFICATION: (All resolved in research; none open for Phase 0/1 planning.)
 
 Resolved Decisions Summary (see research.md for rationale):
-- Harness delivered as future `scripts/ci/test-bootstrap-install.ps1`; workflow only invokes it.
+- Harness delivered as `scripts/ci/test-bootstrap-install.ps1`; workflow only invokes it.
 - MVP relies on exit code + transcripts (Pester deferred).
 - Select latest published release by default; override via env.
-- PowerShell 7.2+ installed by installer if absent (container intentionally starts with Windows PowerShell 5.1).
-- Use Invoke-WebRequest for asset retrieval (no GitHub CLI dependency).
+- **Harness copies `bootstrap/` directory to container; container runs actual installer** (does NOT manually extract overlay.zip)
+- Installer handles all logic: downloading release overlay, extracting, validating
 - Artifacts exported to `out/test-install/` and uploaded as `installer-test-logs`.
 
-Local/CI Parity Commitment: The GitHub Actions workflow MUST perform no logic beyond calling the harness script and uploading artifacts; all environment preparation (including PowerShell upgrade inside container) lives in installer and harness script to guarantee identical local reproduction.
+Local/CI Parity Commitment: The GitHub Actions workflow MUST perform no logic beyond calling the harness script and uploading artifacts; all execution logic lives in the harness and installer to guarantee identical local reproduction.
 
 ## Constitution Check
 
