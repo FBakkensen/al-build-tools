@@ -20,30 +20,30 @@ Establish local harness scaffolding only (no CI workflow yet) to enable iterativ
 ## Phase 2 – Foundational
 Core mechanics & resilience primitives that all stories rely upon (container provisioning, release asset selection, logging, cleanup). No story labels per rules.
 
-- [ ] T007 Implement release tag resolution (env `ALBT_TEST_RELEASE_TAG` else latest) in `scripts/ci/test-bootstrap-install.ps1`
-- [ ] T008 [P] Implement latest release lookup via GitHub API (unauth or token) in `scripts/ci/test-bootstrap-install.ps1`
-- [ ] T009 Implement artifact download to `out/test-install/overlay.zip` using `Invoke-WebRequest`
- - [ ] T010 Add retry (second attempt after fixed 5s delay) for overlay.zip download with attempt logging in `scripts/ci/test-bootstrap-install.ps1`
- - [ ] T011 [P] Implement checksum logging (SHA256) for downloaded `overlay.zip` in `scripts/ci/test-bootstrap-install.ps1`
- - [ ] T011a [P] Attempt asset digest retrieval via `gh release view` (if `gh` present) capturing authoritative `expectedSha256`
- - [ ] T011b Verify computed SHA256 against authoritative digest OR env `ALBT_TEST_EXPECTED_SHA256` (fail early on mismatch; set `errorCategory=asset-integrity`)
- - [ ] T012 Implement container image resolution (env `ALBT_TEST_IMAGE` fallback `mcr.microsoft.com/windows/servercore:ltsc2022`)
- - [ ] T013 Capture image pull & container create timing; add `imagePullSeconds`,`containerCreateSeconds` to summary
- - [ ] T014 [P] Early failure classification for image pull vs container create populating `errorCategory`
- - [ ] T015 Implement transcript start/stop using `Start-Transcript` writing to `out/test-install/install.transcript.txt`
- - [ ] T016 [P] Implement structured error trap and final exit code propagation in `scripts/ci/test-bootstrap-install.ps1`
- - [ ] T017 Implement structured summary object creation and write JSON `out/test-install/summary.json`
- - [ ] T017a [P] Add optional `runId`, `startedAtUtc`, `endedAtUtc` + transcript header line
- - [ ] T017b [P] (G18) Optionally populate `logs` object (transcript path + failure additional logs)
- - [ ] T018 [P] Implement environment flag `ALBT_TEST_KEEP_CONTAINER` to skip auto-remove for debugging
- - [ ] T019 Implement container cleanup logic (remove container on success/failure unless keep flag)
- - [ ] T019a [P] Add try/finally wrapper + random container name + idempotent force removal function
- - [ ] T020 Export `ALBT_AUTO_INSTALL=1` for container run to enable non-interactive PowerShell 7 installation in `scripts/ci/test-bootstrap-install.ps1`
- - [ ] T021 Validate PowerShell 7 presence inside container (record version in summary) after potential auto-install
- - [ ] T022 [P] Add strict mode + error preference to `scripts/ci/test-bootstrap-install.ps1`
- - [ ] T022a [P] Implement deterministic `errorCategory`→exit code mapping (guard & missing-tool precedence)
- - [ ] T023 Add verbose logging controlled by host `$VerbosePreference` / env `VERBOSE`
- - [ ] T023a Apply standardized 30s network timeout to release/digest/download requests
+- [x] T007 Implement release tag resolution (env `ALBT_TEST_RELEASE_TAG` else latest) in `scripts/ci/test-bootstrap-install.ps1`
+- [x] T008 [P] Implement latest release lookup via GitHub API (unauth or token) in `scripts/ci/test-bootstrap-install.ps1`
+- [x] T009 Implement artifact download to `out/test-install/overlay.zip` using `Invoke-WebRequest`
+ - [x] T010 Add retry (second attempt after fixed 5s delay) for overlay.zip download with attempt logging in `scripts/ci/test-bootstrap-install.ps1`
+ - [x] T011 [P] Implement checksum logging (SHA256) for downloaded `overlay.zip` in `scripts/ci/test-bootstrap-install.ps1`
+ - [x] T011a [P] Attempt asset digest retrieval via `gh release view` (if `gh` present) capturing authoritative `expectedSha256`
+ - [x] T011b Verify computed SHA256 against authoritative digest OR env `ALBT_TEST_EXPECTED_SHA256` (fail early on mismatch; set `errorCategory=asset-integrity`)
+ - [x] T012 Implement container image resolution (env `ALBT_TEST_IMAGE` fallback `mcr.microsoft.com/windows/servercore:ltsc2022`)
+ - [x] T013 Capture image pull & container create timing; add `imagePullSeconds`,`containerCreateSeconds` to summary
+ - [x] T014 [P] Early failure classification for image pull vs container create populating `errorCategory`
+ - [x] T015 Implement transcript start/stop using `Start-Transcript` writing to `out/test-install/install.transcript.txt`
+ - [x] T016 [P] Implement structured error trap and final exit code propagation in `scripts/ci/test-bootstrap-install.ps1`
+ - [x] T017 Implement structured summary object creation and write JSON `out/test-install/summary.json`
+ - [x] T017a [P] Add optional `runId`, `startedAtUtc`, `endedAtUtc` + transcript header line
+ - [x] T017b [P] (G18) Optionally populate `logs` object (transcript path + failure additional logs)
+ - [x] T018 [P] Implement environment flag `ALBT_TEST_KEEP_CONTAINER` to skip auto-remove for debugging
+ - [x] T019 Implement container cleanup logic (remove container on success/failure unless keep flag)
+ - [x] T019a [P] Add try/finally wrapper + random container name + idempotent force removal function
+ - [x] T020 Export `ALBT_AUTO_INSTALL=1` for container run to enable non-interactive PowerShell 7 installation in `scripts/ci/test-bootstrap-install.ps1`
+ - [x] T021 Validate PowerShell 7 presence inside container (record version in summary) after potential auto-install
+ - [x] T022 [P] Add strict mode + error preference to `scripts/ci/test-bootstrap-install.ps1`
+ - [x] T022a [P] Implement deterministic `errorCategory`→exit code mapping (guard & missing-tool precedence)
+ - [x] T023 Add verbose logging controlled by host `$VerbosePreference` / env `VERBOSE`
+ - [x] T023a Apply standardized 30s network timeout to release/digest/download requests
 
 ## Phase 3 – User Story 1 (P1) Validate Installer In Clean Container (Local)
 Deliver minimal successful end-to-end install path locally before introducing CI automation.
