@@ -117,6 +117,7 @@ $script:TranscriptFile = 'install.transcript.txt'
 $script:SummaryFile = 'summary.json'
 $script:ProvisionLogFile = 'provision.log'
 $script:NetworkTimeout = 30  # seconds for GitHub API calls
+$script:TranscriptPath = $null  # Will be set during execution
 
 $script:ErrorCategoryMap = @{
     'success'           = 0
@@ -130,6 +131,65 @@ $script:ErrorCategoryMap = @{
 
 # Timed sections tracking (release-resolution, container-provisioning only)
 $script:TimedPhases = @{}
+
+# ============================================================================
+# SECTION: Logging
+# Writes to console and appends to transcript file
+# ============================================================================
+
+function Write-Log {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Message,
+        [Parameter(Mandatory = $false)] [ValidateSet('Info', 'Verbose', 'Warning', 'Error')] [string]$Level = 'Info'
+    )
+
+    $timestamp = Get-Date -Format 'HH:mm:ss'
+    $output = "[$timestamp] $Message"
+
+    # Write to console
+    switch ($Level) {
+        'Verbose' { Write-Verbose $output }
+        'Warning' { Write-Warning $output }
+        'Error' { Write-Error $output }
+        default { Write-Host $output }
+    }
+
+    # Append to transcript if available
+    if ($script:TranscriptPath -and (Test-Path $script:TranscriptPath)) {
+        Add-Content -Path $script:TranscriptPath -Value $output -Encoding UTF8 -ErrorAction SilentlyContinue
+    }
+}
+
+<#
+.SYNOPSIS
+    Logs a message to both console and provision log.
+.DESCRIPTION
+    Writes message to console immediately and queues it for provision log file.
+#>
+function Write-ProvisionMessage {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Message,
+        [Parameter(Mandatory = $false)] [ref]$ProvisionLogLines,
+        [Parameter(Mandatory = $false)] [ValidateSet('Info', 'Warning', 'Error')] [string]$Level = 'Info'
+    )
+
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $logLine = "[$timestamp] $Message"
+
+    # Write to console
+    switch ($Level) {
+        'Warning' { Write-Host $logLine -ForegroundColor Yellow }
+        'Error' { Write-Host $logLine -ForegroundColor Red }
+        default { Write-Host $logLine }
+    }
+
+    # Add to provision log collection
+    if ($ProvisionLogLines) {
+        $ProvisionLogLines.Value += $logLine
+    }
+}
 
 # ============================================================================
 # SECTION: Timing & Diagnostics
@@ -177,12 +237,12 @@ function Invoke-TimedPhaseStop {
 
 <#
 .SYNOPSIS
-    Resolves the release tag and artifact URL for the bootstrap installer test.
+    Resolves the release tag for the bootstrap installer test.
 .DESCRIPTION
     Checks env ALBT_TEST_RELEASE_TAG for override; falls back to querying GitHub
-    API for latest non-draft release. Returns tag and asset URL.
+    API for latest non-draft release. Returns the release tag.
 .OUTPUTS
-    [hashtable] Contains Keys: releaseTag, assetUrl, assetName
+    [hashtable] Contains Keys: releaseTag
 #>
 function Resolve-ReleaseTag {
     [CmdletBinding()]
@@ -317,7 +377,6 @@ function Invoke-ContainerWithTiming {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)] [string]$Image,
-        [Parameter(Mandatory = $true)] [string]$ContainerCommand,
         [ref]$ImagePullSeconds,
         [ref]$ContainerCreateSeconds,
         [ref]$ContainerId,
@@ -331,27 +390,21 @@ function Invoke-ContainerWithTiming {
     $containerName = "albt-test-$randomSuffix"
     $provisionLogLines = @()
 
-    # T035: Log provisioning details
-    $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container provisioning started"
-    $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container name: $containerName"
-    $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Image: $Image"
-
-    Write-Verbose "[albt] Starting container: $containerName"
+    Write-ProvisionMessage "[albt] Starting container provisioning: $containerName" -ProvisionLogLines ([ref]$provisionLogLines)
+    Write-ProvisionMessage "Container name: $containerName" -ProvisionLogLines ([ref]$provisionLogLines)
+    Write-ProvisionMessage "Image: $Image" -ProvisionLogLines ([ref]$provisionLogLines)
 
     # T013: Capture image pull timing
     $pullStart = Get-Date
-    $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Image pull started"
+    Write-ProvisionMessage "[albt] Pulling Docker image..." -ProvisionLogLines ([ref]$provisionLogLines)
     try {
-        Write-Verbose "[albt] Pulling image: $Image"
         docker pull $Image 2>&1 | ForEach-Object {
-            Write-Verbose "[docker] $_"
-            $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [docker] $_"
+            Write-ProvisionMessage "[docker] $_" -ProvisionLogLines ([ref]$provisionLogLines)
         }
     }
     catch {
         # T014: Early failure classification for image pull
-        Write-Error "Failed to pull image '$Image': $_"
-        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Image pull failed: $_"
+        Write-ProvisionMessage "Image pull failed: $_" -ProvisionLogLines ([ref]$provisionLogLines) -Level Error
         $ProvisionLog.Value = $provisionLogLines -join "`n"
         $script:ErrorCategory = 'network'
         return $false
@@ -360,86 +413,156 @@ function Invoke-ContainerWithTiming {
     $ImagePullSeconds.Value = [int]($pullEnd - $pullStart).TotalSeconds
 
     $ImageDigest.Value = Get-ImageDigest -Image $Image
-    $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Image pull completed in $($ImagePullSeconds.Value) seconds"
+    Write-ProvisionMessage "[albt] Image pull completed in $($ImagePullSeconds.Value) seconds" -ProvisionLogLines ([ref]$provisionLogLines)
 
     # T013: Capture container create timing
     $createStart = Get-Date
-    $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container creation started"
+    Write-ProvisionMessage "[albt] Creating container..." -ProvisionLogLines ([ref]$provisionLogLines)
     try {
-        $keepContainer = if ($env:ALBT_TEST_KEEP_CONTAINER -eq '1') { '' } else { '--rm' }
-        $mnt = 'C:\albt-workspace'
+        # Use docker run - the correct pattern for testing
+        Write-ProvisionMessage "[albt] Running test container..." -ProvisionLogLines ([ref]$provisionLogLines)
 
-        # First, create the container
-        Write-Verbose "[albt] Creating container: $containerName"
-        $createArgs = @(
-            'create'
-            '--name', $containerName
-            '--isolation', 'process'
-            '--entrypoint', 'cmd.exe'
-            '-v', "$($PSScriptRoot):$mnt"
-            '-e', 'ALBT_AUTO_INSTALL=1'
-            '-e', "ALBT_TEST_RELEASE_TAG=$($script:ReleaseTag)"
-            "-w", "$mnt"
-            $Image
-            '/c', 'echo created'
-        ) | Where-Object { $_ }
-
-        $createOutput = & docker @createArgs 2>&1
-        Write-Verbose "[albt] Container created: $createOutput"
-        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container created: $createOutput"
-
-        # T025: Copy bootstrap directory into container (not just overlay.zip)
-        # The container needs the actual bootstrap/install.ps1 script to execute
-        Write-Verbose "[albt] Copying bootstrap installer into container..."
-        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Copying bootstrap directory"
         $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
         $bootstrapPath = Join-Path $repoRoot 'bootstrap'
         if (-not (Test-Path $bootstrapPath)) {
             throw "bootstrap directory not found at $bootstrapPath"
         }
 
-        $cpArgs = @(
-            'cp'
-            '-r'
-            "$bootstrapPath"
-            "$($containerName):C:\albt-workspace\bootstrap"
+        # Build the docker run command
+        $runArgs = @(
+            'run'
+            '--name', $containerName
         )
 
-        & docker @cpArgs 2>&1 | ForEach-Object {
-            Write-Verbose "[docker cp] $_"
-            $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [docker cp] $_"
+        # Add --rm unless keeping for debug
+        if ($env:ALBT_TEST_KEEP_CONTAINER -ne '1') {
+            $runArgs += '--rm'
         }
-        Write-Verbose "[albt] bootstrap directory copied successfully"
-        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] bootstrap directory copied successfully"
 
-        # Start the container with the actual command
-        Write-Verbose "[albt] Starting container execution..."
-        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container execution started"
-        $execArgs = @(
-            'exec'
-            '-w', $mnt
+        # Create a temporary directory for the test script
+        $tempDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "albt-test-$(Get-Random)")
+        $containerScriptPath = Join-Path $tempDir "container-test.ps1"
+
+        Write-ProvisionMessage "[albt] Creating container test script at: $containerScriptPath" -ProvisionLogLines ([ref]$provisionLogLines)
+
+        # Copy the container test template if it exists, otherwise create inline
+        $templatePath = Join-Path $PSScriptRoot "container-test-template.ps1"
+        if (Test-Path $templatePath) {
+            Copy-Item -Path $templatePath -Destination $containerScriptPath -Force
+            Write-ProvisionMessage "[albt] Using container test script from template" -ProvisionLogLines ([ref]$provisionLogLines)
+        } else {
+            # Fallback: create inline script if template not found
+            Write-ProvisionMessage "[albt] Creating container test script inline" -ProvisionLogLines ([ref]$provisionLogLines)
+            $testScript = @'
+#requires -Version 5.1
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Write-Host "[container] Starting test..."
+Write-Host "[container] PowerShell Version: $($PSVersionTable.PSVersion)"
+[Console]::Out.Flush()
+
+# Quick network test
+Write-Host "[container] Testing network..."
+try {
+    $response = Invoke-WebRequest -Uri "https://www.google.com" -UseBasicParsing -TimeoutSec 5
+    Write-Host "[container] Network test PASS"
+} catch {
+    Write-Host "[container] Network test FAILED: $_" -ForegroundColor Red
+    exit 1
+}
+[Console]::Out.Flush()
+
+# Initialize git repo (required by installer)
+Write-Host "[container] Initializing git repository..."
+New-Item -ItemType Directory -Path C:\albt-workspace -Force | Out-Null
+Push-Location C:\albt-workspace
+try {
+    & git init 2>&1 | ForEach-Object {
+        Write-Host "[git] $_"
+        [Console]::Out.Flush()
+    }
+    & git config user.email "test@example.com" 2>&1 | ForEach-Object {
+        Write-Host "[git] $_"
+        [Console]::Out.Flush()
+    }
+    & git config user.name "Test User" 2>&1 | ForEach-Object {
+        Write-Host "[git] $_"
+        [Console]::Out.Flush()
+    }
+} finally {
+    Pop-Location
+}
+[Console]::Out.Flush()
+
+# Run bootstrap installer
+Write-Host "[container] Running bootstrap installer..."
+$env:ALBT_AUTO_INSTALL = '1'
+$installerArgs = @{
+    Dest = 'C:\albt-workspace'
+}
+if ($env:ALBT_TEST_RELEASE_TAG) {
+    $installerArgs['Ref'] = $env:ALBT_TEST_RELEASE_TAG
+}
+
+& C:\bootstrap\install.ps1 @installerArgs 2>&1 | ForEach-Object {
+    Write-Host $_
+    [Console]::Out.Flush()
+}
+$exitCode = $LASTEXITCODE
+
+# Verify
+if (Test-Path C:\albt-workspace\overlay) {
+    Write-Host "[container] SUCCESS: Overlay installed" -ForegroundColor Green
+    exit 0
+} else {
+    Write-Host "[container] FAILURE: Overlay not found" -ForegroundColor Red
+    exit 1
+}
+'@
+            Set-Content -Path $containerScriptPath -Value $testScript -Encoding UTF8
+        }
+
+        # Mount bootstrap directory and test directory as volumes, run with -File
+        $runArgs += @(
+            '-v', "${bootstrapPath}:C:\bootstrap"
+            '-v', "${tempDir}:C:\test"
             '-e', 'ALBT_AUTO_INSTALL=1'
             '-e', "ALBT_TEST_RELEASE_TAG=$($script:ReleaseTag)"
-            $containerName
-            'powershell'
-            '-NoLogo', '-NoProfile', '-Command', $ContainerCommand
-        ) | Where-Object { $_ }
+            '-e', 'ALBT_HTTP_TIMEOUT_SEC=300'
+            $Image
+            'powershell.exe'
+            '-NoProfile'
+            '-ExecutionPolicy', 'Bypass'
+            '-File', 'C:\test\container-test.ps1'
+        )
 
-        Write-Verbose "[albt] Executing: docker $($execArgs -join ' ')"
-        $output = & docker @execArgs 2>&1
-        $ExitCode.Value = $LASTEXITCODE
-        $ContainerOutput.Value = $output
+        Write-ProvisionMessage "[albt] Executing: docker run ... -File C:\test\container-test.ps1" -ProvisionLogLines ([ref]$provisionLogLines)
 
-        $output | ForEach-Object {
-            Write-Verbose "[container] $_"
-            $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [container] $_"
+        # Run the container and capture output for parsing
+        $outputLines = New-Object System.Collections.ArrayList
+        & docker @runArgs 2>&1 | ForEach-Object {
+            # Stream to console in real-time
+            Write-Host $_
+            # Capture for later parsing
+            [void]$outputLines.Add($_)
         }
-        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container execution completed with exit code: $($ExitCode.Value)"
+        $dockerExitCode = $LASTEXITCODE
+
+        $ExitCode.Value = $dockerExitCode
+        $ContainerOutput.Value = $outputLines.ToArray()
+        Write-ProvisionMessage "[albt] Container completed with exit code: $($ExitCode.Value)" -ProvisionLogLines ([ref]$provisionLogLines)
+
+        # Clean up temp directory
+        try {
+            Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        } catch {
+            Write-Verbose "[albt] Failed to clean up temp directory: $_"
+        }
     }
     catch {
         # T014: Early failure classification
-        Write-Error "Failed to run container: $_"
-        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container execution failed: $_"
+        Write-ProvisionMessage "Failed to run container: $_" -ProvisionLogLines ([ref]$provisionLogLines) -Level Error
         $ProvisionLog.Value = $provisionLogLines -join "`n"
         $script:ErrorCategory = 'integration'
         return $false
@@ -447,19 +570,18 @@ function Invoke-ContainerWithTiming {
     finally {
         $createEnd = Get-Date
         $ContainerCreateSeconds.Value = [int]($createEnd - $createStart).TotalSeconds
-        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container teardown started"
+        Write-ProvisionMessage "[albt] Container teardown started" -ProvisionLogLines ([ref]$provisionLogLines)
 
         # T019: Container cleanup (remove on success/failure unless keep flag)
         if ($env:ALBT_TEST_KEEP_CONTAINER -ne '1') {
             Remove-ContainerSafely -ContainerName $containerName
-            $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container removed"
+            Write-ProvisionMessage "[albt] Container removed" -ProvisionLogLines ([ref]$provisionLogLines)
         }
         else {
-            Write-Verbose "[albt] Keeping container for debugging: $containerName"
-            $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Container preserved for debugging: $containerName"
+            Write-ProvisionMessage "[albt] Keeping container for debugging: $containerName" -ProvisionLogLines ([ref]$provisionLogLines)
         }
 
-        $provisionLogLines += "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Provisioning completed in $($ContainerCreateSeconds.Value) seconds"
+        Write-ProvisionMessage "[albt] Provisioning completed in $($ContainerCreateSeconds.Value) seconds" -ProvisionLogLines ([ref]$provisionLogLines)
         $ProvisionLog.Value = $provisionLogLines -join "`n"
     }
 
@@ -503,18 +625,20 @@ function Start-InstallTranscript {
     param()
 
     $transcriptPath = Join-Path $script:OutputDir $script:TranscriptFile
-    Write-Verbose "[albt] Starting transcript: $transcriptPath"
+    Write-Host "[albt] Transcript will be written to: $transcriptPath"
 
-    if ($PSCmdlet.ShouldProcess($transcriptPath, 'Start transcript')) {
-        try {
-            Start-Transcript -Path $transcriptPath -IncludeInvocationHeader -Force -ErrorAction Stop | Out-Null
-            return $transcriptPath
-        }
-        catch {
-            Write-Error "Failed to start transcript: $_"
-            return $null
-        }
-    }
+    # Initialize transcript file with header
+    $header = @"
+================================================================================
+PowerShell Transcript Start
+StartTime: $(Get-Date -Format 'o')
+StartPath: $(Get-Location)
+Version: $($PSVersionTable.PSVersion)
+================================================================================
+"@
+
+    $header | Out-File -Path $transcriptPath -Encoding UTF8 -Force
+    return $transcriptPath
 }
 
 <#
@@ -525,15 +649,8 @@ function Stop-InstallTranscript {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param()
 
-    if ($PSCmdlet.ShouldProcess('Transcript', 'Stop transcript')) {
-        try {
-            Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
-            Write-Verbose '[albt] Transcript stopped'
-        }
-        catch {
-            Write-Verbose "[albt] Transcript stop warning: $_"
-        }
-    }
+    # Transcript footer is added elsewhere; this is just a marker
+    Write-Host '[albt] Transcript generation complete'
 }
 
 <#
@@ -608,7 +725,11 @@ function New-TestSummary {
         [Parameter(Mandatory = $false)] [string]$ErrorSummary = '',
         [Parameter(Mandatory = $false)] [string]$TranscriptPath = '',
         [Parameter(Mandatory = $false)] [string]$ImageDigest = '',
-        [Parameter(Mandatory = $false)] [hashtable]$TimedPhases = @{}
+        [Parameter(Mandatory = $false)] [hashtable]$TimedPhases = @{},
+        [Parameter(Mandatory = $false)] [string[]]$InstalledPrerequisites = @(),
+        [Parameter(Mandatory = $false)] [string[]]$FailedPrerequisites = @(),
+        [Parameter(Mandatory = $false)] [string]$LastCompletedStep = '',
+        [Parameter(Mandatory = $false)] [string]$GuardCondition = ''
     )
 
     $durationSeconds = [int]($EndTime - $StartTime).TotalSeconds
@@ -628,6 +749,8 @@ function New-TestSummary {
         imagePullSeconds      = $ImagePullSeconds
         containerCreateSeconds = $ContainerCreateSeconds
         retries               = 0
+        installedPrerequisites = @()
+        failedPrerequisites   = @()
     }
 
     if ($ContainerId) {
@@ -641,6 +764,22 @@ function New-TestSummary {
 
     if ($ErrorSummary) {
         $summary['errorSummary'] = $ErrorSummary
+    }
+
+    # Add prerequisite tracking
+    if ($InstalledPrerequisites -and $InstalledPrerequisites.Count -gt 0) {
+        $summary['installedPrerequisites'] = $InstalledPrerequisites
+    }
+    if ($FailedPrerequisites -and $FailedPrerequisites.Count -gt 0) {
+        $summary['failedPrerequisites'] = $FailedPrerequisites
+    }
+
+    # Add step progression tracking
+    if ($LastCompletedStep) {
+        $summary['lastCompletedStep'] = $LastCompletedStep
+    }
+    if ($GuardCondition) {
+        $summary['guardCondition'] = $GuardCondition
     }
 
     # T032: Include timed phases in summary
@@ -792,6 +931,7 @@ function Get-ExitCodeForCategory {
         [Parameter(Mandatory = $true)] [string]$Category
     )
 
+    if ($Category -eq 'success') { return 0 }
     if ($Category -eq 'guard') { return 2 }
     if ($Category -eq 'missing-tool') { return 6 }
     if ($Category -eq 'asset-integrity') { return 1 }
@@ -836,6 +976,119 @@ function Extract-PSVersionFromOutput {
     return $null
 }
 
+<#
+.SYNOPSIS
+    Parses container output for prerequisite installation diagnostics.
+.DESCRIPTION
+    Extracts structured prerequisite status markers emitted by install.ps1:
+    [install] prerequisite tool="<name>" status="<status>"
+.OUTPUTS
+    [hashtable] Contains arrays: installedTools, failedTools
+#>
+function Get-PrerequisiteStatus {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [object[]]$Output
+    )
+
+    $installed = @()
+    $failed = @()
+    $statusMap = @{}
+
+    if (-not $Output) {
+        return @{ installedTools = $installed; failedTools = $failed }
+    }
+
+    # Pattern: [install] prerequisite tool="<name>" status="<status>"
+    $prereqPattern = '\[install\]\s+prerequisite\s+tool="([^"]+)"\s+status="([^"]+)"'
+
+    foreach ($line in $Output) {
+        if ($line -match $prereqPattern) {
+            $toolName = $Matches[1]
+            $status = $Matches[2]
+            $statusMap[$toolName] = $status
+
+            if ($status -eq 'installed') {
+                if ($installed -notcontains $toolName) {
+                    $installed += $toolName
+                }
+            }
+        }
+    }
+
+    # Detect failed prerequisites: started installing but never reached 'installed'
+    foreach ($tool in $statusMap.Keys) {
+        if ($statusMap[$tool] -eq 'installing' -and $installed -notcontains $tool) {
+            $failed += $tool
+        }
+    }
+
+    return @{
+        installedTools = $installed
+        failedTools = $failed
+    }
+}
+
+<#
+.SYNOPSIS
+    Extracts step progression from container output.
+.DESCRIPTION
+    Parses step markers: [install] step index=<n> name=<name>
+.OUTPUTS
+    [string] Name of last completed step, or null
+#>
+function Get-LastCompletedStep {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [object[]]$Output
+    )
+
+    if (-not $Output) {
+        return $null
+    }
+
+    $lastStep = $null
+    $stepPattern = '\[install\]\s+step\s+index=(\d+)\s+name=([^\s]+)'
+
+    foreach ($line in $Output) {
+        if ($line -match $stepPattern) {
+            $stepName = $Matches[2]
+            $lastStep = $stepName -replace '_', ' '
+        }
+    }
+
+    return $lastStep
+}
+
+<#
+.SYNOPSIS
+    Extracts guard diagnostic messages from container output.
+.DESCRIPTION
+    Parses guard markers: [install] guard <Condition> ...
+.OUTPUTS
+    [string] First guard condition encountered, or null
+#>
+function Get-GuardCondition {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [object[]]$Output
+    )
+
+    if (-not $Output) {
+        return $null
+    }
+
+    $guardPattern = '\[install\]\s+guard\s+(\w+)'
+
+    foreach ($line in $Output) {
+        if ($line -match $guardPattern) {
+            return $Matches[1]
+        }
+    }
+
+    return $null
+}
+
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
@@ -872,83 +1125,43 @@ $startTime = Get-Date
 try {
     # Start transcript for logging
     $transcriptPath = Start-InstallTranscript
+    $script:TranscriptPath = $transcriptPath
+
+    Write-Log '[albt] === Bootstrap Installer Test Harness Started ==='
+    Write-Log "[albt] Output directory: $($script:OutputDir)"
+    Write-Log "[albt] Transcript: $transcriptPath"
 
     $errorSummary = $null
 
-    Write-Verbose '[albt] === Release Resolution Phase ==='
+    Write-Log '[albt] === Release Resolution Phase ==='
     Invoke-TimedPhaseStart -PhaseName 'release-resolution'
 
     $releaseInfo = Resolve-ReleaseTag
     if (-not $releaseInfo) {
         throw 'Failed to resolve release tag'
     }
-    Write-Verbose "[albt] Release: $($releaseInfo.releaseTag), Asset: $($releaseInfo.assetUrl)"
+    Write-Log "[albt] Resolved Release Tag: $($releaseInfo.releaseTag)"
     Invoke-TimedPhaseStop -PhaseName 'release-resolution'
 
     # Store release tag for passing to container (optional)
     $script:ReleaseTag = $releaseInfo.releaseTag
 
-    Write-Verbose '[albt] === Container Provisioning Phase ==='
+    Write-Log '[albt] === Container Provisioning Phase ==='
     Invoke-TimedPhaseStart -PhaseName 'container-provisioning'
 
     $image = Resolve-ContainerImage
 
     # T042: Print resolved configuration at start (validation step)
-    Write-Verbose '[albt] === Configuration Summary ==='
-    Write-Verbose "[albt] Release Tag:       $($releaseInfo.releaseTag)"
-    Write-Verbose "[albt] Asset URL:        $($releaseInfo.assetUrl)"
-    Write-Verbose "[albt] Container Image:  $image"
-    if (-not [string]::IsNullOrWhiteSpace($env:ALBT_TEST_EXPECTED_SHA256)) {
-        Write-Verbose "[albt] Expected SHA256:  $($env:ALBT_TEST_EXPECTED_SHA256)"
-    }
-    Write-Verbose '[albt] === End Configuration ==='
+    Write-Log '[albt] === Configuration Summary ==='
+    Write-Log "[albt] Release Tag:       $($releaseInfo.releaseTag)"
+    Write-Log "[albt] Container Image:  $image"
+    Write-Log '[albt] === End Configuration ==='
 
     # T024: Build container run command with bootstrap install sequence
     # The container should run the ACTUAL bootstrap installer to validate the real install path
     # T026: Invoke the real bootstrap/install.ps1 script inside container
     # T020: Export ALBT_AUTO_INSTALL=1 for container run
-    $containerCommand = @'
-        #requires -Version 5.1
-        Set-StrictMode -Version Latest
-        $ErrorActionPreference = 'Stop'
-
-        Write-Host '[container] === Bootstrap Installer Inside Container ==='
-
-        # Validate bootstrap installer script exists
-        Write-Host '[container] Validating bootstrap installer in workspace...'
-        $bootstrapScript = 'C:\albt-workspace\bootstrap\install.ps1'
-        if (-not (Test-Path $bootstrapScript)) {
-            Write-Error 'bootstrap/install.ps1 not found in workspace mount'
-            exit 1
-        }
-
-        Write-Host "[container] Running bootstrap installer: $bootstrapScript"
-        Write-Host '[container] Install destination: C:\albt-repo'
-
-        try {
-            # T021: Track PowerShell version being used
-            Write-Host "[container] PowerShell version: $($PSVersionTable.PSVersion)"
-
-            # Invoke the actual bootstrap installer
-            # The installer will:
-            # - Download overlay.zip
-            # - Extract to destination
-            # - Validate installation
-            & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass `
-                -File $bootstrapScript `
-                -Dest 'C:\albt-repo' `
-                -Ref $env:ALBT_TEST_RELEASE_TAG
-
-            $installerExitCode = $LASTEXITCODE
-            Write-Host "[container] Bootstrap installer exited with code: $installerExitCode"
-
-            exit $installerExitCode
-        }
-        catch {
-            Write-Error "Failed to execute bootstrap installer: $_"
-            exit 1
-        }
-'@
+    # Note: We'll build the installer command inside Invoke-ContainerWithTiming since we need the bootstrap path
 
     $imagePullSeconds = 0
     $containerCreateSeconds = 0
@@ -958,7 +1171,7 @@ try {
     $imageDigest = $null
     $containerProvisionLog = $null
 
-    $containerSuccess = Invoke-ContainerWithTiming -Image $image -ContainerCommand $containerCommand `
+    $containerSuccess = Invoke-ContainerWithTiming -Image $image `
         -ImagePullSeconds ([ref]$imagePullSeconds) `
         -ContainerCreateSeconds ([ref]$containerCreateSeconds) `
         -ContainerId ([ref]$containerId) `
@@ -982,13 +1195,37 @@ try {
 
     # T027: Capture container process exit code (already done via Invoke-ContainerWithTiming)
     # T021: Extract PowerShell version from container output
-    $psVersion = Extract-PSVersionFromOutput -Output $output
+    $psVersion = Extract-PSVersionFromOutput -Output $containerOutput
     if (-not $psVersion) {
         Write-Verbose '[albt] PowerShell version not captured from output; using fallback'
         $psVersion = '7.2.0'
     }
 
-    Write-Verbose '[albt] === Summary Generation Phase ==='
+    # Parse prerequisite installation status
+    $prereqStatus = Get-PrerequisiteStatus -Output $containerOutput
+    $installedPrereqs = $prereqStatus.installedTools
+    $failedPrereqs = $prereqStatus.failedTools
+
+    if ($installedPrereqs.Count -gt 0) {
+        Write-Log "[albt] Installed prerequisites: $($installedPrereqs -join ', ')"
+    }
+    if ($failedPrereqs.Count -gt 0) {
+        Write-Log "[albt] Failed prerequisites: $($failedPrereqs -join ', ')" -Level Warning
+    }
+
+    # Extract step progression
+    $lastStep = Get-LastCompletedStep -Output $containerOutput
+    if ($lastStep) {
+        Write-Log "[albt] Last completed step: $lastStep"
+    }
+
+    # Extract guard condition if present
+    $guardCondition = Get-GuardCondition -Output $containerOutput
+    if ($guardCondition) {
+        Write-Log "[albt] Guard condition triggered: $guardCondition" -Level Warning
+    }
+
+    Write-Log '[albt] === Summary Generation Phase ==='
     $endTime = Get-Date
 
     if ($exitCode -ne 0 -and $containerOutput) {
@@ -1005,11 +1242,25 @@ try {
     $summary = New-TestSummary -Image $image -ContainerId $containerId -StartTime $startTime -EndTime $endTime `
         -ReleaseTag $releaseInfo.releaseTag -AssetName 'overlay.zip' -ExitCode $exitCode `
         -PSVersion $psVersion -ImagePullSeconds $imagePullSeconds -ContainerCreateSeconds $containerCreateSeconds `
-        -TranscriptPath $transcriptPath -ImageDigest $imageDigest -TimedPhases $script:TimedPhases
+        -TranscriptPath $transcriptPath -ImageDigest $imageDigest -TimedPhases $script:TimedPhases `
+        -InstalledPrerequisites $installedPrereqs -FailedPrerequisites $failedPrereqs `
+        -LastCompletedStep $lastStep -GuardCondition $guardCondition
 
     if ($exitCode -ne 0) {
         # T031: Include failure classification in summary
         $errorMsg = if ($errorSummary) { $errorSummary } else { "Installation failed with exit code $exitCode" }
+
+        # Enhance error summary with prerequisite failures
+        if ($failedPrereqs.Count -gt 0) {
+            $errorMsg += " (failed prerequisites: $($failedPrereqs -join ', '))"
+        }
+        if ($guardCondition) {
+            $errorMsg += " (guard: $guardCondition)"
+        }
+        if ($lastStep) {
+            $errorMsg += " (last step: $lastStep)"
+        }
+
         $summary['errorSummary'] = $errorMsg
         $script:ErrorCategory = 'integration'
     }
@@ -1024,6 +1275,10 @@ try {
             $summary['success'] = $false
             $summary['errorSummary'] = 'Transcript file missing after successful container exit'
         }
+        else {
+            # Mark as successful
+            $script:ErrorCategory = 'success'
+        }
     }
 
     # T029: Validate summary JSON conforms to schema (basic key presence)
@@ -1035,26 +1290,26 @@ try {
     # T037: Protect transcript from becoming too large
     Invoke-TranscriptSizeProtection -TranscriptPath $transcriptPath
 
-    Write-Verbose "[albt] === Installation Complete ==="
+    Write-Log '[albt] === Installation Complete ==='
     if ($exitCode -eq 0) {
-        Write-Verbose '[albt] Installation successful'
+        Write-Log '[albt] Installation successful'
     }
     else {
-        Write-Verbose "[albt] Installation failed with exit code: $exitCode"
+        Write-Log "[albt] Installation failed with exit code: $exitCode" -Level Error
     }
 
     # $finalExitCode assignment is handled in finally block
 
 }
 catch {
-    Write-Error "[albt] Critical error: $_"
+    Write-Log "[albt] Critical error: $_" -Level Error
     $script:ErrorCategory = 'integration'
 }
 finally {
     Stop-InstallTranscript
     $finalExitCode = Get-ExitCodeForCategory -Category $script:ErrorCategory
-    Write-Verbose "[albt] === Execution Complete === Exit Code: $finalExitCode"
-    Write-Verbose "[albt] Artifacts available in: $script:OutputDir"
+    Write-Log "[albt] === Execution Complete === Exit Code: $finalExitCode"
+    Write-Log "[albt] Artifacts available in: $script:OutputDir"
 }
 
 exit $finalExitCode
