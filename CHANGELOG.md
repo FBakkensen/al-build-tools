@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- feat(ci): add Docker-based installer test harness `scripts/ci/test-bootstrap-install.ps1` with GitHub Actions workflow `.github/workflows/test-bootstrap-install.yml`.
+  - Validates the bootstrap installer in clean Windows containers to prevent shipping broken releases.
+  - Harness runs the actual `bootstrap/install.ps1` (no duplicated download logic) and captures transcript, summary JSON, and diagnostics.
+  - Local reproducibility: Maintainers can run `pwsh -File scripts/ci/test-bootstrap-install.ps1 -Verbose` to test locally before CI.
+  - Rich failure diagnostics: Exit codes (0/1/2/6), errorSummary classification, prerequisite tracking, step progression, and guard conditions in summary.json.
+  - Artifacts uploaded on all runs (success/failure): install.transcript.txt, summary.json, provision.log (failure only).
+  - Environment overrides: `ALBT_TEST_RELEASE_TAG`, `ALBT_TEST_IMAGE`, `ALBT_TEST_KEEP_CONTAINER`, `VERBOSE`, `GITHUB_TOKEN` (optional for rate limits).
 - docs(install): describe release-based installer flow, tag precedence, and rate limit expectations in README.
 - docs(install): capture the migration to GitHub release assets and the expanded success/failure diagnostics.
 

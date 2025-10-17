@@ -105,13 +105,11 @@ Introduce GitHub Actions workflow only after local harness is fully validated an
 ## Final Phase – Polish & Cross-Cutting
 Refinements, consistency, maintainability improvements post-story & CI integration completion.
 
-- [ ] T048 Add PSScriptAnalyzer compliance pass for `scripts/ci/test-bootstrap-install.ps1`
-- [ ] T049 [P] Add comment headers + synopsis, parameter docs in script
-- [ ] T050 Add CHANGELOG entry referencing added installer test harness
-- [ ] T051 [P] Optimize download by honoring `GITHUB_TOKEN` for higher rate limits
-- [ ] T052 Add failure example section to `specs/008-add-docker-install-test/quickstart.md` describing diagnostic interpretation
-- [ ] T053 [P] Add schema version field in summary JSON (future-proofing) if backward-compatible
-- [ ] T054 Final review: ensure no overlay/ files modified, only harness + workflow
+- [x] T048 Add PSScriptAnalyzer compliance pass for `scripts/ci/test-bootstrap-install.ps1`
+- [x] T049 [P] Add comment headers + synopsis, parameter docs in script
+- [x] T050 Add CHANGELOG entry referencing added installer test harness
+- [x] T052 Add failure example section to `specs/008-add-docker-install-test/quickstart.md` describing diagnostic interpretation
+- [x] T054 Final review: ensure no overlay/ files modified, only harness + workflow
 
 ## Dependency Graph (User Stories & Phases)
 US1 → US2 (adds diagnostics) → US3 (local parity) → CI Integration (automates) → Polish
@@ -134,14 +132,14 @@ All tasks follow required checklist format: `- [ ] T### [P?] [US#?] Description 
 Story phases (3–5) include `[US#]` labels; other phases omit them per rules. All tasks include concrete file paths.
 
 ## Task Counts
- - Total Tasks: 62
+ - Total Tasks: 60
  - Phase 1 (Setup Local): 7
  - Phase 2 (Foundational): 24
  - Phase 3 (US1 Local Validation): 7
  - Phase 4 (US2 Diagnostics): 7
  - Phase 5 (US3 Local Repro): 6
  - Phase 6 (CI Integration): 5
- - Final Polish: 7
+ - Final Polish: 5
 
 ## MVP Scope Recommendation
 Deliver through T029 (inclusive) to meet primary success criterion of local installer validation (US1) before adding diagnostics or CI.
@@ -152,5 +150,5 @@ Deliver through T029 (inclusive) to meet primary success criterion of local inst
 - US3: Local invocation replicates CI artifacts and semantics with documented command.
 
 ## Parallelizable Task IDs
-Parallel-marked tasks: T004,T008,T011,T011a,T011b,T014,T016,T017a,T019,T019a,T021,T022a,T023a,T024,T026,T028,T029,T031,T033,T035,T037,T038,T040,T042? (CI),T044? (CI),T048,T050,T052
+Parallel-marked tasks: T004,T008,T011,T011a,T011b,T014,T016,T017a,T019,T019a,T021,T022a,T023a,T024,T026,T028,T029,T031,T033,T035,T037,T038,T040,T042? (CI),T044? (CI),T048
 
