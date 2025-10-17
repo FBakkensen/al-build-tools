@@ -1,13 +1,8 @@
 name: Bootstrap Installer Test
 
 on:
+  pull_request:
   workflow_dispatch:
-    inputs:
-      verbose:
-        description: 'Enable verbose output'
-        required: false
-        type: boolean
-        default: true
 
 permissions:
   contents: read
@@ -18,47 +13,17 @@ env:
 jobs:
   test-installer:
     name: Test Bootstrap Installer (Windows Container)
-    # NOTE: Requires Windows host with Docker Desktop + Windows containers enabled.
-    # Standard GitHub-hosted windows-latest runners do NOT have Docker with Windows container support.
-    # This workflow is designed for self-hosted runners or manual local execution.
-    # See specs/008-add-docker-install-test/quickstart.md for local testing instructions.
     runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Check Docker availability
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Write-Host '::group::Docker Environment Check'
-          
-          if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-            Write-Host '::error::Docker not found. This workflow requires Docker Desktop with Windows container support.'
-            Write-Host '::notice::Standard GitHub-hosted windows-latest runners do not have Docker with Windows containers.'
-            Write-Host '::notice::Please run this test locally or use a self-hosted runner. See quickstart.md for instructions.'
-            exit 6
-          }
-          
-          Write-Host 'Docker version:'
-          docker --version
-          
-          Write-Host "`nDocker info:"
-          docker info
-          
-          Write-Host '::endgroup::'
 
       - name: Run installer test harness
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           Write-Host 'Running bootstrap installer test in Windows container...'
-          
-          $verboseFlag = if ('${{ inputs.verbose }}' -eq 'true') { '-Verbose' } else { '' }
-          $cmd = "pwsh -File scripts/ci/test-bootstrap-install.ps1 $verboseFlag".Trim()
-          
-          Write-Host "Executing: $cmd"
-          Invoke-Expression $cmd
+          & pwsh -File scripts/ci/test-bootstrap-install.ps1 -Verbose
 
       - name: Upload test artifacts
         if: always()
@@ -75,34 +40,30 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $summaryPath = 'out/test-install/summary.json'
-          
+
           if (Test-Path $summaryPath) {
             Write-Host '::group::Installer Test Failure Summary'
             try {
               $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 10
-              
+
               if ($summary.errorSummary) {
                 Write-Host "::error::$($summary.errorSummary)"
                 Write-Host "`nError Summary: $($summary.errorSummary)"
               }
-              
+
               if ($summary.exitCode) {
                 Write-Host "`nExit Code: $($summary.exitCode)"
               }
-              
-              if ($summary.errorCategory) {
-                Write-Host "Error Category: $($summary.errorCategory)"
-              }
-              
+
               if ($summary.lastCompletedStep) {
                 Write-Host "Last Completed Step: $($summary.lastCompletedStep)"
               }
-              
+
               if ($summary.failedPrerequisites -and $summary.failedPrerequisites.Count -gt 0) {
                 Write-Host "`nFailed Prerequisites:"
                 $summary.failedPrerequisites | ForEach-Object { Write-Host "  - $_" }
               }
-              
+
               if ($summary.guardCondition) {
                 Write-Host "`nGuard Condition: $($summary.guardCondition)"
               }
