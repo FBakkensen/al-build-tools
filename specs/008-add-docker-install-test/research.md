@@ -91,7 +91,6 @@ Each section lists: Decision, Rationale, Alternatives Considered.
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| GitHub rate limiting unauthenticated | Download failure | Allow optional GITHUB_TOKEN env to add header |
 | PowerShell MSI URL changes | Install break | Centralize URL construction; fallback doc link |
 | Slow image pulls | Timeouts | Document pre-pull step in quickstart |
 | Release asset rename changes | Asset not found | Match by exact name with fallback search pattern |

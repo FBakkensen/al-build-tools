@@ -133,11 +133,11 @@ OPTIONAL (enrichment; absence MUST NOT fail harness):
 - `guardCondition` (string) – guard condition triggering installer rejection (e.g., GitRepoRequired, PowerShellVersionUnsupported)
 - Future additive fields (timing, identifiers) may be introduced without breaking consumers.
 
-No schema version field is included in MVP (per G7:A minimal clarification). A future version field may be added only if a breaking change (removal/rename of a REQUIRED field) is contemplated; until then the presence of REQUIRED keys defines compatibility.
+No schema version field is included in MVP. The presence of REQUIRED keys defines compatibility.
 
 ### Schema Alignment Note (G14)
 
-The JSON schema file `contracts/installer-test-summary.schema.json` is intentionally a minimal validation guard and does not enumerate every OPTIONAL enrichment field (`imagePullSeconds`, `containerCreateSeconds`, `errorCategory`, `runId`, `startedAtUtc`, `endedAtUtc`). This is deliberate to avoid churn while OPTIONAL fields stabilize. The spec is the source of truth for OPTIONAL fields; the schema guarantees only baseline REQUIRED structure plus a few stable supplemental properties. Future promotion of any OPTIONAL field to REQUIRED MUST be accompanied by: (a) schema update, and (b) evaluation whether a version field is needed (only if a breaking removal/rename occurs).
+The JSON schema file `contracts/installer-test-summary.schema.json` is intentionally a minimal validation guard and does not enumerate every OPTIONAL enrichment field (`imagePullSeconds`, `containerCreateSeconds`, `errorCategory`, `runId`, `startedAtUtc`, `endedAtUtc`). This is deliberate to avoid churn while OPTIONAL fields stabilize. The spec is the source of truth for OPTIONAL fields; the schema guarantees only baseline REQUIRED structure plus a few stable supplemental properties.
 
 ### Timestamp Clarification (G16)
 

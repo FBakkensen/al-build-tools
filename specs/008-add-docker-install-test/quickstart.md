@@ -6,7 +6,6 @@ Validate the public bootstrap installer in a clean Windows container before rele
 - Windows host with Docker engine configured for Windows containers
 - Network access to GitHub releases
 - Windows PowerShell 5.1+ (PowerShell 7 will be installed automatically inside the container by the installer script if absent)
-- (Optional) `GITHUB_TOKEN` env for higher GitHub API rate limits
 
 ## Planned Artifacts
 - Script: `scripts/ci/test-bootstrap-install.ps1` (implemented)
@@ -99,7 +98,122 @@ When the test fails (non-zero exit code), examine:
 
 ### Common Failure Scenarios
 
-- **Docker not installed**: Exit code 6 (MissingTool) with message "Docker engine not found."
-- **Network error during release fetch**: Exit code 1 (General Error) with errorSummary: "network".
-- **Installer script exit non-zero**: Exit code 1 with errorSummary: "Installer exited with code X".
-- **Container stdout tail**: Appended to transcript for quick triage.
+#### Scenario 1: Docker Not Installed
+- **Exit Code**: 6 (MissingTool)
+- **Error Message**: "Docker engine not found. Please install Docker Desktop or Docker CLI."
+- **Summary JSON**: `"errorSummary": "Docker engine not found"`
+- **Remediation**: Install Docker Desktop (Windows) or Docker CLI; ensure Windows containers mode is enabled.
+
+#### Scenario 2: Network Error During Release Fetch
+- **Exit Code**: 1 (General Error)
+- **Error Message**: Check transcript for network timeout or DNS resolution error
+- **Summary JSON**: `"errorSummary": "Failed to fetch latest release from GitHub API after 2 attempts"`
+- **Provision Log**: See `provision.log` for image pull diagnostics
+- **Remediation**: Verify network connectivity; optionally set `$env:GITHUB_TOKEN` for higher rate limits
+
+#### Scenario 3: Installer Script Exit Non-Zero
+- **Exit Code**: 1 (General Error)
+- **Error Message**: Varies; check transcript for installer output
+- **Summary JSON**:
+  - `"exitCode": <N>` (installer's exit code)
+  - `"errorSummary": "Installer exited with code X (failed prerequisites: <tools>) (last step: <name>)"`
+  - `"failedPrerequisites": ["tool1", "tool2"]` (if parsing extracted prerequisite status)
+  - `"lastCompletedStep": "Download overlay"` (step name before failure)
+- **Provision Log**: Container stdout/stderr tail appended to transcript
+- **Remediation**:
+  1. Read transcript for detailed error messages
+  2. Check summary.json `failedPrerequisites` array to identify which tool failed (e.g., PowerShell 7 auto-install, git, dotnet, chocolatey)
+  3. Check `lastCompletedStep` to pinpoint which phase failed
+  4. For PowerShell 7 auto-install failures: Ensure Windows PowerShell 5.1 is available; verify dotnet runtime prerequisites on Windows Server Core image
+  5. For git failures: Verify network access; check if git binary is in PATH
+  6. For tool prerequisites: See `timedPhases` timing data to identify slow/hanging steps
+
+#### Scenario 4: Image Pull Timeout
+- **Exit Code**: 1 (General Error)
+- **Summary JSON**:
+  - `"imagePullSeconds": <timeout>` (reached network timeout)
+  - `"errorSummary": "Image pull failed: <reason>"`
+- **Provision Log**: Docker pull output with error details
+- **Remediation**:
+  1. Pre-pull the image locally: `docker pull mcr.microsoft.com/windows/servercore:ltsc2022`
+  2. Override image with locally cached copy: `$env:ALBT_TEST_IMAGE = 'localhost/windows-servercore-cached'`
+  3. Increase timeout by rerunning (may hit transient network issues)
+
+#### Scenario 5: Container Exits Successfully but Artifacts Missing
+- **Exit Code**: 1 (General Error)
+- **Summary JSON**: `"errorSummary": "Transcript file missing after successful container exit"`
+- **Cause**: Harness validation caught artifact absence despite installer exit 0
+- **Remediation**:
+  1. Check `out/test-install/` directory exists and has write permissions
+  2. Re-run with `-Verbose` to see file write operations in log
+  3. Verify disk space available in `out/` directory
+
+#### Scenario 6: Large Transcript (>5MB)
+- **Exit Code**: 0 (Success) but transcript truncated
+- **Summary JSON**: `"success": true` (harness succeeded; transcript truncation is protective)
+- **Transcript File**: Contains "[TRANSCRIPT TRUNCATED - Original size: X.XX MB]" header
+- **Cause**: Installer produced excessive logging (looping installations or debug verbosity)
+- **Remediation**: Check transcript tail (last 4MB) for actual errors; consider lowering verbosity or investigating repeated installs
+
+#### Scenario 7: Guard Condition Triggered
+- **Exit Code**: 2 (Guard)
+- **Error Message**: "Invoked without required execution context"
+- **Summary JSON**: `"guardCondition": "<Condition>"`
+- **Example Conditions**:
+  - `"GitRepoRequired"`: Harness running outside a git repository
+  - `"PowerShellVersionUnsupported"`: Container failed to install PowerShell 7.2+
+- **Remediation**:
+  1. For GitRepoRequired: Run harness from within the cloned al-build-tools repository
+  2. For PowerShellVersionUnsupported: Check transcript for PowerShell auto-install errors; verify dotnet runtime prerequisites
+
+#### Scenario 8: Prerequisite Installation Partial Failure
+- **Exit Code**: 1 (General Error)
+- **Summary JSON**:
+  - `"installedPrerequisites": ["choco", "git"]` (tools that completed)
+  - `"failedPrerequisites": ["dotnet"]` (tools that started but didn't finish)
+- **Transcript**: Search for `[install] prerequisite tool="dotnet"` to find where it failed
+- **Remediation**:
+  1. Check if missing tool is optional or required (read installer output)
+  2. If required: Address blockers in transcript (network, permissions, dependency)
+  3. If optional: Continue if other prerequisites succeeded
+
+#### Interpreting `timedPhases` for Performance Analysis
+
+The summary.json includes optional timing data:
+```json
+{
+  "timedPhases": {
+    "release-resolution": {
+      "durationSeconds": 3,
+      "startTime": "2025-10-17T14:32:00Z",
+      "endTime": "2025-10-17T14:32:03Z"
+    },
+    "container-provisioning": {
+      "durationSeconds": 120,
+      "startTime": "2025-10-17T14:32:03Z",
+      "endTime": "2025-10-17T14:34:03Z"
+    }
+  }
+}
+```
+
+- **release-resolution > 10 seconds**: Network latency to GitHub API; check connectivity or set `GITHUB_TOKEN`
+- **container-provisioning > 180 seconds**: Image pull or container creation is slow; pre-pull image or use local cache
+- **Compare to previous runs**: If suddenly slow, may indicate network/CI agent performance regression
+
+#### General Debugging Steps
+
+1. **Check exit code first** (last line of summary.json or script output)
+2. **Read transcript summary** (first and last 50 lines for context)
+3. **Parse summary.json fields**:
+   - `errorSummary` (brief reason)
+   - `failedPrerequisites` (which tools failed)
+   - `lastCompletedStep` (how far did we get)
+   - `guardCondition` (validation rejection)
+4. **Inspect provision.log** (only on failure; container image pull + creation diagnostics)
+5. **Run locally with `-Verbose` and keep-container flags for inspection**:
+   ```powershell
+   $env:ALBT_TEST_KEEP_CONTAINER = '1'
+   pwsh -File scripts/ci/test-bootstrap-install.ps1 -Verbose
+   # Then inspect running container: docker exec -it albt-test-<id> powershell
+   ```
