@@ -1181,7 +1181,11 @@ try {
                     $currentPath = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')
                     $env:Path = $currentPath
 
-                    $provisionResult = & $pwshCmd -NoProfile -Command "Invoke-Build provision"
+                    # Stream output in real-time (critical for Windows container environments)
+                    & $pwshCmd -NoProfile -Command "Invoke-Build provision" 2>&1 | ForEach-Object {
+                        Write-Host $_
+                        [Console]::Out.Flush()
+                    }
                     if ($LASTEXITCODE -eq 0) {
                         Write-Host ""
                         Write-BuildMessage -Type Success -Message "Provision completed successfully!"
