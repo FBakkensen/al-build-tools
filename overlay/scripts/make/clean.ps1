@@ -29,9 +29,9 @@ Import-Module "$PSScriptRoot/../common.psm1" -Force -DisableNameChecking
 
 $Exit = Get-ExitCode
 
-# Guard: require invocation via make
+# Guard: require invocation via Invoke-Build orchestration
 if (-not $env:ALBT_VIA_MAKE) {
-    Write-Output "Run via make (e.g., make clean)"
+    Write-Output "Run via Invoke-Build (e.g., Invoke-Build clean)"
     exit $Exit.Guard
 }
 

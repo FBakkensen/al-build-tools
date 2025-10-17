@@ -34,9 +34,9 @@ Import-Module "$PSScriptRoot/../common.psm1" -Force -DisableNameChecking
 
 $Exit = Get-ExitCode
 
-# Guard: require invocation via make
+# Guard: require invocation via Invoke-Build orchestration
 if (-not $env:ALBT_VIA_MAKE) {
-    Write-Output "Run via make (e.g., make download-symbols)"
+    Write-Output "Run via Invoke-Build (e.g., Invoke-Build download-symbols)"
     exit $Exit.Guard
 }
 
@@ -489,9 +489,9 @@ function Write-Manifest {
     param([string]$Path, $AppJson, [hashtable]$Packages, [string[]]$Feeds)
 
     $payload = [ordered]@{
-        runtime = $AppJson.runtime
-        application = $AppJson.application
-        platform = $AppJson.platform
+        runtime = if ($AppJson.runtime) { $AppJson.runtime } else { $null }
+        application = if ($AppJson.application) { $AppJson.application } else { $null }
+        platform = if ($AppJson.platform) { $AppJson.platform } else { $null }
         appId = $AppJson.id
         appName = $AppJson.name
         publisher = $AppJson.publisher
@@ -585,7 +585,8 @@ while ($queue.Count -gt 0) {
     $minimumVersion = if ($requiredMinimums.ContainsKey($packageId)) { $requiredMinimums[$packageId] } else { $null }
 
     $manifestVersion = if ($manifest -and $manifest.packages -and ($manifest.packages.PSObject.Properties.Name -contains $packageId)) { [string]$manifest.packages.$packageId } else { $null }
-    $manifestRuntime = if ($manifest) { [string]$manifest.runtime } else { $null }
+    $manifestApplication = if ($manifest) { [string]$manifest.application } else { $null }
+    $manifestPlatform = if ($manifest) { [string]$manifest.platform } else { $null }
     $cached = Test-PackagePresent -CacheDir $cacheDir -PackageId $packageId -Version $manifestVersion
 
     $currentVersion = $null
@@ -593,13 +594,19 @@ while ($queue.Count -gt 0) {
     $needsDownload = $true
     $knownDependencies = $null
 
+    # Cache is valid if: package exists AND (application+platform match OR both are null)
+    $cacheValid = $cached -and $manifestVersion -and (
+        ([string]$manifestApplication -eq [string]$appJson.application -and [string]$manifestPlatform -eq [string]$appJson.platform) -or
+        (-not $manifestApplication -and -not $appJson.application -and -not $manifestPlatform -and -not $appJson.platform)
+    )
+
     if ($processedPackages.ContainsKey($packageId)) {
         $currentVersion = $processedPackages[$packageId]
         $alreadyResolved = $true
         if ($script:packageDependenciesCache.ContainsKey($packageId)) {
             $knownDependencies = $script:packageDependenciesCache[$packageId]
         }
-    } elseif ($cached -and $manifestVersion -and $manifestRuntime -eq [string]$appJson.runtime) {
+    } elseif ($cacheValid) {
         $currentVersion = $manifestVersion
         $alreadyResolved = $true
         if ($script:packageDependenciesCache.ContainsKey($packageId)) {

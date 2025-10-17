@@ -1,0 +1,85 @@
+name: Bootstrap Installer Test
+
+on:
+  pull_request:
+    paths:
+      - 'bootstrap/**'
+      - 'overlay/**'
+      - 'scripts/ci/test-bootstrap-install.ps1'
+      - '.github/workflows/test-bootstrap-install.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  POWERSHELL_TELEMETRY_OPTOUT: '1'
+
+jobs:
+  test-installer:
+    name: Test Bootstrap Installer (Windows Container)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run installer test harness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host 'Running bootstrap installer test in Windows container...'
+          & pwsh -File scripts/ci/test-bootstrap-install.ps1 -Verbose
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-test-logs
+          path: out/test-install/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Echo failure summary on error
+        if: failure()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $summaryPath = 'out/test-install/summary.json'
+
+          if (Test-Path $summaryPath) {
+            Write-Host '::group::Installer Test Failure Summary'
+            try {
+              $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 10
+
+              if ($summary.errorSummary) {
+                Write-Host "::error::$($summary.errorSummary)"
+                Write-Host "`nError Summary: $($summary.errorSummary)"
+              }
+
+              if ($summary.exitCode) {
+                Write-Host "`nExit Code: $($summary.exitCode)"
+              }
+
+              if ($summary.lastCompletedStep) {
+                Write-Host "Last Completed Step: $($summary.lastCompletedStep)"
+              }
+
+              if ($summary.failedPrerequisites -and $summary.failedPrerequisites.Count -gt 0) {
+                Write-Host "`nFailed Prerequisites:"
+                $summary.failedPrerequisites | ForEach-Object { Write-Host "  - $_" }
+              }
+
+              if ($summary.guardCondition) {
+                Write-Host "`nGuard Condition: $($summary.guardCondition)"
+              }
+            }
+            catch {
+              Write-Host "::warning::Failed to parse summary.json: $_"
+              Write-Host "`nRaw summary.json content:"
+              Get-Content -LiteralPath $summaryPath | Write-Host
+            }
+            Write-Host '::endgroup::'
+          }
+          else {
+            Write-Host "::warning::Summary file not found at $summaryPath"
+          }

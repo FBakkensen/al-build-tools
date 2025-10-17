@@ -342,17 +342,17 @@ function Get-SymbolCacheInfo {
     param($AppJson)
 
     if (-not $AppJson) {
-        throw 'app.json is required to resolve the symbol cache. Ensure app.json exists and run `make download-symbols`.'
+        throw 'app.json is required to resolve the symbol cache. Ensure app.json exists and run `Invoke-Build download-symbols`.'
     }
 
     if (-not $AppJson.publisher) {
-        throw 'app.json missing "publisher". Update the manifest and rerun `make download-symbols`.'
+    throw 'app.json missing "publisher". Update the manifest and rerun `Invoke-Build download-symbols`.'
     }
     if (-not $AppJson.name) {
-        throw 'app.json missing "name". Update the manifest and rerun `make download-symbols`.'
+    throw 'app.json missing "name". Update the manifest and rerun `Invoke-Build download-symbols`.'
     }
     if (-not $AppJson.id) {
-        throw 'app.json missing "id". Update the manifest and rerun `make download-symbols`.'
+    throw 'app.json missing "id". Update the manifest and rerun `Invoke-Build download-symbols`.'
     }
 
     $cacheRoot = Get-SymbolCacheRoot
@@ -362,18 +362,18 @@ function Get-SymbolCacheInfo {
     $cacheDir = Join-Path -Path $appDirPath -ChildPath (ConvertTo-SafePathSegment -Value $AppJson.id)
 
     if (-not (Test-Path -LiteralPath $cacheDir)) {
-        throw "Symbol cache directory not found at $cacheDir. Run `make download-symbols` before `make build`."
+    throw "Symbol cache directory not found at $cacheDir. Run `Invoke-Build download-symbols` before `Invoke-Build build`."
     }
 
     $manifestPath = Join-Path -Path $cacheDir -ChildPath 'symbols.lock.json'
     if (-not (Test-Path -LiteralPath $manifestPath)) {
-        throw "Symbol manifest missing at $manifestPath. Run `make download-symbols` before `make build`."
+    throw "Symbol manifest missing at $manifestPath. Run `Invoke-Build download-symbols` before `Invoke-Build build`."
     }
 
     try {
         $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     } catch {
-        throw "Failed to parse symbol manifest at ${manifestPath}: $($_.Exception.Message). Run `make download-symbols` before `make build`."
+    throw "Failed to parse symbol manifest at ${manifestPath}: $($_.Exception.Message). Run `Invoke-Build download-symbols` before `Invoke-Build build`."
     }
 
     return [pscustomobject]@{

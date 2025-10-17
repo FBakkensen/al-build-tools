@@ -1,17 +1,19 @@
 # Feature Specification: [FEATURE NAME]
-
-**Feature Branch**: `[###-feature-name]`  
-**Created**: [DATE]  
-**Status**: Draft  
-**Input**: User description: "$ARGUMENTS"
-
-## User Scenarios & Testing *(mandatory)*
-
 <!--
   IMPORTANT: User stories should be PRIORITIZED as user journeys ordered by importance.
   Each user story/journey must be INDEPENDENTLY TESTABLE - meaning if you implement just ONE of them,
   you should still have a viable MVP (Minimum Viable Product) that delivers value.
-  
+
+  Assign priorities (P1, P2, P3, etc.) to each story, where P1 is the most critical.
+  Think of each story as a standalone slice of functionality that can be:
+  - Developed independently
+  - Tested independently
+  - Deployed independently
+  - Demonstrated to users independently
+
+  Ensure scenarios cover clean installs, Windows/Linux parity obligations, and the guard + exit-code flow when relevant.
+-->
+
   Assign priorities (P1, P2, P3, etc.) to each story, where P1 is the most critical.
   Think of each story as a standalone slice of functionality that can be:
   - Developed independently
@@ -68,8 +70,10 @@
 ### Edge Cases
 
 <!--
-  ACTION REQUIRED: The content in this section represents placeholders.
-  Fill them out with the right edge cases.
+  ACTION REQUIRED: Capture boundary conditions tied to the constitution:
+  - Overlay contract compatibility (clean installs vs. upgrades)
+  - Windows/Linux parity and environment prerequisites
+  - Tool/cache reuse, network availability, guard enforcement, and exit code reporting
 -->
 
 - What happens when [boundary condition]?
@@ -78,14 +82,17 @@
 ## Requirements *(mandatory)*
 
 <!--
-  ACTION REQUIRED: The content in this section represents placeholders.
-  Fill them out with the right functional requirements.
+  ACTION REQUIRED: Fill in project-specific functional requirements and ensure they:
+  - Preserve the public overlay contract (no hidden dependencies, no leakage from internal scripts)
+  - Keep overlay scripts self-contained with Windows/Linux parity or documented exception
+  - Respect guarded execution (ALBT_VIA_MAKE) and standardized exit codes
+  - Maintain deterministic provisioning, cache hygiene, and copy-only release flows
 -->
 
 ### Functional Requirements
 
 - **FR-001**: System MUST [specific capability, e.g., "allow users to create accounts"]
-- **FR-002**: System MUST [specific capability, e.g., "validate email addresses"]  
+- **FR-002**: System MUST [specific capability, e.g., "validate email addresses"]
 - **FR-003**: Users MUST be able to [key interaction, e.g., "reset their password"]
 - **FR-004**: System MUST [data requirement, e.g., "persist user preferences"]
 - **FR-005**: System MUST [behavior, e.g., "log all security events"]
@@ -105,6 +112,8 @@
 <!--
   ACTION REQUIRED: Define measurable success criteria.
   These must be technology-agnostic and measurable.
+  Include signals for installer success/failure reporting, cache cleanliness, parity validation,
+  and release-readiness when applicable.
 -->
 
 ### Measurable Outcomes

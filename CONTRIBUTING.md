@@ -32,7 +32,7 @@ Development Guidelines
 
 Local Checks (Recommended)
 --------------------------
-- Show analyzers discovered for a project: `make show-analyzers` (or `ALBT_VIA_MAKE=1 pwsh -File overlay/scripts/make/show-analyzers.ps1 app`).
+- Show analyzers discovered for a project: `Invoke-Build show-analyzers` (or `ALBT_VIA_MAKE=1 pwsh -File overlay/scripts/make/show-analyzers.ps1 app`).
 - Static analysis (PowerShell):
   - `Set-PSRepository -Name PSGallery -InstallationPolicy Trusted`
   - `Install-Module PSScriptAnalyzer -Scope CurrentUser -Force`

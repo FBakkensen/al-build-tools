@@ -31,10 +31,9 @@ The project uses **two separate build orchestrators** that coexist:
    - Run with: `Invoke-Build <task>`
    - Default task is `test` (runs full test workflow)
 
-2. **Makefile** (legacy, minimal) - Thin wrapper for backward compatibility
-   - Provides familiar `make` commands
-   - Delegates to PowerShell scripts via guard mechanism
-   - Kept for projects that depend on Make-style interface
+2. **Legacy Make Support** (removed) - Previously provided Makefile wrapper
+- System migrated to Invoke-Build as primary orchestrator
+- Guard mechanism (`ALBT_VIA_MAKE`) still enforced for script safety
 
 ### Core Build Pipeline (Three Stages)
 
@@ -57,13 +56,7 @@ Invoke-Build show-analyzers    # Show discovered analyzers
 Invoke-Build ?                 # List all available tasks
 ```
 
-**Using Make (if available):**
-```bash
-make build                     # Compile project
-make clean                     # Remove artifacts
-make show-config               # Display config
-make show-analyzers            # Show analyzers
-```
+
 
 ### Configuration Resolution (Three-Tier Priority)
 
@@ -202,12 +195,12 @@ When working with compiler provisioning code:
    ```
 
 4. **Guard policy for entrypoints:**
-   ```powershell
-   if (-not $env:ALBT_VIA_MAKE) {
-       Write-Output "Run via make (e.g., make build)"
-       exit $Exit.Guard
-   }
-   ```
+```powershell
+if (-not $env:ALBT_VIA_MAKE) {
+Write-Output "Run via Invoke-Build (e.g., Invoke-Build build)"
+exit $Exit.Guard
+}
+```
 
 5. **Cross-platform compatibility:**
    - Use `$IsWindows`, `$IsLinux`, `$IsMacOS` for platform checks
