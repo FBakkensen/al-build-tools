@@ -96,10 +96,11 @@ Independent Test Criteria: Local execution yields same artifacts & exit semantic
 ## Phase 6 – CI Integration
 Introduce GitHub Actions workflow only after local harness is fully validated and reproducible. (No user story label – automation layer.)
 
-- [ ] T044 Create GitHub Actions workflow scaffold `.github/workflows/test-bootstrap-install.yml`
-- [ ] T045 Add workflow job step to upload `out/test-install` as artifact `installer-test-logs`
-- [ ] T046 Enhance workflow to echo condensed failure summary to job log on failure
-- [ ] T047 Ensure workflow uses identical command line as documented (no hidden flags)
+- [x] T044 Create GitHub Actions workflow scaffold `.github/workflows/test-bootstrap-install.yml`
+- [x] T045 Add workflow job step to upload `out/test-install` as artifact `installer-test-logs` with `if: always()` condition to capture diagnostics on failure
+- [x] T045a Configure artifact retention period (7-30 days recommended for test logs) in `.github/workflows/test-bootstrap-install.yml`
+- [x] T046 Enhance workflow to echo condensed failure summary to job log on failure
+- [x] T047 Ensure workflow uses identical command line as documented (no hidden flags)
 
 ## Final Phase – Polish & Cross-Cutting
 Refinements, consistency, maintainability improvements post-story & CI integration completion.
@@ -133,13 +134,13 @@ All tasks follow required checklist format: `- [ ] T### [P?] [US#?] Description 
 Story phases (3–5) include `[US#]` labels; other phases omit them per rules. All tasks include concrete file paths.
 
 ## Task Counts
- - Total Tasks: 61
+ - Total Tasks: 62
  - Phase 1 (Setup Local): 7
  - Phase 2 (Foundational): 24
  - Phase 3 (US1 Local Validation): 7
  - Phase 4 (US2 Diagnostics): 7
  - Phase 5 (US3 Local Repro): 6
- - Phase 6 (CI Integration): 4
+ - Phase 6 (CI Integration): 5
  - Final Polish: 7
 
 ## MVP Scope Recommendation
