@@ -72,6 +72,13 @@ Independent Test Criteria: Simulate failure (e.g., set bad release tag) and conf
 - [x] T035 [US2] Persist container provisioning log segment into `out/test-install/provision.log`
 - [x] T036 [P] [US2] Include hashed image ID and container ID in summary JSON
 - [x] T037 [P] [US2] Add guard to truncate overly large transcript (>5MB) with note
+- [x] T055 [P] [US2] Add prerequisite status parser extracting `installedPrerequisites` and `failedPrerequisites` from container output
+- [x] T056 [P] [US2] Add step progression parser extracting `lastCompletedStep` from container output
+- [x] T057 [P] [US2] Add guard condition parser extracting `guardCondition` from container output
+- [x] T058 [US2] Enhance `errorSummary` generation to include prerequisite failures, guard conditions, and last step when available
+- [x] T059 [US2] Update schema with new optional fields for prerequisite tracking (G26)
+- [x] T060 [US2] Update contracts README documenting new prerequisite tracking fields
+- [x] T061 [US2] Add G26 prerequisite tracking clarification to spec.md
 
 ## Phase 5 – User Story 3 (P3) Reproduce Test Locally
 Enable frictionless local execution mirroring future CI behavior.

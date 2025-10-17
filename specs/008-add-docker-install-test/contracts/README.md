@@ -19,6 +19,10 @@ Defines the summary JSON file emitted after each containerized installer executi
 | success | Boolean convenience flag (exitCode == 0) |
 | psVersion | PowerShell version inside container (must be >=7.2) |
 | errorSummary | Present only when success=false with concise failure reason |
+| installedPrerequisites | Array of prerequisites successfully installed (e.g., choco, git, dotnet, InvokeBuild) |
+| failedPrerequisites | Array of prerequisites that started installing but failed |
+| lastCompletedStep | Name of last successful installation step before failure |
+| guardCondition | Guard condition that caused installer rejection (e.g., GitRepoRequired) |
 | logs.transcript | Relative path to transcript file |
 | logs.additional | Array of any extra log file paths (future use) |
 

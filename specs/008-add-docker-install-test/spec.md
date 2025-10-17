@@ -127,6 +127,10 @@ OPTIONAL (enrichment; absence MUST NOT fail harness):
 - `imagePullSeconds`, `containerCreateSeconds` – timing metrics (FR-007)
 - `runId` (string) – short unique identifier per harness execution
 - `imageDigest`, `timedPhases` – container/environment diagnostics
+- `installedPrerequisites` (array) – tools successfully installed during run (e.g., choco, git, dotnet, InvokeBuild)
+- `failedPrerequisites` (array) – tools that started installing but failed to complete
+- `lastCompletedStep` (string) – name of last successful installer step before failure
+- `guardCondition` (string) – guard condition triggering installer rejection (e.g., GitRepoRequired, PowerShellVersionUnsupported)
 - Future additive fields (timing, identifiers) may be introduced without breaking consumers.
 
 No schema version field is included in MVP (per G7:A minimal clarification). A future version field may be added only if a breaking change (removal/rename of a REQUIRED field) is contemplated; until then the presence of REQUIRED keys defines compatibility.
@@ -181,6 +185,26 @@ If either phase fails early (e.g., pull error) only the successfully completed p
 ### Artifact Listing Clarification (G24)
 
 The summary does not enumerate every artifact; artifact publication (transcript, summary itself, and failure-only `provision.log`) is an out-of-band concern of the harness and CI workflow. The existing optional `logs` object is the only structured in-summary reference point, providing the transcript path plus any additional log paths on failure. No `artifacts` array is introduced in the MVP to avoid duplication and churn. Future expansion will require a new gap if broader artifact manifesting is desired.
+
+### Prerequisite Tracking (G26)
+
+The harness parses container output for prerequisite installation diagnostic markers emitted by `bootstrap/install.ps1`:
+- `[install] prerequisite tool="<name>" status="<status>"`
+- `[install] step index=<n> name=<name>`
+- `[install] guard <Condition>`
+
+OPTIONAL fields populated from this parsing:
+- `installedPrerequisites`: Array of tools that reached `status="installed"` (e.g., ["choco", "git", "dotnet"])
+- `failedPrerequisites`: Array of tools with `status="installing"` but never reaching `installed` state
+- `lastCompletedStep`: Name of the last step marker encountered (e.g., "Verify prerequisites")
+- `guardCondition`: First guard condition encountered (e.g., "GitRepoRequired", "PowerShellVersionUnsupported")
+
+Rationale: Provides structured failure diagnostics without requiring manual transcript parsing. When a prerequisite installation fails, maintainers can immediately identify which tool failed and at what step, enabling faster root-cause analysis.
+
+The enhanced `errorSummary` on failure SHOULD include prerequisite context when available:
+- Example: `"Installer exited with code 1 (failed prerequisites: dotnet) (last step: Verify prerequisites)"`
+
+Absence of these fields does not indicate success; they are diagnostic enrichments only. The canonical failure indicator remains `success=false` and `exitCode≠0`.
 
 ### Exit Code Constraint (G25)
 
