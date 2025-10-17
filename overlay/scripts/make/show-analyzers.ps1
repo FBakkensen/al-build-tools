@@ -49,9 +49,9 @@ function Get-EnabledAnalyzer {
 
 $Exit = Get-ExitCode
 
-# Guard: require invocation via make
+# Guard: require invocation via Invoke-Build orchestration
 if (-not $env:ALBT_VIA_MAKE) {
-    Write-Output "Run via make (e.g., make show-analyzers)"
+    Write-Output "Run via Invoke-Build (e.g., Invoke-Build show-analyzers)"
     exit $Exit.Guard
 }
 
@@ -116,7 +116,7 @@ if ($alcPath) {
 } elseif ($compilerWarning) {
     Write-BuildMessage -Type Error -Message $compilerWarning
 } else {
-    Write-BuildMessage -Type Error -Message "AL compiler context unavailable. Run 'make download-compiler'"
+    Write-BuildMessage -Type Error -Message "AL compiler context unavailable. Run 'Invoke-Build download-compiler'"
 }
 
 $analyzerPaths = Get-EnabledAnalyzerPath -AppDir $AppDir -EnabledAnalyzers $enabledAnalyzers -CompilerDir $compilerRoot
@@ -136,7 +136,7 @@ if ($analyzerPaths -and $analyzerPaths.Count -gt 0) {
 } else {
     Write-BuildMessage -Type Warning -Message "Found: 0 DLL files"
     if ($enabledAnalyzers.Count -gt 0) {
-        Write-BuildMessage -Type Error -Message "Analyzer DLLs not found. Run 'make download-compiler' so the compiler's Analyzers folder is available or update settings.json entries"
+        Write-BuildMessage -Type Error -Message "Analyzer DLLs not found. Run 'Invoke-Build download-compiler' so the compiler's Analyzers folder is available or update settings.json entries"
     } else {
         Write-BuildMessage -Type Warning -Message "No analyzer DLLs found because no analyzers are configured"
     }

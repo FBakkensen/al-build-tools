@@ -38,9 +38,9 @@ Import-Module "$PSScriptRoot/../common.psm1" -Force -DisableNameChecking
 
 $Exit = Get-ExitCode
 
-# Guard: require invocation via make
+# Guard: require invocation via Invoke-Build orchestration
 if (-not $env:ALBT_VIA_MAKE) {
-    Write-Output "Run via make (e.g., make show-config)"
+    Write-Output "Run via Invoke-Build (e.g., Invoke-Build show-config)"
     exit $Exit.Guard
 }
 
@@ -191,7 +191,7 @@ if ($symbolCacheInfo) {
     Write-BuildMessage -Type Error -Message $symbolWarning
 } elseif ($appJson) {
     Write-BuildMessage -Type Info -Message "SYMBOLS STATUS:"
-    Write-BuildMessage -Type Error -Message "Symbol cache info unavailable. Run 'make download-symbols'"
+    Write-BuildMessage -Type Error -Message "Symbol cache info unavailable. Run 'Invoke-Build download-symbols'"
 }
 
 # Normalized deterministic key=value section (T010)

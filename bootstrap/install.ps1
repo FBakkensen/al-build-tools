@@ -12,6 +12,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Handle $IsWindows for PowerShell 5.1 compatibility (added in PS 6.0)
+if (-not (Get-Variable -Name 'IsWindows' -Scope Global -ErrorAction SilentlyContinue)) {
+    $script:IsWindows = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+}
+
 if (-not $IsWindows) {
     $linuxInstaller = Join-Path $PSScriptRoot 'install-linux.ps1'
     if (Test-Path $linuxInstaller) {
@@ -52,11 +57,11 @@ function Write-BuildMessage {
     )
     switch ($Type) {
         'Info'    { Write-Host "[INFO] " -NoNewline -ForegroundColor Cyan; Write-Host $Message }
-        'Success' { Write-Host "[✓] " -NoNewline -ForegroundColor Green; Write-Host $Message }
+        'Success' { Write-Host "[+] " -NoNewline -ForegroundColor Green; Write-Host $Message }
         'Warning' { Write-Host "[!] " -NoNewline -ForegroundColor Yellow; Write-Host $Message }
-        'Error'   { Write-Host "[✗] " -NoNewline -ForegroundColor Red; Write-Host $Message }
-        'Step'    { Write-Host "[→] " -NoNewline -ForegroundColor Magenta; Write-Host $Message }
-        'Detail'  { Write-Host "    • " -NoNewline -ForegroundColor Gray; Write-Host $Message -ForegroundColor Gray }
+        'Error'   { Write-Host "[X] " -NoNewline -ForegroundColor Red; Write-Host $Message }
+        'Step'    { Write-Host "[>] " -NoNewline -ForegroundColor Magenta; Write-Host $Message }
+        'Detail'  { Write-Host "    - " -NoNewline -ForegroundColor Gray; Write-Host $Message -ForegroundColor Gray }
     }
 }
 
@@ -95,28 +100,67 @@ function Get-ChocolateyExecutable {
 
 function Install-Chocolatey {
     Write-Host "[install] prerequisite tool=`"choco`" status=`"installing`""
+    [Console]::Out.Flush()
     Write-BuildMessage -Type Info -Message "Installing Chocolatey..."
+    Write-Host "[install] Downloading Chocolatey install script (this may take a minute)..."
+    [Console]::Out.Flush()
 
     $installScript = 'https://community.chocolatey.org/install.ps1'
-    $processArgs = "Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex ((New-Object System.Net.WebClient).DownloadString(`'$installScript`'))"
 
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = 'powershell'
-    $psi.Arguments = "-NoLogo -NoProfile -Command $processArgs"
-    $psi.RedirectStandardError = $true
-    $psi.RedirectStandardOutput = $true
-    $psi.UseShellExecute = $false
+    # Use official Chocolatey installation pattern (PowerShell version)
+    Set-ExecutionPolicy Bypass -Scope Process -Force
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
 
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $stdout = $proc.StandardOutput.ReadToEnd()
-    $stderr = $proc.StandardError.ReadToEnd()
-    $proc.WaitForExit()
+    # Set environment variable to install Chocolatey v1.x which doesn't require .NET 4.8
+    # Windows Server Core 2022 containers have .NET 4.8, but installation may hang
+    # Use v1.4.0 as last stable v1.x release
+    if (-not $env:chocolateyVersion) {
+        $env:chocolateyVersion = '1.4.0'
+        Write-Host "[install] Using Chocolatey version $env:chocolateyVersion (v1.x compatible with .NET 4+)"
+    }
 
-    if ($stdout) { Write-Verbose "[install] choco install stdout: $stdout" }
-    if ($stderr) { Write-Verbose "[install] choco install stderr: $stderr" }
-
-    if ($proc.ExitCode -ne 0) {
-        throw "Chocolatey installation failed with exit code $($proc.ExitCode)"
+    try {
+        Write-Host "[install] Downloading from $installScript..."
+        [Console]::Out.Flush()
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers['User-Agent'] = 'al-build-tools-installer'
+        $uri = [System.Uri]$installScript
+        $req = [System.Net.HttpWebRequest]::Create($uri)
+        $req.Method = 'GET'
+        $req.UserAgent = 'al-build-tools-installer'
+        $req.Timeout = 30000
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $response = $req.GetResponse()
+        $stream = $response.GetResponseStream()
+        $reader = New-Object System.IO.StreamReader($stream)
+        $contentBuilder = New-Object System.Text.StringBuilder
+        $lastSec = -1
+        while (-not $reader.EndOfStream) {
+            $chunk = $reader.ReadLine()
+            [void]$contentBuilder.AppendLine($chunk)
+            $sec = [int]$sw.Elapsed.TotalSeconds
+            if ($sec -ne $lastSec) {
+                $lastSec = $sec
+                $bytes = $response.ContentLength
+                Write-Host "[install] heartbeat phase=choco-download seconds=$sec bytes_expected=$bytes"
+                [Console]::Out.Flush()
+            }
+        }
+        $chocoInstallScript = $contentBuilder.ToString()
+        Write-Host "[install] Download complete (elapsed=$($sw.Elapsed.TotalSeconds.ToString('F2'))) executing installation script..."
+        [Console]::Out.Flush()
+        Invoke-Expression $chocoInstallScript
+        Write-Host "[install] Chocolatey installation completed"
+        [Console]::Out.Flush()
+        Write-Host "[install] prerequisite tool=`"choco`" status=`"installed`""
+        [Console]::Out.Flush()
+    } catch {
+        throw "Chocolatey installation failed: $($_.Exception.Message)"
+    } finally {
+        # Clean up environment variable
+        if ($env:chocolateyVersion -eq '1.4.0') {
+            Remove-Item Env:\chocolateyVersion -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -142,9 +186,12 @@ function Ensure-Chocolatey {
     }
 
     try {
-        $proc = Start-Process -FilePath $chocoPath -ArgumentList 'feature','enable','-n=allowGlobalConfirmation' -NoNewWindow -Wait -PassThru
-        if ($proc.ExitCode -ne 0) {
-            Write-Verbose "[install] Failed to enable allowGlobalConfirmation (exit $($proc.ExitCode))"
+        Write-Host "[install] choco feature enable allowGlobalConfirmation (streaming)"
+        & $chocoPath feature enable -n=allowGlobalConfirmation 2>&1 | ForEach-Object {
+            Write-Host "[choco] $_"
+        }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Verbose "[install] Failed to enable allowGlobalConfirmation (exit $LASTEXITCODE)"
         }
     } catch {
         Write-Verbose "[install] Unable to enable Chocolatey allowGlobalConfirmation: $($_.Exception.Message)"
@@ -160,9 +207,10 @@ function Invoke-ChocolateyCommand {
 
     $chocoPath = Ensure-Chocolatey
     $chocoArgs = $Arguments + @('--no-progress')
-    $proc = Start-Process -FilePath $chocoPath -ArgumentList $chocoArgs -NoNewWindow -Wait -PassThru
-    if ($proc.ExitCode -ne 0) {
-        throw "Chocolatey command '$($Arguments -join ' ')'' exited with code $($proc.ExitCode)"
+    Write-Host "[install] choco exec args='$(($chocoArgs -join ' '))'"
+    & $chocoPath @chocoArgs 2>&1 | ForEach-Object { Write-Host "[choco] $_" }
+    if ($LASTEXITCODE -ne 0) {
+        throw "Chocolatey command '$($Arguments -join ' ')'' exited with code $LASTEXITCODE"
     }
 }
 
@@ -175,6 +223,12 @@ function Install-Git {
     Write-Host "[install] prerequisite tool=`"git`" status=`"installing`""
     Write-BuildMessage -Type Info -Message "Installing Git via Chocolatey..."
     Invoke-ChocolateyCommand -Arguments @('install','git','--yes')
+
+    # Refresh PATH after installation
+    $machinePath = [Environment]::GetEnvironmentVariable('PATH', [EnvironmentVariableTarget]::Machine)
+    $userPath = [Environment]::GetEnvironmentVariable('PATH', [EnvironmentVariableTarget]::User)
+    $env:PATH = "$machinePath;$userPath"
+
     $gitCmd = Get-Command git -ErrorAction SilentlyContinue
     if (-not $gitCmd) {
         throw 'Git installation completed but git.exe not found in PATH.'
@@ -464,13 +518,19 @@ function Install-InvokeBuildModule {
     Write-BuildMessage -Type Info -Message "Installing InvokeBuild PowerShell module..."
 
     try {
+        # Ensure NuGet provider is installed (required for PowerShell 5.1)
+        $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+        if (-not $nugetProvider) {
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Confirm:$false -WarningAction SilentlyContinue | Out-Null
+        }
+
         # Ensure PSGallery is trusted
         $psGallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
         if ($null -ne $psGallery -and $psGallery.InstallationPolicy -ne 'Trusted') {
-            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -WarningAction SilentlyContinue
         }
 
-        Install-Module -Name InvokeBuild -Scope CurrentUser -Force -Repository PSGallery -ErrorAction Stop
+        Install-Module -Name InvokeBuild -Scope CurrentUser -Force -Repository PSGallery -SkipPublisherCheck -AllowClobber -ErrorAction Stop -Confirm:$false -WarningAction SilentlyContinue
 
         Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"installed`""
         Write-BuildMessage -Type Success -Message "InvokeBuild module installed successfully"
@@ -498,19 +558,44 @@ function Test-PowerShellVersion {
 
 function Install-PowerShell {
     Write-Host "[install] prerequisite tool=`"pwsh`" status=`"installing`""
-    Write-BuildMessage -Type Info -Message "Installing PowerShell 7 via Chocolatey..."
+    Write-BuildMessage -Type Info -Message "Installing PowerShell 7..."
 
     try {
-        Invoke-ChocolateyCommand -Arguments @('install','powershell','--yes')
-        Write-Host "[install] prerequisite tool=`"pwsh`" status=`"installed`" relaunch_required=true"
-        Write-BuildMessage -Type Success -Message "PowerShell 7 installed successfully"
-        Write-Host ""
-        Write-Host "IMPORTANT: PowerShell 7 has been installed." -ForegroundColor Yellow
-        Write-Host "Please close this window and rerun this script in PowerShell 7." -ForegroundColor Yellow
-        Write-Host "You can start PowerShell 7 by running: pwsh" -ForegroundColor Cyan
-        return $true
+        # Download PowerShell 7 MSI installer
+        $pwshVersion = '7.4.6'  # Use stable version
+        $msiUrl = "https://github.com/PowerShell/PowerShell/releases/download/v$pwshVersion/PowerShell-$pwshVersion-win-x64.msi"
+        $msiPath = Join-Path $env:TEMP "PowerShell-$pwshVersion-win-x64.msi"
+
+        Write-BuildMessage -Type Info -Message "Downloading PowerShell $pwshVersion MSI..."
+        Invoke-WebRequest -Uri $msiUrl -OutFile $msiPath -UseBasicParsing -ErrorAction Stop
+
+        Write-BuildMessage -Type Info -Message "Installing PowerShell $pwshVersion..."
+        # Install silently with minimal options for container compatibility
+        $msiArgs = "/i `"$msiPath`" /quiet /norestart ADD_PATH=1"
+        $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
+
+        if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
+            Write-Host "[install] prerequisite tool=`"pwsh`" status=`"installed`" relaunch_required=true"
+            Write-BuildMessage -Type Success -Message "PowerShell 7 installed successfully"
+
+            # Clean up installer
+            try {
+                Remove-Item $msiPath -Force -ErrorAction SilentlyContinue
+            } catch {
+                Write-Verbose "Failed to remove installer: $_"
+            }
+
+            Write-Host ""
+            Write-Host "IMPORTANT: PowerShell 7 has been installed." -ForegroundColor Yellow
+            Write-Host "Please close this window and rerun this script in PowerShell 7." -ForegroundColor Yellow
+            Write-Host "You can start PowerShell 7 by running: pwsh" -ForegroundColor Cyan
+            return $true
+        } else {
+            Write-Warning "PowerShell installation returned exit code: $($process.ExitCode)"
+            return $false
+        }
     } catch {
-        Write-Warning "Failed to install PowerShell via Chocolatey: $($_.Exception.Message)"
+        Write-Warning "Failed to install PowerShell: $($_.Exception.Message)"
         return $false
     }
 }
@@ -524,35 +609,6 @@ function Install-AlBuildTools {
         [string]$Source = 'overlay',
         [int]$HttpTimeoutSec = 0
     )
-
-    # FR-004: Enforce minimum PowerShell version guard
-    $psVersion = if ($env:ALBT_TEST_FORCE_PSVERSION) {
-        [System.Version]$env:ALBT_TEST_FORCE_PSVERSION
-    } else {
-        $PSVersionTable.PSVersion
-    }
-
-    Write-Host "[install] prerequisite tool=`"pwsh`" status=`"check`" version=$psVersion"
-
-    if ($psVersion -lt [System.Version]'7.2') {
-        Write-Host "[install] prerequisite tool=`"pwsh`" status=`"insufficient`" required=7.2"
-
-        $shouldInstall = Confirm-Installation -ToolName "PowerShell 7.2+" -Purpose "AL Build Tools installation and build operations"
-
-        if ($shouldInstall) {
-            $installed = Install-PowerShell
-            if ($installed) {
-                # PowerShell was installed, but we need to exit and let the user relaunch
-                exit 0
-            } else {
-                Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=false install_failed=true"
-                Write-Error "Installation failed: Could not install PowerShell 7. Please install manually from https://aka.ms/powershell"
-            }
-        } else {
-            Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=true"
-            Write-Error "Installation failed: PowerShell 7.2 or later is required. Current version: $psVersion. Install from https://aka.ms/powershell"
-        }
-    }
 
     $effectiveTimeoutSec = $HttpTimeoutSec
     if ($effectiveTimeoutSec -le 0) {
@@ -590,6 +646,48 @@ function Install-AlBuildTools {
     Write-Host "[install] prerequisite tool=`"git`" status=`"check`""
     Ensure-Git | Out-Null
 
+    # Track whether this is a new git repository (installer will handle initial commit)
+    $script:IsNewGitRepo = -not (Test-Path (Join-Path $destFull '.git'))
+
+    # Initialize git repository if not present (after git is installed)
+    if ($script:IsNewGitRepo) {
+        if ($script:AutoInstallPrereqs) {
+            Write-BuildMessage -Type Info -Message "Initializing git repository at $destFull..."
+            try {
+                & git -C "$destFull" init 2>&1 | Out-Null
+                & git -C "$destFull" config user.email "ci@albt.test" 2>&1 | Out-Null
+                & git -C "$destFull" config user.name "AL Build Tools CI" 2>&1 | Out-Null
+                Write-Host "[install] prerequisite tool=`"git`" status=`"initialized`""
+                Write-BuildMessage -Type Success -Message "Git repository initialized"
+            } catch {
+                Write-Host "[install] prerequisite tool=`"git`" status=`"init_failed`""
+                Write-Error "Failed to initialize git repository: $($_.Exception.Message)"
+            }
+        } else {
+            $shouldInit = Confirm-Installation -ToolName "Git repository initialization" -Purpose "Managing overlay files and tracking changes"
+            if ($shouldInit) {
+                Write-BuildMessage -Type Info -Message "Initializing git repository at $destFull..."
+                try {
+                    & git -C "$destFull" init 2>&1 | Out-Null
+                    $email = Read-Host "Enter git user email"
+                    $name = Read-Host "Enter git user name"
+                    if ([string]::IsNullOrWhiteSpace($email)) { $email = "user@example.com" }
+                    if ([string]::IsNullOrWhiteSpace($name)) { $name = "User" }
+                    & git -C "$destFull" config user.email "$email" 2>&1 | Out-Null
+                    & git -C "$destFull" config user.name "$name" 2>&1 | Out-Null
+                    Write-Host "[install] prerequisite tool=`"git`" status=`"initialized`""
+                    Write-BuildMessage -Type Success -Message "Git repository initialized"
+                } catch {
+                    Write-Host "[install] prerequisite tool=`"git`" status=`"init_failed`""
+                    Write-Error "Failed to initialize git repository: $($_.Exception.Message)"
+                }
+            } else {
+                Write-Host "[install] guard GitRepoRequired declined=true"
+                Write-Error "Installation failed: Git repository required. Please initialize with 'git init' or decline to continue."
+            }
+        }
+    }
+
     # Check .NET SDK
     Write-Host "[install] prerequisite tool=`"dotnet`" status=`"check`""
     $hasDotNet = Test-DotNetSdk
@@ -615,26 +713,131 @@ function Install-AlBuildTools {
         }
     }
 
-    # Check InvokeBuild module
+    # FR-004: Check PowerShell version BEFORE InvokeBuild (InvokeBuild requires PS 7+)
+    $psVersion = if ($env:ALBT_TEST_FORCE_PSVERSION) {
+        [System.Version]$env:ALBT_TEST_FORCE_PSVERSION
+    } else {
+        $PSVersionTable.PSVersion
+    }
+
+    Write-Host "[install] prerequisite tool=`"pwsh`" status=`"check`" version=$psVersion"
+
+    $needsPowerShell7 = $psVersion -lt [System.Version]'7.2'
+    $pwshExecutable = $null
+
+    if ($needsPowerShell7) {
+        Write-Host "[install] prerequisite tool=`"pwsh`" status=`"insufficient`" required=7.2"
+
+        $shouldInstall = Confirm-Installation -ToolName "PowerShell 7.2+" -Purpose "AL Build Tools installation and build operations"
+
+        if ($shouldInstall) {
+            $installed = Install-PowerShell
+            if ($installed) {
+                # PowerShell 7 was installed - check if we can use it
+                $pwshPath = 'C:\Program Files\PowerShell\7\pwsh.exe'
+                if (Test-Path $pwshPath) {
+                    $pwshExecutable = $pwshPath
+                    Write-BuildMessage -Type Success -Message "PowerShell 7 installed successfully. Continuing with remaining tasks..."
+                } else {
+                    Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=false install_failed=true path_not_found=true"
+                    Write-Error "Installation failed: PowerShell 7 installed but not found at expected path: $pwshPath"
+                }
+            } else {
+                Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=false install_failed=true"
+                Write-Error "Installation failed: Could not install PowerShell 7. Please install manually from https://aka.ms/powershell"
+            }
+        } else {
+            Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=true"
+            Write-Error "Installation failed: PowerShell 7.2 or later is required. Current version: $psVersion. Install from https://aka.ms/powershell"
+        }
+    }
+
+    # Check InvokeBuild module (only after PowerShell 7+ is confirmed or installed)
     Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"check`""
-    $hasInvokeBuild = Test-InvokeBuildModule
+
+    # If we just installed PS7, check for InvokeBuild using pwsh.exe
+    $hasInvokeBuild = $false
+    if ($pwshExecutable) {
+        Write-Verbose "[install] Checking for InvokeBuild in PowerShell 7..."
+        try {
+            $checkScript = "Get-Module -ListAvailable -Name InvokeBuild -ErrorAction SilentlyContinue | Select-Object -First 1"
+            $result = & $pwshExecutable -NoProfile -Command $checkScript 2>&1
+            if ($result) {
+                $hasInvokeBuild = $true
+                Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"present`" context=pwsh7"
+            }
+        } catch {
+            Write-Verbose "[install] InvokeBuild check in PS7 failed: $_"
+        }
+    } else {
+        $hasInvokeBuild = Test-InvokeBuildModule
+    }
+
     if ($hasInvokeBuild) {
         $ibModule = Get-Module -ListAvailable -Name InvokeBuild -ErrorAction SilentlyContinue | Select-Object -First 1
-        Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"present`" version=$($ibModule.Version)"
-        Write-BuildMessage -Type Success -Message "InvokeBuild module is installed (version $($ibModule.Version))"
-    } else{
+        if ($ibModule) {
+            Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"present`" version=$($ibModule.Version)"
+            Write-BuildMessage -Type Success -Message "InvokeBuild module is installed (version $($ibModule.Version))"
+        } else {
+            Write-BuildMessage -Type Success -Message "InvokeBuild module is installed"
+        }
+    } else {
         Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"missing`""
 
         $shouldInstall = Confirm-Installation -ToolName "InvokeBuild module" -Purpose "Running build tasks and orchestrating the build process"
 
         if ($shouldInstall) {
-            $installed = Install-InvokeBuildModule
-            if (-not $installed) {
-                Write-Host "[install] guard MissingPrerequisite tool=`"InvokeBuild`" declined=false install_failed=true"
-                Write-Error "Installation failed: Could not install InvokeBuild module. Please install manually with: Install-Module InvokeBuild -Scope CurrentUser"
+            # If we have PS7 available, install InvokeBuild using pwsh
+            if ($pwshExecutable) {
+                Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"installing`" context=pwsh7"
+                Write-BuildMessage -Type Info -Message "Installing InvokeBuild module in PowerShell 7..."
+
+                $installScript = @"
+`$ErrorActionPreference = 'Stop'
+try {
+    # Ensure NuGet provider
+    `$nuget = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+    if (-not `$nuget) {
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Confirm:`$false | Out-Null
+    }
+
+    # Trust PSGallery
+    `$gallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
+    if (`$gallery -and `$gallery.InstallationPolicy -ne 'Trusted') {
+        Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+    }
+
+    # Install InvokeBuild
+    Install-Module -Name InvokeBuild -Scope CurrentUser -Force -Repository PSGallery -SkipPublisherCheck -AllowClobber -Confirm:`$false
+    exit 0
+} catch {
+    Write-Error `$_.Exception.Message
+    exit 1
+}
+"@
+                try {
+                    & $pwshExecutable -NoProfile -Command $installScript
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host "[install] prerequisite tool=`"InvokeBuild`" status=`"installed`" context=pwsh7"
+                        Write-BuildMessage -Type Success -Message "InvokeBuild module installed successfully in PowerShell 7"
+                    } else {
+                        Write-Host "[install] guard MissingPrerequisite tool=`"InvokeBuild`" declined=false install_failed=true context=pwsh7"
+                        Write-Error "Installation failed: Could not install InvokeBuild module in PowerShell 7. Please install manually with: pwsh -Command 'Install-Module InvokeBuild -Scope CurrentUser'"
+                    }
+                } catch {
+                    Write-Host "[install] guard MissingPrerequisite tool=`"InvokeBuild`" declined=false install_failed=true context=pwsh7 error=`"$($_.Exception.Message)`""
+                    Write-Error "Installation failed: Could not install InvokeBuild module. Error: $($_.Exception.Message)"
+                }
+            } else {
+                # Install in current PowerShell session
+                $installed = Install-InvokeBuildModule
+                if (-not $installed) {
+                    Write-Host "[install] guard MissingPrerequisite tool=`"InvokeBuild`" declined=false install_failed=true"
+                    Write-Error "Installation failed: Could not install InvokeBuild module. Please install manually with: Install-Module InvokeBuild -Scope CurrentUser"
+                }
+                Write-BuildMessage -Type Success -Message "InvokeBuild module is now installed"
             }
-            Write-BuildMessage -Type Success -Message "InvokeBuild module is now installed"
-        } else{
+        } else {
             Write-Host "[install] guard MissingPrerequisite tool=`"InvokeBuild`" declined=true"
             Write-Error "Installation failed: InvokeBuild module is required. Install with: Install-Module InvokeBuild -Scope CurrentUser"
         }
@@ -661,21 +864,24 @@ function Install-AlBuildTools {
         Write-Error "Installation failed: Destination '$destFull' is not a git repository. Please initialize git first with 'git init' or clone an existing repository."
     }
 
-    # FR-024: Require clean working tree before copying overlay
-    if ($gitOk -or (Test-Path (Join-Path $destFull '.git'))) {
-        $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-        $pinfo.FileName = 'git'
-        $pinfo.Arguments = "-C `"$destFull`" status --porcelain"
-        $pinfo.RedirectStandardOutput = $true
-        $pinfo.RedirectStandardError = $true
-        $pinfo.UseShellExecute = $false
-        $p = [System.Diagnostics.Process]::Start($pinfo)
-        $p.WaitForExit()
-        if ($p.ExitCode -eq 0) {
-            $statusOutput = $p.StandardOutput.ReadToEnd().Trim()
-            if (-not [string]::IsNullOrEmpty($statusOutput)) {
-                Write-Host "[install] guard WorkingTreeNotClean"
-                Write-Error "Installation failed: Working tree is not clean. Please commit or stash your changes before running the installation."
+    # FR-024: Require clean working tree before copying overlay (only for existing repos)
+    # For new repos (IsNewGitRepo=true), we'll handle the initial commit after copying overlay
+    if (-not $script:IsNewGitRepo) {
+        if ($gitOk -or (Test-Path (Join-Path $destFull '.git'))) {
+            $pinfo = New-Object System.Diagnostics.ProcessStartInfo
+            $pinfo.FileName = 'git'
+            $pinfo.Arguments = "-C `"$destFull`" status --porcelain"
+            $pinfo.RedirectStandardOutput = $true
+            $pinfo.RedirectStandardError = $true
+            $pinfo.UseShellExecute = $false
+            $p = [System.Diagnostics.Process]::Start($pinfo)
+            $p.WaitForExit()
+            if ($p.ExitCode -eq 0) {
+                $statusOutput = $p.StandardOutput.ReadToEnd().Trim()
+                if (-not [string]::IsNullOrEmpty($statusOutput)) {
+                    Write-Host "[install] guard WorkingTreeNotClean"
+                    Write-Error "Installation failed: Working tree is not clean. Please commit or stash your changes before running the installation."
+                }
             }
         }
     }
@@ -906,6 +1112,28 @@ function Install-AlBuildTools {
         }
         Write-BuildMessage -Type Success -Message "Copied $fileCount files across $dirCount directories"
 
+        # For new git repos, create the initial commit after copying overlay files
+        if ($script:IsNewGitRepo) {
+            Write-BuildMessage -Type Info -Message "Creating initial git commit..."
+            try {
+                # Git add (may have warnings about line endings, which is fine)
+                $null = & git -C "$destFull" add . 2>&1
+
+                # Git commit (only fail if exit code is non-zero)
+                $null = & git -C "$destFull" commit -m "Initial AL Build Tools installation" 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "[install] git initial_commit=true"
+                    Write-BuildMessage -Type Success -Message "Initial commit created"
+                } else {
+                    Write-Warning "Git commit returned exit code: $LASTEXITCODE"
+                    Write-Host "[install] git initial_commit=false exit_code=$LASTEXITCODE"
+                }
+            } catch {
+                Write-Warning "Failed to create initial git commit: $($_.Exception.Message)"
+                Write-Host "[install] git initial_commit=false error=`"$($_.Exception.Message)`""
+            }
+        }
+
         $endTime = Get-Date
         $durationSeconds = ($endTime - $startTime).TotalSeconds
         Write-Host "[install] success ref=`"$selectedReleaseTag`" overlay=`"$Source`" asset=`"$assetName`" duration=$($durationSeconds.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture))"
@@ -946,7 +1174,14 @@ function Install-AlBuildTools {
                 # Change to destination directory and run provision
                 Push-Location $destFull
                 try {
-                    $provisionResult = & pwsh -NoProfile -Command "Invoke-Build provision"
+                    # Use explicit path to pwsh.exe if available, otherwise try current context
+                    $pwshCmd = if ($pwshExecutable) { $pwshExecutable } else { 'pwsh' }
+
+                    # Ensure PATH is updated in the new process (includes dotnet, git, etc.)
+                    $currentPath = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')
+                    $env:Path = $currentPath
+
+                    $provisionResult = & $pwshCmd -NoProfile -Command "Invoke-Build provision"
                     if ($LASTEXITCODE -eq 0) {
                         Write-Host ""
                         Write-BuildMessage -Type Success -Message "Provision completed successfully!"
