@@ -33,16 +33,17 @@ jobs:
         run: |
           & ./scripts/ci/assert-required-tools.ps1 -Modules PSScriptAnalyzer
 
-      - name: Blocking analysis (overlay + bootstrap)
+      - name: Blocking analysis (overlay + bootstrap + CI scripts)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           Import-Module PSScriptAnalyzer -ErrorAction Stop
-          Write-Host 'Running blocking PSScriptAnalyzer on overlay/ and bootstrap/install.ps1 using repo settings...'
+          Write-Host 'Running blocking PSScriptAnalyzer on overlay/, bootstrap/install.ps1, and scripts/ci/ using repo settings...'
           $settings = Join-Path $env:GITHUB_WORKSPACE 'PSScriptAnalyzerSettings.psd1'
           $blockTargets = @()
           if (Test-Path 'overlay') { $blockTargets += 'overlay' }
           if (Test-Path 'bootstrap/install.ps1') { $blockTargets += 'bootstrap/install.ps1' }
+          if (Test-Path 'scripts/ci') { $blockTargets += 'scripts/ci' }
           if ($blockTargets.Count -eq 0) { Write-Host 'No blocking targets found'; exit 0 }
           # Analyze each target separately to avoid Path type-binding issues; aggregate results
           $results = @()
