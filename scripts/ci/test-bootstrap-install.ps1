@@ -451,76 +451,10 @@ function Invoke-ContainerWithTiming {
             Copy-Item -Path $templatePath -Destination $containerScriptPath -Force
             Write-ProvisionMessage "[albt] Using container test script from template" -ProvisionLogLines ([ref]$provisionLogLines)
         } else {
-            # Fallback: create inline script if template not found
-            Write-ProvisionMessage "[albt] Creating container test script inline" -ProvisionLogLines ([ref]$provisionLogLines)
-            $testScript = @'
-#requires -Version 5.1
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-Write-Host "[container] Starting test..."
-Write-Host "[container] PowerShell Version: $($PSVersionTable.PSVersion)"
-[Console]::Out.Flush()
-
-# Quick network test
-Write-Host "[container] Testing network..."
-try {
-    $response = Invoke-WebRequest -Uri "https://www.google.com" -UseBasicParsing -TimeoutSec 5
-    Write-Host "[container] Network test PASS"
-} catch {
-    Write-Host "[container] Network test FAILED: $_" -ForegroundColor Red
-    exit 1
-}
-[Console]::Out.Flush()
-
-# Initialize git repo (required by installer)
-Write-Host "[container] Initializing git repository..."
-New-Item -ItemType Directory -Path C:\albt-workspace -Force | Out-Null
-Push-Location C:\albt-workspace
-try {
-    & git init 2>&1 | ForEach-Object {
-        Write-Host "[git] $_"
-        [Console]::Out.Flush()
-    }
-    & git config user.email "test@example.com" 2>&1 | ForEach-Object {
-        Write-Host "[git] $_"
-        [Console]::Out.Flush()
-    }
-    & git config user.name "Test User" 2>&1 | ForEach-Object {
-        Write-Host "[git] $_"
-        [Console]::Out.Flush()
-    }
-} finally {
-    Pop-Location
-}
-[Console]::Out.Flush()
-
-# Run bootstrap installer
-Write-Host "[container] Running bootstrap installer..."
-$env:ALBT_AUTO_INSTALL = '1'
-$installerArgs = @{
-    Dest = 'C:\albt-workspace'
-}
-if ($env:ALBT_TEST_RELEASE_TAG) {
-    $installerArgs['Ref'] = $env:ALBT_TEST_RELEASE_TAG
-}
-
-& C:\bootstrap\install.ps1 @installerArgs 2>&1 | ForEach-Object {
-    Write-Host $_
-    [Console]::Out.Flush()
-}
-$exitCode = $LASTEXITCODE
-
-# Verify
-if (Test-Path C:\albt-workspace\overlay) {
-    Write-Host "[container] SUCCESS: Overlay installed" -ForegroundColor Green
-    exit 0
-} else {
-    Write-Host "[container] FAILURE: Overlay not found" -ForegroundColor Red
-    exit 1
-}
-'@
-            Set-Content -Path $containerScriptPath -Value $testScript -Encoding UTF8
+            Write-ProvisionMessage "[albt] ERROR: Container test template not found at: $templatePath" -ProvisionLogLines ([ref]$provisionLogLines) -Level Error
+            $ProvisionLog.Value = $provisionLogLines -join "`n"
+            $script:ErrorCategory = 'integration'
+            return $false
         }
 
         # Mount bootstrap directory and test directory as volumes, run with -File
