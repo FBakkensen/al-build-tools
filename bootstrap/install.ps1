@@ -259,6 +259,66 @@ function Ensure-Git {
     return $true
 }
 
+function Ensure-GitConfig {
+    Write-Host "[install] prerequisite tool=`"git-config`" status=`"check`""
+
+    # Check for existing global git config
+    $userName = $null
+    $userEmail = $null
+
+    try {
+        $userName = & git config --global --get user.name 2>$null
+        $userEmail = & git config --global --get user.email 2>$null
+    } catch {
+        Write-Verbose "[install] Failed to check git config: $($_.Exception.Message)"
+    }
+
+    $configExists = (-not [string]::IsNullOrWhiteSpace($userName)) -and (-not [string]::IsNullOrWhiteSpace($userEmail))
+
+    if ($configExists) {
+        Write-Host "[install] prerequisite tool=`"git-config`" status=`"present`" user_name=`"$userName`" user_email=`"$userEmail`""
+        Write-BuildMessage -Type Success -Message "Git is configured globally: $userName <$userEmail>"
+        return $true
+    }
+
+    # Git config is missing - set it up
+    if ($script:AutoInstallPrereqs) {
+        Write-BuildMessage -Type Info -Message "Configuring git globally with CI credentials..."
+        try {
+            & git config --global user.email "ci@albt.test" 2>&1 | Out-Null
+            & git config --global user.name "AL Build Tools CI" 2>&1 | Out-Null
+            Write-Host "[install] prerequisite tool=`"git-config`" status=`"configured`" user_name=`"AL Build Tools CI`" user_email=`"ci@albt.test`""
+            Write-BuildMessage -Type Success -Message "Git configured globally: AL Build Tools CI <ci@albt.test>"
+        } catch {
+            Write-Host "[install] prerequisite tool=`"git-config`" status=`"failed`""
+            Write-Error "Failed to configure git: $($_.Exception.Message)"
+        }
+    } else {
+        $shouldConfig = Confirm-Installation -ToolName "Git configuration" -Purpose "Committing changes to the repository"
+        if ($shouldConfig) {
+            Write-BuildMessage -Type Info -Message "Configuring git globally..."
+            try {
+                $email = Read-Host "Enter git user email"
+                $name = Read-Host "Enter git user name"
+                if ([string]::IsNullOrWhiteSpace($email)) { $email = "user@example.com" }
+                if ([string]::IsNullOrWhiteSpace($name)) { $name = "User" }
+                & git config --global user.email "$email" 2>&1 | Out-Null
+                & git config --global user.name "$name" 2>&1 | Out-Null
+                Write-Host "[install] prerequisite tool=`"git-config`" status=`"configured`" user_name=`"$name`" user_email=`"$email`""
+                Write-BuildMessage -Type Success -Message "Git configured globally: $name <$email>"
+            } catch {
+                Write-Host "[install] prerequisite tool=`"git-config`" status=`"failed`""
+                Write-Error "Failed to configure git: $($_.Exception.Message)"
+            }
+        } else {
+            Write-Host "[install] guard MissingPrerequisite tool=`"git-config`" declined=true"
+            Write-Error "Installation failed: Git configuration is required for repository operations."
+        }
+    }
+
+    return $true
+}
+
 # Legacy functions for backward compatibility with diagnostics
 function Write-Step($n, $msg) {
     Write-BuildMessage -Type Step -Message $msg
@@ -646,40 +706,61 @@ function Install-AlBuildTools {
     Write-Host "[install] prerequisite tool=`"git`" status=`"check`""
     Ensure-Git | Out-Null
 
+    Write-Host "[install] prerequisite tool=`"git-config`" status=`"check`""
+    Ensure-GitConfig | Out-Null
+
     # Track whether this is a new git repository (installer will handle initial commit)
     $script:IsNewGitRepo = -not (Test-Path (Join-Path $destFull '.git'))
 
-    # Initialize git repository if not present (after git is installed)
+    # Initialize git repository if not present (init + initial commit before overlay copy)
     if ($script:IsNewGitRepo) {
         if ($script:AutoInstallPrereqs) {
             Write-BuildMessage -Type Info -Message "Initializing git repository at $destFull..."
+
+            $prevErrorAction = $ErrorActionPreference
             try {
+                $ErrorActionPreference = 'Continue'
                 & git -C "$destFull" init 2>&1 | Out-Null
-                & git -C "$destFull" config user.email "ci@albt.test" 2>&1 | Out-Null
-                & git -C "$destFull" config user.name "AL Build Tools CI" 2>&1 | Out-Null
-                Write-Host "[install] prerequisite tool=`"git`" status=`"initialized`""
-                Write-BuildMessage -Type Success -Message "Git repository initialized"
+                & git -C "$destFull" add . 2>&1 | Out-Null
+                & git -C "$destFull" commit -m "Initial commit before AL Build Tools installation" 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "[install] git initial_commit=before"
+                    Write-Host "[install] prerequisite tool=`"git`" status=`"initialized`""
+                    Write-BuildMessage -Type Success -Message "Git repository initialized with initial commit"
+                } else {
+                    Write-Host "[install] git initial_commit=before status=failed exit_code=$LASTEXITCODE"
+                    Write-Warning "Git commit returned exit code: $LASTEXITCODE"
+                }
             } catch {
                 Write-Host "[install] prerequisite tool=`"git`" status=`"init_failed`""
                 Write-Error "Failed to initialize git repository: $($_.Exception.Message)"
+            } finally {
+                $ErrorActionPreference = $prevErrorAction
             }
         } else {
             $shouldInit = Confirm-Installation -ToolName "Git repository initialization" -Purpose "Managing overlay files and tracking changes"
             if ($shouldInit) {
                 Write-BuildMessage -Type Info -Message "Initializing git repository at $destFull..."
+
+                $prevErrorAction = $ErrorActionPreference
                 try {
+                    $ErrorActionPreference = 'Continue'
                     & git -C "$destFull" init 2>&1 | Out-Null
-                    $email = Read-Host "Enter git user email"
-                    $name = Read-Host "Enter git user name"
-                    if ([string]::IsNullOrWhiteSpace($email)) { $email = "user@example.com" }
-                    if ([string]::IsNullOrWhiteSpace($name)) { $name = "User" }
-                    & git -C "$destFull" config user.email "$email" 2>&1 | Out-Null
-                    & git -C "$destFull" config user.name "$name" 2>&1 | Out-Null
-                    Write-Host "[install] prerequisite tool=`"git`" status=`"initialized`""
-                    Write-BuildMessage -Type Success -Message "Git repository initialized"
+                    & git -C "$destFull" add . 2>&1 | Out-Null
+                    & git -C "$destFull" commit -m "Initial commit before AL Build Tools installation" 2>&1 | Out-Null
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host "[install] git initial_commit=before"
+                        Write-Host "[install] prerequisite tool=`"git`" status=`"initialized`""
+                        Write-BuildMessage -Type Success -Message "Git repository initialized with initial commit"
+                    } else {
+                        Write-Host "[install] git initial_commit=before status=failed exit_code=$LASTEXITCODE"
+                        Write-Warning "Git commit returned exit code: $LASTEXITCODE"
+                    }
                 } catch {
                     Write-Host "[install] prerequisite tool=`"git`" status=`"init_failed`""
                     Write-Error "Failed to initialize git repository: $($_.Exception.Message)"
+                } finally {
+                    $ErrorActionPreference = $prevErrorAction
                 }
             } else {
                 Write-Host "[install] guard GitRepoRequired declined=true"
@@ -1112,25 +1193,43 @@ try {
         }
         Write-BuildMessage -Type Success -Message "Copied $fileCount files across $dirCount directories"
 
-        # For new git repos, create the initial commit after copying overlay files
+        # For new git repos, create the overlay commit after copying overlay files
         if ($script:IsNewGitRepo) {
-            Write-BuildMessage -Type Info -Message "Creating initial git commit..."
-            try {
-                # Git add (may have warnings about line endings, which is fine)
-                $null = & git -C "$destFull" add . 2>&1
+            Write-BuildMessage -Type Info -Message "Creating overlay installation commit..."
 
-                # Git commit (only fail if exit code is non-zero)
-                $null = & git -C "$destFull" commit -m "Initial AL Build Tools installation" 2>&1
+            $prevErrorAction = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $gitOutput = & git -C "$destFull" add . 2>&1
+                $gitOutput = & git -C "$destFull" commit -m "Install AL Build Tools overlay" 2>&1
                 if ($LASTEXITCODE -eq 0) {
-                    Write-Host "[install] git initial_commit=true"
-                    Write-BuildMessage -Type Success -Message "Initial commit created"
+                    Write-Host "[install] git initial_commit=after"
+                    Write-BuildMessage -Type Success -Message "Overlay commit created"
                 } else {
                     Write-Warning "Git commit returned exit code: $LASTEXITCODE"
-                    Write-Host "[install] git initial_commit=false exit_code=$LASTEXITCODE"
+                    Write-Host "[install] git initial_commit=after status=failed exit_code=$LASTEXITCODE"
                 }
-            } catch {
-                Write-Warning "Failed to create initial git commit: $($_.Exception.Message)"
-                Write-Host "[install] git initial_commit=false error=`"$($_.Exception.Message)`""
+            } finally {
+                $ErrorActionPreference = $prevErrorAction
+            }
+        } else {
+            # For existing repos, create overlay commit
+            Write-BuildMessage -Type Info -Message "Creating overlay installation commit..."
+
+            $prevErrorAction = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $gitOutput = & git -C "$destFull" add . 2>&1
+                $gitOutput = & git -C "$destFull" commit -m "Install AL Build Tools overlay" 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "[install] git overlay_commit=true"
+                    Write-BuildMessage -Type Success -Message "Overlay commit created"
+                } else {
+                    Write-Warning "Git commit returned exit code: $LASTEXITCODE"
+                    Write-Host "[install] git overlay_commit=false exit_code=$LASTEXITCODE"
+                }
+            } finally {
+                $ErrorActionPreference = $prevErrorAction
             }
         }
 
