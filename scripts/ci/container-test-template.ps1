@@ -1,10 +1,11 @@
 #requires -Version 5.1
-# Container test script for bootstrap installer
+# Container test script for bootstrap installer - Multi-scenario testing
 # This script runs inside the Windows container to test the bootstrap installer
+# across 3 scenarios: no git, git pre-installed, and mixed setup
 
 param(
     [string]$ReleaseTag = $env:ALBT_TEST_RELEASE_TAG,
-    [string]$DestPath = 'C:\albt-workspace'
+    [string]$BaseDestPath = 'C:\albt-workspace'
 )
 
 Set-StrictMode -Version Latest
@@ -14,6 +15,10 @@ $ErrorActionPreference = 'Stop'
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Track overall test results
+$script:AllScenariosPass = $true
+$script:ScenarioResults = @{}
+
 function Write-ContainerMessage {
     param(
         [string]$Message,
@@ -22,121 +27,114 @@ function Write-ContainerMessage {
 
     $timestamp = Get-Date -Format 'HH:mm:ss.fff'
     $prefix = switch ($Type) {
-        'Info'    { '[INFO]' }
+        'Info' { '[INFO]' }
         'Success' { '[PASS]' }
-        'Error'   { '[FAIL]' }
-        'Debug'   { '[DEBUG]' }
-        default   { '[INFO]' }
+        'Error' { '[FAIL]' }
+        'Debug' { '[DEBUG]' }
+        'Scenario' { '[SCEN]' }
+        default { '[INFO]' }
     }
 
     Write-Host "$timestamp $prefix $Message"
-    # Force flush to ensure immediate output
     [Console]::Out.Flush()
     [Console]::Error.Flush()
 }
 
-try {
-    Write-ContainerMessage "Container test starting..." -Type Info
-    Write-ContainerMessage "PowerShell Version: $($PSVersionTable.PSVersion)" -Type Info
-    Write-ContainerMessage "Windows Version: $([System.Environment]::OSVersion.VersionString)" -Type Info
-    Write-ContainerMessage "Release Tag: $ReleaseTag" -Type Info
-    Write-ContainerMessage "Destination: $DestPath" -Type Info
-
-    # Step 1: Network connectivity test
-    Write-ContainerMessage "Testing network connectivity..." -Type Info
-    $networkTestUrls = @(
-        'https://www.google.com',
-        'https://api.github.com',
-        'https://raw.githubusercontent.com'
-    )
-
-    $networkSuccess = $true
-    foreach ($url in $networkTestUrls) {
-        try {
-            Write-ContainerMessage "Testing connection to $url" -Type Debug
-            $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10 -Method Head
-            Write-ContainerMessage "Connection to $url successful (Status: $($response.StatusCode))" -Type Success
+function Refresh-PathEnv {
+    try {
+        $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        if ($machinePath -or $userPath) {
+            $env:Path = "$machinePath;$userPath"
+            Write-ContainerMessage "PATH refreshed from machine/user" -Type Debug
         }
-        catch {
-            Write-ContainerMessage "Connection to $url failed: $($_.Exception.Message)" -Type Error
-            $networkSuccess = $false
-        }
+    } catch {
+        Write-ContainerMessage "Failed to refresh PATH: $($_.Exception.Message)" -Type Debug
     }
+}
 
-    if (-not $networkSuccess) {
-        Write-ContainerMessage "Network connectivity test failed - some endpoints unreachable" -Type Error
-        exit 1
-    }
+function Setup-Scenario1 {
+    Write-ContainerMessage "Setting up Scenario 1: No git, no config, no repo" -Type Scenario
+    # No setup needed - Windows Server Core has no git by default
+}
 
-    Write-ContainerMessage "Network connectivity test passed" -Type Success
+function Setup-Scenario2 {
+    Write-ContainerMessage "Setting up Scenario 2: Git installed, configured, repo exists" -Type Scenario
 
-    # Step 2: Check bootstrap installer exists
-    $installerPath = 'C:\bootstrap\install.ps1'
-    if (-not (Test-Path $installerPath)) {
-        Write-ContainerMessage "Bootstrap installer not found at: $installerPath" -Type Error
-        exit 1
-    }
-    Write-ContainerMessage "Bootstrap installer found at: $installerPath" -Type Success
+    # Refresh PATH to ensure choco is available (already installed in Scenario 1)
+    Refresh-PathEnv
 
-    # Step 3: Create destination directory and minimal Business Central app structure
-    if (-not (Test-Path $DestPath)) {
-        Write-ContainerMessage "Creating destination directory: $DestPath" -Type Info
-        New-Item -ItemType Directory -Path $DestPath -Force | Out-Null
-    }
+    # Install git using choco
+    Write-ContainerMessage "Installing git via Chocolatey..." -Type Info
+    & choco install git -y --no-progress 2>&1 | Out-Null
 
-    # Create minimal app.json for provisioning to work
-    Write-ContainerMessage "Creating minimal app.json for provision task" -Type Info
+    # Ensure PATH includes git
+    Refresh-PathEnv
+
+    # Configure git globally
+    Write-ContainerMessage "Configuring git..." -Type Info
+    & git config --global user.name "Pre-configured User" 2>&1 | Out-Null
+    & git config --global user.email "preconfig@example.com" 2>&1 | Out-Null
+
+    # Create workspace with initial content and repo
+    $workspacePath = Join-Path $BaseDestPath "scenario2"
+    Write-ContainerMessage "Creating workspace at: $workspacePath" -Type Info
+    New-Item -ItemType Directory -Path $workspacePath -Force | Out-Null
+
+    # Create minimal app.json
     $appJson = @{
         id = "00000000-0000-0000-0000-000000000000"
-        name = "Test App"
+        name = "Test App Scenario 2"
         publisher = "Test Publisher"
         version = "1.0.0.0"
-        brief = "Test application for installer validation"
-        description = "Minimal Business Central app for testing the provision task"
-        runtime = "13.0"
-        platform = "24.0.0.0"
-        application = "24.0.0.0"
-        dataAccessIntent = "ReadWrite"
-        dependencies = @()
-        screenshots = @()
-        privacyStatement = ""
-        supportedLocales = @()
     } | ConvertTo-Json -Depth 10
+    Set-Content -Path (Join-Path $workspacePath "app.json") -Value $appJson -Encoding UTF8
 
-    Set-Content -Path (Join-Path $DestPath "app.json") -Value $appJson -Encoding UTF8
-    Write-ContainerMessage "app.json created at: $(Join-Path $DestPath 'app.json')" -Type Info
+    # Initialize git repo with initial commit
+    Write-ContainerMessage "Initializing git repo at workspace..." -Type Info
+    & git -C $workspacePath init 2>&1 | Out-Null
+    & git -C $workspacePath add . 2>&1 | Out-Null
+    & git -C $workspacePath commit -m "Pre-existing commit" 2>&1 | Out-Null
 
-    # Create minimal AL code file structure
-    Write-ContainerMessage "Creating AL code structure" -Type Info
-    $srcDir = Join-Path $DestPath "src"
-    if (-not (Test-Path $srcDir)) {
-        New-Item -ItemType Directory -Path $srcDir -Force | Out-Null
-    }
-
-    # Create minimal HelloWorld.al file
-    $alCode = @"
-codeunit 50100 "Hello World"
-{
-    procedure HelloWorld()
-    begin
-        Message('Hello World');
-    end;
+    Write-ContainerMessage "Scenario 2 setup complete" -Type Success
 }
-"@
-    Set-Content -Path (Join-Path $srcDir "HelloWorld.al") -Value $alCode -Encoding UTF8
-    Write-ContainerMessage "AL code structure created" -Type Info
 
-    # Step 4: Run bootstrap installer
-    # Note: Installer will handle git init and initial commit of all files
-    # Note: Installer will initialize git repository automatically with ALBT_AUTO_INSTALL=1
-    Write-ContainerMessage "Starting bootstrap installer..." -Type Info
-    Write-ContainerMessage "Command: & $installerPath -Dest $DestPath -Ref $ReleaseTag" -Type Debug
+function Setup-Scenario3 {
+    Write-ContainerMessage "Setting up Scenario 3: Git installed and configured, no repo" -Type Scenario
 
-    # Set environment variables for auto-installation
+    # Ensure PATH is up to date for git
+    Refresh-PathEnv
+
+    # Create workspace without repo
+    $workspacePath = Join-Path $BaseDestPath "scenario3"
+    Write-ContainerMessage "Creating workspace at: $workspacePath" -Type Info
+    New-Item -ItemType Directory -Path $workspacePath -Force | Out-Null
+
+    # Create minimal app.json
+    $appJson = @{
+        id = "00000000-0000-0000-0000-000000000001"
+        name = "Test App Scenario 3"
+        publisher = "Test Publisher"
+        version = "1.0.0.0"
+    } | ConvertTo-Json -Depth 10
+    Set-Content -Path (Join-Path $workspacePath "app.json") -Value $appJson -Encoding UTF8
+
+    Write-ContainerMessage "Scenario 3 setup complete" -Type Success
+}
+
+function Run-Installer {
+    param(
+        [string]$DestPath,
+        [int]$ScenarioNum
+    )
+
+    $installerPath = 'C:\bootstrap\install.ps1'
+
+    Write-ContainerMessage "Running installer for Scenario $ScenarioNum at: $DestPath" -Type Info
+
     $env:ALBT_AUTO_INSTALL = '1'
     $env:ALBT_HTTP_TIMEOUT_SEC = '300'
 
-    # Run the installer and stream output
     $installerArgs = @{
         Dest = $DestPath
     }
@@ -144,34 +142,197 @@ codeunit 50100 "Hello World"
         $installerArgs['Ref'] = $ReleaseTag
     }
 
+    # Capture output for validation
+    $installerOutput = @()
+
     try {
-        # Execute installer with real-time output streaming
-        & $installerPath @installerArgs 2>&1 | ForEach-Object {
-            # Pass through installer output
+        # Build a cmd.exe line that pipes 'n' to powershell to decline the provision prompt
+        $cmdLine = 'echo n| powershell.exe -NoProfile -ExecutionPolicy Bypass -File ' + '"' + $installerPath + '"' + ' -Dest ' + '"' + $DestPath + '"'
+        if ($ReleaseTag) { $cmdLine += ' -Ref ' + '"' + $ReleaseTag + '"' }
+
+        & cmd.exe /c $cmdLine 2>&1 | ForEach-Object {
             Write-Host $_
+            $installerOutput += $_
             [Console]::Out.Flush()
         }
 
-        $installerExitCode = $LASTEXITCODE
+        $exitCode = $LASTEXITCODE
 
-        if ($installerExitCode -ne 0) {
-            Write-ContainerMessage "Bootstrap installer exited with code: $installerExitCode" -Type Error
-            exit $installerExitCode
+        if ($exitCode -ne 0) {
+            Write-ContainerMessage "Installer exited with code: $exitCode" -Type Error
+            return @{ ExitCode = $exitCode; Output = $installerOutput }
         }
     }
     catch {
-        Write-ContainerMessage "Bootstrap installer failed with exception: $($_.Exception.Message)" -Type Error
-        Write-ContainerMessage "Stack trace: $($_.ScriptStackTrace)" -Type Debug
-        exit 1
+        Write-ContainerMessage "Installer failed with exception: $($_.Exception.Message)" -Type Error
+        return @{ ExitCode = 1; Output = $installerOutput }
     }
 
-    Write-ContainerMessage "Bootstrap installer completed successfully" -Type Success
+    return @{ ExitCode = 0; Output = $installerOutput }
+}
 
-    # Step 5: Verify installation
-    Write-ContainerMessage "Verifying installation..." -Type Info
+function Validate-Scenario1 {
+    param([object[]]$Output, [string]$DestPath)
 
-    # Check for expected overlay files at the destination root (not in an 'overlay' subdirectory)
-    $expectedFiles = @('al.build.ps1', 'al.ruleset.json', 'CLAUDE.md')
+    Write-ContainerMessage "Validating Scenario 1..." -Type Info
+    $pass = $true
+
+    # Check for git installation attempt marker
+    if ($Output -match 'prerequisite tool="git" status="installing"') {
+        Write-ContainerMessage "Git installation marker found" -Type Success
+    } else {
+        Write-ContainerMessage "Git installation marker NOT found" -Type Error
+        $pass = $false
+    }
+
+    # Git may not emit an explicit 'installed' marker; don't require it
+
+    # Check for git config marker
+    if ($Output -match 'prerequisite tool="git-config" status="configured"') {
+        Write-ContainerMessage "Git config marker found" -Type Success
+    } else {
+        Write-ContainerMessage "Git config marker NOT found" -Type Error
+        $pass = $false
+    }
+
+    # Check for repo initialization marker
+    if ($Output -match 'prerequisite tool="git" status="initialized"') {
+        Write-ContainerMessage "Git repo init marker found" -Type Success
+    } else {
+        Write-ContainerMessage "Git repo init marker NOT found" -Type Error
+        $pass = $false
+    }
+
+    # Refresh PATH so git is available in this process
+    Refresh-PathEnv
+
+    # Check commit count (should be 2: before + after overlay)
+    try {
+        $commitCount = (& git -C $DestPath log --oneline 2>&1 | Measure-Object).Count
+        Write-ContainerMessage "Commit count: $commitCount" -Type Info
+        if ($commitCount -eq 2) {
+            Write-ContainerMessage "Expected 2 commits found" -Type Success
+        } else {
+            Write-ContainerMessage "Expected 2 commits but found $commitCount" -Type Error
+            $pass = $false
+        }
+    }
+    catch {
+        Write-ContainerMessage "Failed to check commit count: $_" -Type Error
+        $pass = $false
+    }
+
+    return $pass
+}
+
+function Validate-Scenario2 {
+    param([object[]]$Output, [string]$DestPath)
+
+    Write-ContainerMessage "Validating Scenario 2..." -Type Info
+    $pass = $true
+
+    if ($Output -match 'prerequisite tool="git" status="present"') {
+        Write-ContainerMessage "Git already present marker found (correct)" -Type Success
+    } else {
+        Write-ContainerMessage "Git already present marker NOT found" -Type Error
+        $pass = $false
+    }
+
+    if ($Output -match 'prerequisite tool="git-config" status="present"') {
+        Write-ContainerMessage "Git config already present marker found (correct)" -Type Success
+    } else {
+        Write-ContainerMessage "Git config already present marker NOT found" -Type Error
+        $pass = $false
+    }
+
+    Refresh-PathEnv
+
+    try {
+        $commitCount = (& git -C $DestPath log --oneline 2>&1 | Measure-Object).Count
+        Write-ContainerMessage "Commit count: $commitCount" -Type Info
+        if ($commitCount -eq 2) {
+            Write-ContainerMessage "Expected 2 commits found (1 pre-existing + 1 overlay commit)" -Type Success
+        } else {
+            Write-ContainerMessage "Expected 2 commits but found $commitCount" -Type Error
+            $pass = $false
+        }
+    }
+    catch {
+        Write-ContainerMessage "Failed to check commit count: $_" -Type Error
+        $pass = $false
+    }
+
+    try {
+        $userName = & git config --global user.name 2>&1
+        if ($userName -eq "Pre-configured User") {
+            Write-ContainerMessage "Git config preserved correctly" -Type Success
+        } else {
+            Write-ContainerMessage "Git config was changed (expected: Pre-configured User, got: $userName)" -Type Error
+            $pass = $false
+        }
+    }
+    catch {
+        Write-ContainerMessage "Failed to verify git config: $_" -Type Error
+        $pass = $false
+    }
+
+    return $pass
+}
+
+function Validate-Scenario3 {
+    param([object[]]$Output, [string]$DestPath)
+
+    Write-ContainerMessage "Validating Scenario 3..." -Type Info
+    $pass = $true
+
+    if ($Output -match 'prerequisite tool="git" status="present"') {
+        Write-ContainerMessage "Git already present marker found (correct)" -Type Success
+    } else {
+        Write-ContainerMessage "Git already present marker NOT found" -Type Error
+        $pass = $false
+    }
+
+    if ($Output -match 'prerequisite tool="git-config" status="present"') {
+        Write-ContainerMessage "Git config already present marker found (correct)" -Type Success
+    } else {
+        Write-ContainerMessage "Git config already present marker NOT found" -Type Error
+        $pass = $false
+    }
+
+    # Check for repo initialization marker
+    if ($Output -match 'prerequisite tool="git" status="initialized"') {
+        Write-ContainerMessage "Git repo init marker found" -Type Success
+    } else {
+        Write-ContainerMessage "Git repo init marker NOT found" -Type Error
+        $pass = $false
+    }
+
+    Refresh-PathEnv
+
+    try {
+        $commitCount = (& git -C $DestPath log --oneline 2>&1 | Measure-Object).Count
+        Write-ContainerMessage "Commit count: $commitCount" -Type Info
+        if ($commitCount -eq 2) {
+            Write-ContainerMessage "Expected 2 commits found" -Type Success
+        } else {
+            Write-ContainerMessage "Expected 2 commits but found $commitCount" -Type Error
+            $pass = $false
+        }
+    }
+    catch {
+        Write-ContainerMessage "Failed to check commit count: $_" -Type Error
+        $pass = $false
+    }
+
+    return $pass
+}
+
+function Verify-OverlayInstalled {
+    param([string]$DestPath)
+
+    Write-ContainerMessage "Verifying overlay installation at: $DestPath" -Type Info
+
+    $expectedFiles = @('al.build.ps1', 'al.ruleset.json')
     $missingFiles = @()
     foreach ($file in $expectedFiles) {
         $filePath = Join-Path $DestPath $file
@@ -182,57 +343,144 @@ codeunit 50100 "Hello World"
 
     if ($missingFiles.Count -gt 0) {
         Write-ContainerMessage "Expected overlay files not found: $($missingFiles -join ', ')" -Type Error
-        Write-ContainerMessage "Directory contents:" -Type Debug
-        Get-ChildItem $DestPath | ForEach-Object {
-            Write-ContainerMessage "  - $($_.Name)" -Type Debug
-        }
-        exit 1
+        return $false
     }
 
-    # Define overlay path for verification
-    $overlayPath = $DestPath
-    Write-ContainerMessage "Overlay directory found at: $overlayPath" -Type Success
+    Write-ContainerMessage "Overlay files verified" -Type Success
+    return $true
+}
 
-    # Check for key files
-    $requiredFiles = @(
-        'al.build.ps1',
-        'al.ruleset.json',
-        'scripts\common.psm1'
-    )
+# Main execution
+try {
+    Write-ContainerMessage "Container test starting..." -Type Info
+    Write-ContainerMessage "PowerShell Version: $($PSVersionTable.PSVersion)" -Type Info
+    Write-ContainerMessage "Release Tag: $ReleaseTag" -Type Info
 
-    $allFilesPresent = $true
-    foreach ($file in $requiredFiles) {
-        $filePath = Join-Path $overlayPath $file
-        if (Test-Path $filePath) {
-            Write-ContainerMessage "Required file present: overlay\$file" -Type Success
+    # Scenario 1: No git, no config, no repo
+    $s1Path = Join-Path $BaseDestPath "scenario1"
+    Setup-Scenario1
+    New-Item -ItemType Directory -Path $s1Path -Force | Out-Null
+
+    $appJson = @{
+        id        = "00000000-0000-0000-0000-000000000000"
+        name      = "Test App Scenario 1"
+        publisher = "Test Publisher"
+        version   = "1.0.0.0"
+    } | ConvertTo-Json -Depth 10
+    Set-Content -Path (Join-Path $s1Path "app.json") -Value $appJson -Encoding UTF8
+
+    $result = Run-Installer -DestPath $s1Path -ScenarioNum 1
+    if ($result.ExitCode -eq 0) {
+        $overlayOk = Verify-OverlayInstalled -DestPath $s1Path
+        if ($overlayOk) {
+            $validationPass = Validate-Scenario1 -Output $result.Output -DestPath $s1Path
+            if ($validationPass) {
+                Write-ContainerMessage "Scenario 1: PASSED" -Type Success
+                $script:ScenarioResults[1] = $true
+            }
+            else {
+                Write-ContainerMessage "Scenario 1: FAILED (validation)" -Type Error
+                $script:ScenarioResults[1] = $false
+                $script:AllScenariosPass = $false
+            }
         }
         else {
-            Write-ContainerMessage "Required file missing: overlay\$file" -Type Error
-            $allFilesPresent = $false
+            Write-ContainerMessage "Scenario 1: FAILED (overlay verification)" -Type Error
+            $script:ScenarioResults[1] = $false
+            $script:AllScenariosPass = $false
         }
     }
-
-    if (-not $allFilesPresent) {
-        Write-ContainerMessage "Installation verification failed - missing required files" -Type Error
-        exit 1
+    else {
+        Write-ContainerMessage "Scenario 1: FAILED (installer exit code: $($result.ExitCode))" -Type Error
+        $script:ScenarioResults[1] = $false
+        $script:AllScenariosPass = $false
     }
 
-    # Count total files installed
-    $fileCount = (Get-ChildItem -Path $overlayPath -Recurse -File | Measure-Object).Count
-    Write-ContainerMessage "Total files installed: $fileCount" -Type Info
+    # Scenario 2: Git installed, configured, repo exists
+    Setup-Scenario2
+    $s2Path = Join-Path $BaseDestPath "scenario2"
 
-    Write-ContainerMessage "Installation verification passed" -Type Success
-    Write-ContainerMessage "Container test completed successfully" -Type Success
+    $result = Run-Installer -DestPath $s2Path -ScenarioNum 2
+    if ($result.ExitCode -eq 0) {
+        $overlayOk = Verify-OverlayInstalled -DestPath $s2Path
+        if ($overlayOk) {
+            $validationPass = Validate-Scenario2 -Output $result.Output -DestPath $s2Path
+            if ($validationPass) {
+                Write-ContainerMessage "Scenario 2: PASSED" -Type Success
+                $script:ScenarioResults[2] = $true
+            }
+            else {
+                Write-ContainerMessage "Scenario 2: FAILED (validation)" -Type Error
+                $script:ScenarioResults[2] = $false
+                $script:AllScenariosPass = $false
+            }
+        }
+        else {
+            Write-ContainerMessage "Scenario 2: FAILED (overlay verification)" -Type Error
+            $script:ScenarioResults[2] = $false
+            $script:AllScenariosPass = $false
+        }
+    }
+    else {
+        Write-ContainerMessage "Scenario 2: FAILED (installer exit code: $($result.ExitCode))" -Type Error
+        $script:ScenarioResults[2] = $false
+        $script:AllScenariosPass = $false
+    }
 
+    # Scenario 3: Git installed and configured, no repo
+    Setup-Scenario3
+    $s3Path = Join-Path $BaseDestPath "scenario3"
+
+    $result = Run-Installer -DestPath $s3Path -ScenarioNum 3
+    if ($result.ExitCode -eq 0) {
+        $overlayOk = Verify-OverlayInstalled -DestPath $s3Path
+        if ($overlayOk) {
+            $validationPass = Validate-Scenario3 -Output $result.Output -DestPath $s3Path
+            if ($validationPass) {
+                Write-ContainerMessage "Scenario 3: PASSED" -Type Success
+                $script:ScenarioResults[3] = $true
+            }
+            else {
+                Write-ContainerMessage "Scenario 3: FAILED (validation)" -Type Error
+                $script:ScenarioResults[3] = $false
+                $script:AllScenariosPass = $false
+            }
+        }
+        else {
+            Write-ContainerMessage "Scenario 3: FAILED (overlay verification)" -Type Error
+            $script:ScenarioResults[3] = $false
+            $script:AllScenariosPass = $false
+        }
+    }
+    else {
+        Write-ContainerMessage "Scenario 3: FAILED (installer exit code: $($result.ExitCode))" -Type Error
+        $script:ScenarioResults[3] = $false
+        $script:AllScenariosPass = $false
+    }
+
+    # Report overall results
+    Write-ContainerMessage "========================================" -Type Info
+    Write-ContainerMessage "Test Summary:" -Type Info
+    Write-ContainerMessage "Scenario 1 (no git, no config, no repo): $(if ($script:ScenarioResults[1]) { 'PASSED' } else { 'FAILED' })" -Type Info
+    Write-ContainerMessage "Scenario 2 (git+config+repo): $(if ($script:ScenarioResults[2]) { 'PASSED' } else { 'FAILED' })" -Type Info
+    Write-ContainerMessage "Scenario 3 (git+config, no repo): $(if ($script:ScenarioResults[3]) { 'PASSED' } else { 'FAILED' })" -Type Info
+    Write-ContainerMessage "========================================" -Type Info
+
+    if ($script:AllScenariosPass) {
+        Write-ContainerMessage "All scenarios PASSED" -Type Success
     exit 0
+    }
+    else {
+        Write-ContainerMessage "Some scenarios FAILED" -Type Error
+        exit 1
+    }
 }
 catch {
-    Write-ContainerMessage "Unexpected error in container test: $($_.Exception.Message)" -Type Error
+    Write-ContainerMessage "Unexpected error: $($_.Exception.Message)" -Type Error
     Write-ContainerMessage "Stack trace: $($_.ScriptStackTrace)" -Type Debug
     exit 1
 }
 finally {
-    # Final flush to ensure all output is written
     [Console]::Out.Flush()
     [Console]::Error.Flush()
 }
