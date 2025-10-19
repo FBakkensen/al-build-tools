@@ -795,41 +795,69 @@ function Install-AlBuildTools {
     }
 
     # FR-004: Check PowerShell version BEFORE InvokeBuild (InvokeBuild requires PS 7+)
-    $psVersion = if ($env:ALBT_TEST_FORCE_PSVERSION) {
-        [System.Version]$env:ALBT_TEST_FORCE_PSVERSION
-    } else {
-        $PSVersionTable.PSVersion
+    # First check if PowerShell 7 is already installed on the system
+    $pwshExecutable = $null
+    $pwshPath = 'C:\Program Files\PowerShell\7\pwsh.exe'
+    $pwsh7Installed = Test-Path $pwshPath
+
+    if ($pwsh7Installed) {
+        # PowerShell 7 is already installed - get its version
+        try {
+            $pwsh7VersionOutput = & $pwshPath -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' 2>&1
+            $pwsh7Version = [System.Version]$pwsh7VersionOutput
+            Write-Host "[install] prerequisite tool=`"pwsh`" status=`"check`" version=$pwsh7Version"
+            
+            if ($pwsh7Version -ge [System.Version]'7.2') {
+                Write-Host "[install] prerequisite tool=`"pwsh`" status=`"present`" version=$pwsh7Version"
+                Write-BuildMessage -Type Success -Message "PowerShell 7 is installed (version $pwsh7Version)"
+                $pwshExecutable = $pwshPath
+            } else {
+                Write-Host "[install] prerequisite tool=`"pwsh`" status=`"insufficient`" installed_version=$pwsh7Version required=7.2"
+                Write-Warning "PowerShell 7 is installed but version $pwsh7Version is below required 7.2"
+                # Fall through to check current session and potentially install
+            }
+        } catch {
+            Write-Verbose "[install] Failed to query PowerShell 7 version: $_"
+            # Fall through to check current session
+        }
     }
 
-    Write-Host "[install] prerequisite tool=`"pwsh`" status=`"check`" version=$psVersion"
+    # If PowerShell 7 is not already installed or version check failed, check current session
+    if (-not $pwshExecutable) {
+        $psVersion = if ($env:ALBT_TEST_FORCE_PSVERSION) {
+            [System.Version]$env:ALBT_TEST_FORCE_PSVERSION
+        } else {
+            $PSVersionTable.PSVersion
+        }
 
-    $needsPowerShell7 = $psVersion -lt [System.Version]'7.2'
-    $pwshExecutable = $null
+        Write-Host "[install] prerequisite tool=`"pwsh`" status=`"check`" version=$psVersion"
 
-    if ($needsPowerShell7) {
-        Write-Host "[install] prerequisite tool=`"pwsh`" status=`"insufficient`" required=7.2"
+        $needsPowerShell7 = $psVersion -lt [System.Version]'7.2'
 
-        $shouldInstall = Confirm-Installation -ToolName "PowerShell 7.2+" -Purpose "AL Build Tools installation and build operations"
+        if ($needsPowerShell7) {
+            Write-Host "[install] prerequisite tool=`"pwsh`" status=`"insufficient`" required=7.2"
 
-        if ($shouldInstall) {
-            $installed = Install-PowerShell
-            if ($installed) {
-                # PowerShell 7 was installed - check if we can use it
-                $pwshPath = 'C:\Program Files\PowerShell\7\pwsh.exe'
-                if (Test-Path $pwshPath) {
-                    $pwshExecutable = $pwshPath
-                    Write-BuildMessage -Type Success -Message "PowerShell 7 installed successfully. Continuing with remaining tasks..."
+            $shouldInstall = Confirm-Installation -ToolName "PowerShell 7.2+" -Purpose "AL Build Tools installation and build operations"
+
+            if ($shouldInstall) {
+                $installed = Install-PowerShell
+                if ($installed) {
+                    # PowerShell 7 was installed - check if we can use it
+                    if (Test-Path $pwshPath) {
+                        $pwshExecutable = $pwshPath
+                        Write-BuildMessage -Type Success -Message "PowerShell 7 installed successfully. Continuing with remaining tasks..."
+                    } else {
+                        Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=false install_failed=true path_not_found=true"
+                        Write-Error "Installation failed: PowerShell 7 installed but not found at expected path: $pwshPath"
+                    }
                 } else {
-                    Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=false install_failed=true path_not_found=true"
-                    Write-Error "Installation failed: PowerShell 7 installed but not found at expected path: $pwshPath"
+                    Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=false install_failed=true"
+                    Write-Error "Installation failed: Could not install PowerShell 7. Please install manually from https://aka.ms/powershell"
                 }
             } else {
-                Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=false install_failed=true"
-                Write-Error "Installation failed: Could not install PowerShell 7. Please install manually from https://aka.ms/powershell"
+                Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=true"
+                Write-Error "Installation failed: PowerShell 7.2 or later is required. Current version: $psVersion. Install from https://aka.ms/powershell"
             }
-        } else {
-            Write-Host "[install] guard PowerShellVersionUnsupported version=$psVersion declined=true"
-            Write-Error "Installation failed: PowerShell 7.2 or later is required. Current version: $psVersion. Install from https://aka.ms/powershell"
         }
     }
 

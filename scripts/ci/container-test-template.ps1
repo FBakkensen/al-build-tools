@@ -40,42 +40,6 @@ function Write-ContainerMessage {
     [Console]::Error.Flush()
 }
 
-function Install-Chocolatey {
-    Write-ContainerMessage "Installing Chocolatey..." -Type Info
-    Set-ExecutionPolicy Bypass -Scope Process -Force
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-
-    $env:chocolateyVersion = '1.4.0'
-    try {
-        $wc = New-Object System.Net.WebClient
-        $wc.Headers['User-Agent'] = 'al-build-tools-installer'
-        $uri = [System.Uri]'https://community.chocolatey.org/install.ps1'
-        $req = [System.Net.HttpWebRequest]::Create($uri)
-        $req.Method = 'GET'
-        $req.UserAgent = 'al-build-tools-installer'
-        $req.Timeout = 30000
-        $response = $req.GetResponse()
-        $stream = $response.GetResponseStream()
-        $reader = New-Object System.IO.StreamReader($stream)
-        $contentBuilder = New-Object System.Text.StringBuilder
-        while (-not $reader.EndOfStream) {
-            $chunk = $reader.ReadLine()
-            [void]$contentBuilder.AppendLine($chunk)
-        }
-        $chocoInstallScript = $contentBuilder.ToString()
-        Invoke-Expression $chocoInstallScript
-        Write-ContainerMessage "Chocolatey installation completed" -Type Success
-        }
-        catch {
-        throw "Chocolatey installation failed: $($_.Exception.Message)"
-    }
-    finally {
-        if ($env:chocolateyVersion -eq '1.4.0') {
-            Remove-Item Env:\chocolateyVersion -ErrorAction SilentlyContinue
-        }
-    }
-}
-
 function Refresh-PathEnv {
     try {
         $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
@@ -97,22 +61,12 @@ function Setup-Scenario1 {
 function Setup-Scenario2 {
     Write-ContainerMessage "Setting up Scenario 2: Git installed, configured, repo exists" -Type Scenario
 
-    # Install Chocolatey if needed
-    $chocoPath = 'C:\ProgramData\chocolatey\bin\choco.exe'
-    if (-not (Test-Path $chocoPath)) {
-        if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-            Install-Chocolatey
-        }
-        Refresh-PathEnv
-        $chocoCmd = Get-Command choco -ErrorAction SilentlyContinue
-        if ($chocoCmd) { $chocoPath = $chocoCmd.Path }
-    }
+    # Refresh PATH to ensure choco is available (already installed in Scenario 1)
     Refresh-PathEnv
 
-    # Install git using explicit choco path
+    # Install git using choco
     Write-ContainerMessage "Installing git via Chocolatey..." -Type Info
-    if (-not (Test-Path $chocoPath)) { $chocoPath = 'choco' }
-    & $chocoPath install git -y --no-progress 2>&1 | Out-Null
+    & choco install git -y --no-progress 2>&1 | Out-Null
 
     # Ensure PATH includes git
     Refresh-PathEnv
