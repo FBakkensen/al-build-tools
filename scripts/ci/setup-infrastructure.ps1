@@ -146,38 +146,49 @@ if (-not $SkipInvokeBuild) {
     } else {
         Write-Host "[setup] InvokeBuild not found - installing..." -ForegroundColor Yellow
 
-        # Use PS 5.1 to install, then copy to PS 7 (same approach as container test)
-        $installCmd = {
-            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Confirm:$false -WarningAction SilentlyContinue | Out-Null
-            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -WarningAction SilentlyContinue
-            Install-Module -Name InvokeBuild -Scope CurrentUser -Force -Repository PSGallery -SkipPublisherCheck -AllowClobber -Confirm:$false -WarningAction SilentlyContinue
-            $m = Get-Module -ListAvailable -Name InvokeBuild | Select-Object -First 1
-            $m.ModuleBase
-        }
-
         try {
-            $ps5ModulePath = powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $installCmd
-            if ($LASTEXITCODE -ne 0 -or -not $ps5ModulePath) {
-                throw "Installation in PowerShell 5.1 failed (exit code: $LASTEXITCODE)"
-            }
+            # Check if PowerShell 5.1 is available (not in container environments)
+            $ps5Available = Get-Command powershell.exe -ErrorAction SilentlyContinue
 
-            # Copy to PowerShell 7 module path
-            $ps7ModulePath = Join-Path ([Environment]::GetFolderPath('MyDocuments')) "PowerShell\Modules\InvokeBuild"
-            $ps7ModulesDir = Split-Path $ps7ModulePath -Parent
+            if ($ps5Available) {
+                # Use PS 5.1 to install, then copy to PS 7 (same approach as bootstrap test)
+                $installCmd = {
+                    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Confirm:$false -WarningAction SilentlyContinue | Out-Null
+                    Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -WarningAction SilentlyContinue
+                    Install-Module -Name InvokeBuild -Scope CurrentUser -Force -Repository PSGallery -SkipPublisherCheck -AllowClobber -Confirm:$false -WarningAction SilentlyContinue
+                    $m = Get-Module -ListAvailable -Name InvokeBuild | Select-Object -First 1
+                    $m.ModuleBase
+                }
 
-            if (-not (Test-Path $ps7ModulesDir)) {
-                New-Item -Path $ps7ModulesDir -ItemType Directory -Force | Out-Null
-            }
-            if (Test-Path $ps7ModulePath) {
-                Remove-Item -Path $ps7ModulePath -Recurse -Force
-            }
+                $ps5ModulePath = powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $installCmd
+                if ($LASTEXITCODE -ne 0 -or -not $ps5ModulePath) {
+                    throw "Installation in PowerShell 5.1 failed (exit code: $LASTEXITCODE)"
+                }
 
-            Copy-Item -Path $ps5ModulePath -Destination $ps7ModulePath -Recurse -Force
+                # Copy to PowerShell 7 module path
+                $ps7ModulePath = Join-Path ([Environment]::GetFolderPath('MyDocuments')) "PowerShell\Modules\InvokeBuild"
+                $ps7ModulesDir = Split-Path $ps7ModulePath -Parent
+
+                if (-not (Test-Path $ps7ModulesDir)) {
+                    New-Item -Path $ps7ModulesDir -ItemType Directory -Force | Out-Null
+                }
+                if (Test-Path $ps7ModulePath) {
+                    Remove-Item -Path $ps7ModulePath -Recurse -Force
+                }
+
+                Copy-Item -Path $ps5ModulePath -Destination $ps7ModulePath -Recurse -Force
+            } else {
+                # PowerShell 5.1 not available (container environment) - install directly in PS 7
+                Write-Host "[setup] PowerShell 5.1 not available - installing directly in PowerShell 7" -ForegroundColor Gray
+                Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Confirm:$false -WarningAction SilentlyContinue | Out-Null
+                Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -WarningAction SilentlyContinue
+                Install-Module -Name InvokeBuild -Scope CurrentUser -Force -Repository PSGallery -SkipPublisherCheck -AllowClobber -Confirm:$false -WarningAction SilentlyContinue
+            }
 
             # Verify
             $ibModule = Get-Module -ListAvailable -Name InvokeBuild -ErrorAction SilentlyContinue
             if (-not $ibModule) {
-                throw "Module not found in PowerShell 7 after copy"
+                throw "Module not found after installation"
             }
 
             Write-Host "[setup] ✓ InvokeBuild installed: version $($ibModule.Version)" -ForegroundColor Green

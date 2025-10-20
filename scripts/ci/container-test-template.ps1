@@ -176,14 +176,18 @@ try {
 # DEBUG: Check if we can verify parameters are being passed
 Write-Host "[wrapper] About to call installer..."
 
-# Call installer directly with explicit parameters (not splat - avoids parameter binding issues)
-if ($ReleaseRef) {
-    Write-Host "[wrapper] Calling with -Dest and -Ref"
-    & $installerPath -Dest $DestinationPath -Ref $ReleaseRef
-} else {
-    Write-Host "[wrapper] Calling with -Dest only"
-    & $installerPath -Dest $DestinationPath
+# Call installer with splatting to avoid parameter binding issues with call operator
+$installerArgs = @{
+    DestinationPath = $DestinationPath
 }
+if ($ReleaseRef) {
+    $installerArgs['Ref'] = $ReleaseRef
+    Write-Host "[wrapper] Calling with -Dest and -Ref (splatted)"
+} else {
+    Write-Host "[wrapper] Calling with -Dest only (splatted)"
+}
+
+& $installerPath @installerArgs
 
 Write-Host "[wrapper] Installer completed with exit code: $LASTEXITCODE"
 '@

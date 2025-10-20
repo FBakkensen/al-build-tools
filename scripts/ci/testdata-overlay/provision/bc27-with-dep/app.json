@@ -1,0 +1,39 @@
+{
+  "id": "12345678-1234-1234-1234-123456789abc",
+  "name": "Test App BC27",
+  "publisher": "AL Build Tools Test",
+  "version": "1.0.0.0",
+  "brief": "Test fixture for provision workflow validation",
+  "description": "Minimal AL app for testing compiler and symbol download with BC 27.0.0.0",
+  "privacyStatement": "https://github.com/FBakkensen/al-build-tools",
+  "EULA": "https://github.com/FBakkensen/al-build-tools/blob/main/LICENSE",
+  "help": "https://github.com/FBakkensen/al-build-tools",
+  "url": "https://github.com/FBakkensen/al-build-tools",
+  "logo": "",
+  "dependencies": [
+    {
+      "id": "e340d5b5-f7eb-44db-b802-fd3b7896e0a7",
+      "name": "9A Advanced Manufacturing - License",
+      "publisher": "9altitudes",
+      "version": "24.7.0.0"
+    }
+  ],
+  "screenshots": [],
+  "platform": "27.0.0.0",
+  "application": "27.0.0.0",
+  "idRanges": [
+    {
+      "from": 50000,
+      "to": 50099
+    }
+  ],
+  "resourceExposurePolicy": {
+    "allowDebugging": true,
+    "allowDownloadingSource": false,
+    "includeSourceInSymbolFile": false
+  },
+  "runtime": "14.0",
+  "features": [
+    "NoImplicitWith"
+  ]
+}

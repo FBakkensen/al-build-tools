@@ -1,0 +1,96 @@
+name: Test Overlay Provision
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'overlay/scripts/make/download-compiler.ps1'
+      - 'overlay/scripts/make/download-symbols.ps1'
+      - 'overlay/scripts/common.psm1'
+      - 'scripts/ci/test-overlay-provision.ps1'
+      - 'scripts/ci/container-test-overlay-provision.ps1'
+      - 'scripts/ci/testdata-overlay/**'
+      - 'scripts/ci/docker/**'
+      - 'scripts/ci/setup-infrastructure.ps1'
+      - '.github/workflows/test-overlay-provision.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'overlay/scripts/make/download-compiler.ps1'
+      - 'overlay/scripts/make/download-symbols.ps1'
+      - 'overlay/scripts/common.psm1'
+      - 'scripts/ci/test-overlay-provision.ps1'
+      - 'scripts/ci/container-test-overlay-provision.ps1'
+      - 'scripts/ci/testdata-overlay/**'
+      - 'scripts/ci/docker/**'
+      - 'scripts/ci/setup-infrastructure.ps1'
+      - '.github/workflows/test-overlay-provision.yml'
+  workflow_dispatch:
+
+jobs:
+  test-provision:
+    name: Test Provision Tasks
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build test base image
+        run: |
+          Write-Host "Building AL Build Tools test base image..."
+          pwsh -NoProfile -File scripts/ci/docker/build-test-base.ps1
+        shell: pwsh
+
+      - name: Verify base image
+        run: |
+          Write-Host "Verifying base image..."
+          docker images albt-test-base:windows-latest
+        shell: pwsh
+
+      - name: Run provision tests
+        run: |
+          Write-Host "Running provision tests..."
+          $env:ALBT_TEST_PROVISION_TIMEOUT = '300'
+          $env:VERBOSE = '1'
+          pwsh -NoProfile -File scripts/ci/test-overlay-provision.ps1 -Verbose
+        shell: pwsh
+
+      - name: Parse test summary
+        if: always()
+        id: parse-summary
+        run: |
+          $summaryPath = 'out/test-overlay-provision/summary.json'
+          if (Test-Path $summaryPath) {
+            $summary = Get-Content -Path $summaryPath -Raw | ConvertFrom-Json
+
+            Write-Host "Test Type: $($summary.testType)"
+            Write-Host "Exit Code: $($summary.exitCode)"
+            Write-Host "Success: $($summary.success)"
+            Write-Host "Duration: $($summary.durationSeconds) seconds"
+
+            if ($summary.errorSummary) {
+              Write-Host "::error::Provision test failed: $($summary.errorSummary)"
+            }
+
+            if (-not $summary.success) {
+              exit 1
+            }
+          } else {
+            Write-Host "::error::Summary file not found at $summaryPath"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provision-test-logs
+          path: |
+            out/test-overlay-provision/provision.transcript.txt
+            out/test-overlay-provision/summary.json
+            out/test-overlay-provision/provision.log
+          if-no-files-found: warn
+          retention-days: 7

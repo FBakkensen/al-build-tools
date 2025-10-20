@@ -1,0 +1,39 @@
+# escape=`
+# AL Build Tools Test Base Image
+# Provides pre-configured environment with .NET SDK, PowerShell 7, and InvokeBuild
+# Used by overlay script tests to avoid repeated infrastructure setup
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022
+
+LABEL description="AL Build Tools test base image with infrastructure prerequisites"
+LABEL maintainer="FBakkensen/al-build-tools"
+
+# Create working directory
+WORKDIR C:\albt-setup
+
+# Copy setup infrastructure script
+COPY setup-infrastructure.ps1 .
+
+# Set environment for automated installation
+ENV ALBT_AUTO_INSTALL=1
+
+# Run setup (skip Git - not needed for overlay tests)
+RUN pwsh -NoProfile -ExecutionPolicy Bypass -Command `
+    "& C:\albt-setup\setup-infrastructure.ps1 -SkipGit -ErrorAction Stop; `
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+
+# Verify installations
+RUN pwsh -NoProfile -Command `
+    "Write-Host 'Verifying installations...'; `
+    $dotnetVersion = & dotnet --version; `
+    Write-Host \"[verify] .NET SDK: $dotnetVersion\"; `
+    $pwshVersion = $PSVersionTable.PSVersion.ToString(); `
+    Write-Host \"[verify] PowerShell: $pwshVersion\"; `
+    $ibModule = Get-Module -ListAvailable -Name InvokeBuild | Select-Object -First 1; `
+    if ($ibModule) { Write-Host \"[verify] InvokeBuild: $($ibModule.Version)\" } else { Write-Host '[verify] InvokeBuild: NOT FOUND'; exit 1 }"
+
+# Set default working directory for tests
+WORKDIR C:\albt-test
+
+# Default to PowerShell 7 for test execution
+CMD ["pwsh.exe"]
