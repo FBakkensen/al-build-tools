@@ -1,0 +1,15 @@
+{
+  "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+  "name": "Test App Scenario 3",
+  "publisher": "Test Publisher",
+  "version": "1.0.0.0",
+  "application": "24.0.0.0",
+  "dependencies": [
+    {
+      "id": "e340d5b5-f7eb-44db-b802-fd3b7896e0a7",
+      "name": "9A Advanced Manufacturing - License",
+      "publisher": "9altitudes",
+      "version": "24.7.0.0"
+    }
+  ]
+}

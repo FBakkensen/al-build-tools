@@ -1,0 +1,8 @@
+{
+  "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "name": "Test App Scenario 2",
+  "publisher": "Test Publisher",
+  "version": "1.0.0.0",
+  "application": "24.0.0.0",
+  "dependencies": []
+}
