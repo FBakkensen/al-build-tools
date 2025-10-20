@@ -3,7 +3,7 @@
 param(
     [string]$Url = 'https://api.github.com/repos/FBakkensen/al-build-tools',
     [string]$Ref,
-    [string]$Dest = '.',
+    [string]$DestinationPath = '.',
     [string]$Source = 'overlay',
     [int]$HttpTimeoutSec = 0,
     [Parameter(ValueFromRemainingArguments = $true)]
@@ -219,7 +219,7 @@ function Install-AlBuildTools {
     param(
         [string]$Url = 'https://api.github.com/repos/FBakkensen/al-build-tools',
         [string]$Ref,
-        [string]$Dest = '.',
+        [string]$DestinationPath = '.',
         [string]$Source = 'overlay',
         [int]$HttpTimeoutSec = 0
     )
@@ -239,14 +239,31 @@ function Install-AlBuildTools {
 
     $startTime = Get-Date
     $step = 0
+    Write-Host "========== USING LOCAL MODIFIED INSTALLER ==========" -ForegroundColor Red
     $step++; Write-Step $step "Resolve destination"
-    try {
-        $destFull = (Resolve-Path -Path $Dest -ErrorAction Stop).Path
-    } catch {
-        # Create the destination if it does not exist, then resolve the actual path
-        $created = New-Item -ItemType Directory -Force -Path $Dest
-        $destFull = (Resolve-Path -Path $created.FullName).Path
+    # Resolve to absolute path - handle both relative and absolute paths correctly
+    Write-BuildMessage -Type Info -Message "[DEBUG] Input DestinationPath parameter: '$DestinationPath'"
+    Write-BuildMessage -Type Info -Message "[DEBUG] DestinationPath type: $($DestinationPath.GetType().Name)"
+    Write-BuildMessage -Type Info -Message "[DEBUG] DestinationPath length: $($DestinationPath.Length)"
+    Write-BuildMessage -Type Info -Message "[DEBUG] First char: '$($DestinationPath[0])' (code: $([int]$DestinationPath[0]))"
+    Write-BuildMessage -Type Info -Message "[DEBUG] Current location: '$(Get-Location)'"
+    Write-BuildMessage -Type Info -Message "[DEBUG] IsPathRooted: $([System.IO.Path]::IsPathRooted($DestinationPath))"
+
+    if ([System.IO.Path]::IsPathRooted($DestinationPath)) {
+        $destAbsolute = $DestinationPath
+        Write-BuildMessage -Type Info -Message "[DEBUG] Path is rooted, using as-is: '$destAbsolute'"
+    } else {
+        $destAbsolute = Join-Path (Get-Location).Path $DestinationPath
+        Write-BuildMessage -Type Info -Message "[DEBUG] Path is relative, joined: '$destAbsolute'"
     }
+    # Normalize the path (remove any .\ or ..\ segments)
+    $destAbsolute = [System.IO.Path]::GetFullPath($destAbsolute)
+    Write-BuildMessage -Type Info -Message "[DEBUG] After GetFullPath: '$destAbsolute'"
+
+    if (-not (Test-Path -LiteralPath $destAbsolute)) {
+        New-Item -ItemType Directory -Force -Path $destAbsolute | Out-Null
+    }
+    $destFull = $destAbsolute
     Write-BuildMessage -Type Info -Message "Install/update from $Url into $destFull (source: $Source)"
 
     $step++; Write-Step $step "Verify prerequisites"
@@ -730,10 +747,12 @@ function Install-AlBuildTools {
 # - When executed via -File or &, InvocationName is the script name/path
 if ($PSCommandPath -and ($MyInvocation.InvocationName -ne '.') -and -not $env:ALBT_NO_AUTORUN) {
     try {
+        Write-Host "[AUTO-RUN] Script-level DestinationPath parameter: '$DestinationPath'" -ForegroundColor Yellow
+        Write-Host "[AUTO-RUN] Script-level Ref parameter: '$Ref'" -ForegroundColor Yellow
         $installParams = @{
             Url = $Url
             Ref = $Ref
-            Dest = $Dest
+            DestinationPath = $DestinationPath
             Source = $Source
         }
         if ($PSBoundParameters.ContainsKey('HttpTimeoutSec')) {
