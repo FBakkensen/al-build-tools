@@ -117,11 +117,11 @@ function Build-PackageMap {
 
     $map = [ordered]@{}
 
-    if ($AppJson.application) {
+    if (($AppJson.PSObject.Properties.Name -contains 'application') -and $AppJson.application) {
         $map['Microsoft.Application.symbols'] = [string]$AppJson.application
     }
 
-    if ($AppJson.dependencies) {
+    if (($AppJson.PSObject.Properties.Name -contains 'dependencies') -and $AppJson.dependencies) {
         foreach ($dep in $AppJson.dependencies) {
             if (-not ($dep.publisher) -or -not ($dep.name) -or -not ($dep.id) -or -not ($dep.version)) { continue }
             $publisher = ($dep.publisher -replace '\s+', '')
@@ -489,9 +489,8 @@ function Write-Manifest {
     param([string]$Path, $AppJson, [hashtable]$Packages, [string[]]$Feeds)
 
     $payload = [ordered]@{
-        runtime = if ($AppJson.runtime) { $AppJson.runtime } else { $null }
-        application = if ($AppJson.application) { $AppJson.application } else { $null }
-        platform = if ($AppJson.platform) { $AppJson.platform } else { $null }
+        application = if (($AppJson.PSObject.Properties.Name -contains 'application') -and $AppJson.application) { $AppJson.application } else { $null }
+        platform = if (($AppJson.PSObject.Properties.Name -contains 'platform') -and $AppJson.platform) { $AppJson.platform } else { $null }
         appId = $AppJson.id
         appName = $AppJson.name
         publisher = $AppJson.publisher
@@ -595,9 +594,11 @@ while ($queue.Count -gt 0) {
     $knownDependencies = $null
 
     # Cache is valid if: package exists AND (application+platform match OR both are null)
+    $appJsonApplication = if ($appJson.PSObject.Properties.Name -contains 'application') { $appJson.application } else { $null }
+    $appJsonPlatform = if ($appJson.PSObject.Properties.Name -contains 'platform') { $appJson.platform } else { $null }
     $cacheValid = $cached -and $manifestVersion -and (
-        ([string]$manifestApplication -eq [string]$appJson.application -and [string]$manifestPlatform -eq [string]$appJson.platform) -or
-        (-not $manifestApplication -and -not $appJson.application -and -not $manifestPlatform -and -not $appJson.platform)
+        ([string]$manifestApplication -eq [string]$appJsonApplication -and [string]$manifestPlatform -eq [string]$appJsonPlatform) -or
+        (-not $manifestApplication -and -not $appJsonApplication -and -not $manifestPlatform -and -not $appJsonPlatform)
     )
 
     if ($processedPackages.ContainsKey($packageId)) {

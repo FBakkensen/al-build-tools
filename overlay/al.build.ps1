@@ -302,6 +302,11 @@ task publish build, {
 # Synopsis: Download symbols for test app
 task download-symbols-test {
     Write-TaskHeader "DOWNLOAD-SYMBOLS-TEST" "Test App Symbol Provisioning"
+    $testAppJson = Join-Path $TestDir 'app.json'
+    if (-not (Test-Path -LiteralPath $testAppJson)) {
+        Write-BuildMessage -Type Info -Message "Skipping test symbol download: No test app found at '$TestDir'"
+        return
+    }
     Invoke-BuildScript 'download-symbols.ps1' @($TestDir)
 }
 
