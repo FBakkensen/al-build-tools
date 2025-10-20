@@ -53,6 +53,25 @@ function Refresh-PathEnv {
     }
 }
 
+function Copy-TestFixture {
+    param(
+        [string]$ScenarioName,
+        [string]$DestinationPath
+    )
+
+    # Inside container, testdata is mounted at C:\testdata
+    $testdataPath = Join-Path "C:\testdata" $ScenarioName
+
+    if (-not (Test-Path $testdataPath)) {
+        Write-ContainerMessage "Test fixture not found at: $testdataPath" -Type Error
+        throw "Missing test fixture for $ScenarioName"
+    }
+
+    Write-ContainerMessage "Copying test fixture from: $testdataPath to: $DestinationPath" -Type Debug
+    Copy-Item -Path (Join-Path $testdataPath "*") -Destination $DestinationPath -Recurse -Force -ErrorAction Stop
+    Write-ContainerMessage "Test fixture copied successfully" -Type Debug
+}
+
 function Setup-Scenario1 {
     Write-ContainerMessage "Setting up Scenario 1: No git, no config, no repo" -Type Scenario
     # No setup needed - Windows Server Core has no git by default
@@ -81,14 +100,8 @@ function Setup-Scenario2 {
     Write-ContainerMessage "Creating workspace at: $workspacePath" -Type Info
     New-Item -ItemType Directory -Path $workspacePath -Force | Out-Null
 
-    # Create minimal app.json
-    $appJson = @{
-        id = "00000000-0000-0000-0000-000000000000"
-        name = "Test App Scenario 2"
-        publisher = "Test Publisher"
-        version = "1.0.0.0"
-    } | ConvertTo-Json -Depth 10
-    Set-Content -Path (Join-Path $workspacePath "app.json") -Value $appJson -Encoding UTF8
+    # Copy test fixture
+    Copy-TestFixture -ScenarioName "scenario2" -DestinationPath $workspacePath
 
     # Initialize git repo with initial commit
     Write-ContainerMessage "Initializing git repo at workspace..." -Type Info
@@ -110,14 +123,8 @@ function Setup-Scenario3 {
     Write-ContainerMessage "Creating workspace at: $workspacePath" -Type Info
     New-Item -ItemType Directory -Path $workspacePath -Force | Out-Null
 
-    # Create minimal app.json
-    $appJson = @{
-        id = "00000000-0000-0000-0000-000000000001"
-        name = "Test App Scenario 3"
-        publisher = "Test Publisher"
-        version = "1.0.0.0"
-    } | ConvertTo-Json -Depth 10
-    Set-Content -Path (Join-Path $workspacePath "app.json") -Value $appJson -Encoding UTF8
+    # Copy test fixture
+    Copy-TestFixture -ScenarioName "scenario3" -DestinationPath $workspacePath
 
     Write-ContainerMessage "Scenario 3 setup complete" -Type Success
 }
@@ -132,31 +139,88 @@ function Run-Installer {
 
     Write-ContainerMessage "Running installer for Scenario $ScenarioNum at: $DestPath" -Type Info
 
+    # Ensure destination directory exists
+    New-Item -ItemType Directory -Path $DestPath -Force | Out-Null
+    Write-ContainerMessage "Destination directory ensured: $DestPath" -Type Debug
+
     $env:ALBT_AUTO_INSTALL = '1'
     $env:ALBT_HTTP_TIMEOUT_SEC = '300'
-
-    $installerArgs = @{
-        Dest = $DestPath
-    }
-    if ($ReleaseTag) {
-        $installerArgs['Ref'] = $ReleaseTag
-    }
 
     # Capture output for validation
     $installerOutput = @()
 
     try {
-        # Build a cmd.exe line that pipes 'n' to powershell to decline the provision prompt
-        $cmdLine = 'echo n| powershell.exe -NoProfile -ExecutionPolicy Bypass -File ' + '"' + $installerPath + '"' + ' -Dest ' + '"' + $DestPath + '"'
-        if ($ReleaseTag) { $cmdLine += ' -Ref ' + '"' + $ReleaseTag + '"' }
+        # Create a temporary wrapper script to call the installer with the correct destination
+        # Use environment variables to pass the destination - avoids PowerShell parameter binding issues
+        $wrapperScript = @'
+$DestinationPath = $env:ALBT_WRAPPER_DEST
+$ReleaseRef = $env:ALBT_WRAPPER_REF
 
-        & cmd.exe /c $cmdLine 2>&1 | ForEach-Object {
+Write-Host "[wrapper] Destination from env: $DestinationPath"
+Write-Host "[wrapper] Release from env: $ReleaseRef"
+
+$installerPath = 'C:\bootstrap\install.ps1'
+
+Write-Host "[wrapper] Calling: & '$installerPath' -Dest '$DestinationPath' -Ref '$ReleaseRef'"
+
+# DEBUGGING: Let's verify $DestinationPath is what we expect
+Write-Host "[wrapper] DestinationPath type: $($DestinationPath.GetType().Name), length: $($DestinationPath.Length)"
+Write-Host "[wrapper] Testing path resolution..."
+try {
+    $resolvedPath = Resolve-Path -Path $DestinationPath -ErrorAction Stop
+    Write-Host "[wrapper] Resolved path: $($resolvedPath.Path)"
+} catch {
+    Write-Host "[wrapper] Path resolution failed: $_"
+}
+
+# DEBUG: Check if we can verify parameters are being passed
+Write-Host "[wrapper] About to call installer..."
+
+# Call installer directly with explicit parameters (not splat - avoids parameter binding issues)
+if ($ReleaseRef) {
+    Write-Host "[wrapper] Calling with -Dest and -Ref"
+    & $installerPath -Dest $DestinationPath -Ref $ReleaseRef
+} else {
+    Write-Host "[wrapper] Calling with -Dest only"
+    & $installerPath -Dest $DestinationPath
+}
+
+Write-Host "[wrapper] Installer completed with exit code: $LASTEXITCODE"
+'@
+
+        # Create temporary file for wrapper script
+        $tempWrapper = Join-Path $env:TEMP "installer-wrapper-$(Get-Random).ps1"
+        Set-Content -Path $tempWrapper -Value $wrapperScript -Encoding UTF8 -Force
+
+        Write-ContainerMessage "Wrapper script created at: $tempWrapper" -Type Debug
+
+        # Set environment variables for the wrapper script to read
+        $env:ALBT_WRAPPER_DEST = $DestPath
+        $env:ALBT_WRAPPER_REF = $ReleaseTag
+
+        $psArgs = @(
+            '-NoProfile'
+            '-ExecutionPolicy', 'Bypass'
+            '-File', $tempWrapper
+        )
+
+        # Build command line for logging
+        $cmdLineDebug = "powershell.exe -File $tempWrapper"
+        Write-ContainerMessage "Executing: $cmdLineDebug (with ALBT_WRAPPER_DEST=$DestPath, ALBT_WRAPPER_REF=$ReleaseTag)" -Type Debug
+
+        # Run installer with piped input for auto-decline provision
+        'n' | & powershell.exe @psArgs 2>&1 | ForEach-Object {
             Write-Host $_
             $installerOutput += $_
             [Console]::Out.Flush()
         }
 
         $exitCode = $LASTEXITCODE
+
+        # Clean up wrapper script
+        if (Test-Path $tempWrapper) {
+            Remove-Item $tempWrapper -Force -ErrorAction SilentlyContinue
+        }
 
         if ($exitCode -ne 0) {
             Write-ContainerMessage "Installer exited with code: $exitCode" -Type Error
@@ -361,13 +425,8 @@ try {
     Setup-Scenario1
     New-Item -ItemType Directory -Path $s1Path -Force | Out-Null
 
-    $appJson = @{
-        id        = "00000000-0000-0000-0000-000000000000"
-        name      = "Test App Scenario 1"
-        publisher = "Test Publisher"
-        version   = "1.0.0.0"
-    } | ConvertTo-Json -Depth 10
-    Set-Content -Path (Join-Path $s1Path "app.json") -Value $appJson -Encoding UTF8
+    # Copy test fixture
+    Copy-TestFixture -ScenarioName "scenario1" -DestinationPath $s1Path
 
     $result = Run-Installer -DestPath $s1Path -ScenarioNum 1
     if ($result.ExitCode -eq 0) {
