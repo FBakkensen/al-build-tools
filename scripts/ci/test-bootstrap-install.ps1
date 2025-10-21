@@ -440,11 +440,24 @@ function Invoke-ContainerWithTiming {
             $runArgs += '--rm'
         }
 
-        # Create a temporary directory for the test script
+        # Create a temporary directory for the test script and copy directories for Docker mounting
         $tempDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "albt-test-$(Get-Random)")
         $containerScriptPath = Join-Path $tempDir "container-test.ps1"
 
         Write-ProvisionMessage "[albt] Creating container test script at: $containerScriptPath" -ProvisionLogLines ([ref]$provisionLogLines)
+
+        # Copy bootstrap directory to temp (ensures compatibility with all drive types)
+        $tempBootstrapPath = Join-Path $tempDir "bootstrap"
+        Write-ProvisionMessage "[albt] Copying bootstrap to temp: $bootstrapPath -> $tempBootstrapPath" -ProvisionLogLines ([ref]$provisionLogLines)
+        Copy-Item -Path $bootstrapPath -Destination $tempBootstrapPath -Recurse -Force
+
+        # Copy testdata directory to temp if it exists
+        $tempTestdataPath = $null
+        if (Test-Path $testdataPath) {
+            $tempTestdataPath = Join-Path $tempDir "testdata"
+            Write-ProvisionMessage "[albt] Copying testdata to temp: $testdataPath -> $tempTestdataPath" -ProvisionLogLines ([ref]$provisionLogLines)
+            Copy-Item -Path $testdataPath -Destination $tempTestdataPath -Recurse -Force
+        }
 
         # Copy the container test template if it exists, otherwise create inline
         $templatePath = Join-Path $PSScriptRoot "container-test-template.ps1"
@@ -524,16 +537,16 @@ if (Test-Path C:\albt-workspace\overlay) {
             Set-Content -Path $containerScriptPath -Value $testScript -Encoding UTF8
         }
 
-        # Mount bootstrap directory, test directory, and testdata directory as volumes, run with -File
+        # Mount temp directories as volumes (bootstrap and testdata already copied to temp)
         $runArgs += @(
-            '-v', "${bootstrapPath}:C:\bootstrap"
+            '-v', "${tempBootstrapPath}:C:\bootstrap"
             '-v', "${tempDir}:C:\test"
         )
 
-        # Mount testdata directory if it exists
-        if (Test-Path $testdataPath) {
-            $runArgs += @('-v', "${testdataPath}:C:\testdata")
-            Write-ProvisionMessage "[albt] Mounted testdata directory: $testdataPath -> C:\testdata" -ProvisionLogLines ([ref]$provisionLogLines)
+        # Mount testdata directory if it was copied to temp
+        if ($tempTestdataPath) {
+            $runArgs += @('-v', "${tempTestdataPath}:C:\testdata")
+            Write-ProvisionMessage "[albt] Mounted testdata from temp: $tempTestdataPath -> C:\testdata" -ProvisionLogLines ([ref]$provisionLogLines)
         }
 
         $runArgs += @(
