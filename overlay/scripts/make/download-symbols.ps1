@@ -117,11 +117,11 @@ function Build-PackageMap {
 
     $map = [ordered]@{}
 
-    if (($AppJson.PSObject.Properties.Name -contains 'application') -and $AppJson.application) {
+    if ((Test-JsonProperty $AppJson 'application') -and $AppJson.application) {
         $map['Microsoft.Application.symbols'] = [string]$AppJson.application
     }
 
-    if (($AppJson.PSObject.Properties.Name -contains 'dependencies') -and $AppJson.dependencies) {
+    if ((Test-JsonProperty $AppJson 'dependencies') -and $AppJson.dependencies) {
         foreach ($dep in $AppJson.dependencies) {
             if (-not ($dep.publisher) -or -not ($dep.name) -or -not ($dep.id) -or -not ($dep.version)) { continue }
             $publisher = ($dep.publisher -replace '\s+', '')
@@ -489,8 +489,8 @@ function Write-Manifest {
     param([string]$Path, $AppJson, [hashtable]$Packages, [string[]]$Feeds)
 
     $payload = [ordered]@{
-        application = if (($AppJson.PSObject.Properties.Name -contains 'application') -and $AppJson.application) { $AppJson.application } else { $null }
-        platform = if (($AppJson.PSObject.Properties.Name -contains 'platform') -and $AppJson.platform) { $AppJson.platform } else { $null }
+        application = if ((Test-JsonProperty $AppJson 'application') -and $AppJson.application) { $AppJson.application } else { $null }
+        platform = if ((Test-JsonProperty $AppJson 'platform') -and $AppJson.platform) { $AppJson.platform } else { $null }
         appId = $AppJson.id
         appName = $AppJson.name
         publisher = $AppJson.publisher
@@ -583,7 +583,7 @@ while ($queue.Count -gt 0) {
     if ($packagesInQueue.ContainsKey($packageId)) { $packagesInQueue.Remove($packageId) | Out-Null }
     $minimumVersion = if ($requiredMinimums.ContainsKey($packageId)) { $requiredMinimums[$packageId] } else { $null }
 
-    $manifestVersion = if ($manifest -and $manifest.packages -and ($manifest.packages.PSObject.Properties.Name -contains $packageId)) { [string]$manifest.packages.$packageId } else { $null }
+    $manifestVersion = if ($manifest -and $manifest.packages -and (Test-JsonProperty $manifest.packages $packageId)) { [string]$manifest.packages.$packageId } else { $null }
     $manifestApplication = if ($manifest) { [string]$manifest.application } else { $null }
     $manifestPlatform = if ($manifest) { [string]$manifest.platform } else { $null }
     $cached = Test-PackagePresent -CacheDir $cacheDir -PackageId $packageId -Version $manifestVersion
@@ -594,8 +594,8 @@ while ($queue.Count -gt 0) {
     $knownDependencies = $null
 
     # Cache is valid if: package exists AND (application+platform match OR both are null)
-    $appJsonApplication = if ($appJson.PSObject.Properties.Name -contains 'application') { $appJson.application } else { $null }
-    $appJsonPlatform = if ($appJson.PSObject.Properties.Name -contains 'platform') { $appJson.platform } else { $null }
+    $appJsonApplication = if (Test-JsonProperty $appJson 'application') { $appJson.application } else { $null }
+    $appJsonPlatform = if (Test-JsonProperty $appJson 'platform') { $appJson.platform } else { $null }
     $cacheValid = $cached -and $manifestVersion -and (
         ([string]$manifestApplication -eq [string]$appJsonApplication -and [string]$manifestPlatform -eq [string]$appJsonPlatform) -or
         (-not $manifestApplication -and -not $appJsonApplication -and -not $manifestPlatform -and -not $appJsonPlatform)
@@ -656,7 +656,7 @@ while ($queue.Count -gt 0) {
     $resolvedPackages[$packageId] = $currentVersion
 
     $maxAvailableVersion = $null
-    if ($resolveResult.PSObject.Properties.Name -contains 'MaxAvailableVersion') {
+    if (Test-JsonProperty $resolveResult 'MaxAvailableVersion') {
         $maxAvailableVersion = $resolveResult.MaxAvailableVersion
     }
 
