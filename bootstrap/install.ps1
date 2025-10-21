@@ -13,7 +13,15 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # Source prerequisite installer functions
-. "$PSScriptRoot/install-prerequisites.ps1"
+if ($PSScriptRoot) {
+    # Running as a file - dot-source from disk
+    . "$PSScriptRoot/install-prerequisites.ps1"
+} else {
+    # Running via iex (piped from web) - download and execute in memory
+    $prereqUrl = 'https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install-prerequisites.ps1'
+    $prereqScript = Invoke-WebRequest -Uri $prereqUrl -UseBasicParsing -ErrorAction Stop | Select-Object -ExpandProperty Content
+    Invoke-Expression $prereqScript
+}
 
 # Handle $IsWindows for PowerShell 5.1 compatibility (added in PS 6.0)
 if (-not (Get-Variable -Name 'IsWindows' -Scope Global -ErrorAction SilentlyContinue)) {
