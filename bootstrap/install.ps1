@@ -239,26 +239,25 @@ function Install-AlBuildTools {
 
     $startTime = Get-Date
     $step = 0
-    Write-Host "========== USING LOCAL MODIFIED INSTALLER ==========" -ForegroundColor Red
     $step++; Write-Step $step "Resolve destination"
     # Resolve to absolute path - handle both relative and absolute paths correctly
-    Write-BuildMessage -Type Info -Message "[DEBUG] Input DestinationPath parameter: '$DestinationPath'"
-    Write-BuildMessage -Type Info -Message "[DEBUG] DestinationPath type: $($DestinationPath.GetType().Name)"
-    Write-BuildMessage -Type Info -Message "[DEBUG] DestinationPath length: $($DestinationPath.Length)"
-    Write-BuildMessage -Type Info -Message "[DEBUG] First char: '$($DestinationPath[0])' (code: $([int]$DestinationPath[0]))"
-    Write-BuildMessage -Type Info -Message "[DEBUG] Current location: '$(Get-Location)'"
-    Write-BuildMessage -Type Info -Message "[DEBUG] IsPathRooted: $([System.IO.Path]::IsPathRooted($DestinationPath))"
+    Write-Verbose "[install] Input DestinationPath parameter: '$DestinationPath'"
+    Write-Verbose "[install] DestinationPath type: $($DestinationPath.GetType().Name)"
+    Write-Verbose "[install] DestinationPath length: $($DestinationPath.Length)"
+    Write-Verbose "[install] First char: '$($DestinationPath[0])' (code: $([int]$DestinationPath[0]))"
+    Write-Verbose "[install] Current location: '$(Get-Location)'"
+    Write-Verbose "[install] IsPathRooted: $([System.IO.Path]::IsPathRooted($DestinationPath))"
 
     if ([System.IO.Path]::IsPathRooted($DestinationPath)) {
         $destAbsolute = $DestinationPath
-        Write-BuildMessage -Type Info -Message "[DEBUG] Path is rooted, using as-is: '$destAbsolute'"
+        Write-Verbose "[install] Path is rooted, using as-is: '$destAbsolute'"
     } else {
         $destAbsolute = Join-Path (Get-Location).Path $DestinationPath
-        Write-BuildMessage -Type Info -Message "[DEBUG] Path is relative, joined: '$destAbsolute'"
+        Write-Verbose "[install] Path is relative, joined: '$destAbsolute'"
     }
     # Normalize the path (remove any .\ or ..\ segments)
     $destAbsolute = [System.IO.Path]::GetFullPath($destAbsolute)
-    Write-BuildMessage -Type Info -Message "[DEBUG] After GetFullPath: '$destAbsolute'"
+    Write-Verbose "[install] After GetFullPath: '$destAbsolute'"
 
     if (-not (Test-Path -LiteralPath $destAbsolute)) {
         New-Item -ItemType Directory -Force -Path $destAbsolute | Out-Null
@@ -747,8 +746,7 @@ function Install-AlBuildTools {
 # - When executed via -File or &, InvocationName is the script name/path
 if ($PSCommandPath -and ($MyInvocation.InvocationName -ne '.') -and -not $env:ALBT_NO_AUTORUN) {
     try {
-        Write-Host "[AUTO-RUN] Script-level DestinationPath parameter: '$DestinationPath'" -ForegroundColor Yellow
-        Write-Host "[AUTO-RUN] Script-level Ref parameter: '$Ref'" -ForegroundColor Yellow
+        Write-Verbose "[install] Auto-run: DestinationPath='$DestinationPath', Ref='$Ref'"
         $installParams = @{
             Url = $Url
             Ref = $Ref

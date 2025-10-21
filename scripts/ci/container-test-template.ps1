@@ -163,18 +163,16 @@ $installerPath = 'C:\bootstrap\install.ps1'
 
 Write-Host "[wrapper] Calling: & '$installerPath' -Dest '$DestinationPath' -Ref '$ReleaseRef'"
 
-# DEBUGGING: Let's verify $DestinationPath is what we expect
-Write-Host "[wrapper] DestinationPath type: $($DestinationPath.GetType().Name), length: $($DestinationPath.Length)"
-Write-Host "[wrapper] Testing path resolution..."
+Write-Verbose "[wrapper] DestinationPath type: $($DestinationPath.GetType().Name), length: $($DestinationPath.Length)"
+Write-Verbose "[wrapper] Testing path resolution..."
 try {
     $resolvedPath = Resolve-Path -Path $DestinationPath -ErrorAction Stop
-    Write-Host "[wrapper] Resolved path: $($resolvedPath.Path)"
+    Write-Verbose "[wrapper] Resolved path: $($resolvedPath.Path)"
 } catch {
-    Write-Host "[wrapper] Path resolution failed: $_"
+    Write-Verbose "[wrapper] Path resolution failed: $_"
 }
 
-# DEBUG: Check if we can verify parameters are being passed
-Write-Host "[wrapper] About to call installer..."
+Write-Verbose "[wrapper] About to call installer..."
 
 # Call installer with splatting to avoid parameter binding issues with call operator
 $installerArgs = @{
