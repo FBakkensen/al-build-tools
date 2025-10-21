@@ -19,6 +19,16 @@ AL Build Tools is a cross-platform PowerShell-based build toolkit for Microsoft 
 
 Example: `pwsh -NoProfile -Command "& './scripts/make/build.ps1'"`
 
+### Bash Execution Guidelines
+
+**IMPORTANT:** Never use the Bash tool with `run_in_background` parameter for long-running commands like tests. Always run tests synchronously and wait for completion before proceeding. Background execution makes it difficult to:
+- Monitor test progress and output
+- Handle failures or errors in real-time
+- Provide accurate status updates to the user
+- Debug issues that occur during execution
+
+Use the standard Bash tool invocation without background execution, and allow the tool to complete before proceeding.
+
 ## Build System Architecture
 
 ### Two Build Orchestrators

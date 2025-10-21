@@ -231,6 +231,31 @@ function Read-JsonFile {
     }
 }
 
+function Test-JsonProperty {
+    <#
+    .SYNOPSIS
+        Check if a JSON object has a specific property
+    .PARAMETER JsonObject
+        The JSON object to test
+    .PARAMETER PropertyName
+        The property name to check
+    .DESCRIPTION
+        Safely checks if a property exists on a PSCustomObject without throwing exceptions.
+        Returns $true if the property exists, $false otherwise.
+    .EXAMPLE
+        if (Test-JsonProperty $appJson 'application') { ... }
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        $JsonObject,
+        [Parameter(Mandatory=$true)]
+        [string]$PropertyName
+    )
+    
+    if ($null -eq $JsonObject) { return $false }
+    return $JsonObject.PSObject.Properties.Name -contains $PropertyName
+}
+
 function Resolve-AppJsonPath {
     <#
     .SYNOPSIS
@@ -882,6 +907,7 @@ Export-ModuleMember -Function @(
     'Get-OutputPath'
     'Read-JsonFile'
     'Resolve-AppJsonPath'
+    'Test-JsonProperty'
 
     # Cache Management
     'Get-ToolCacheRoot'

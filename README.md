@@ -15,6 +15,41 @@ iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/boots
 
 Re-run the same command at any time to update to the latest release (or pin with `-Ref vX.Y.Z`).
 
+## Advanced Installation
+
+### Prerequisites Only (for container base images)
+
+If you're building a Docker container base image with all prerequisites installed, you can install just the infrastructure:
+
+```powershell
+# Download and source the prerequisite installer
+iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install-prerequisites.ps1 -OutFile install-prerequisites.ps1
+. .\install-prerequisites.ps1
+
+# Install prerequisites (Chocolatey, Git, Git Config, .NET SDK, PowerShell 7, InvokeBuild)
+$env:ALBT_AUTO_INSTALL = '1'
+Install-Prerequisites -Dest .
+```
+
+This is useful for creating reusable container images where you want to install tools once, then test multiple overlay installations later.
+
+### Manual Two-Step Installation
+
+For advanced scenarios where you want explicit control over each step:
+
+```powershell
+# Step 1: Install prerequisites
+iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install-prerequisites.ps1 -OutFile install-prerequisites.ps1
+. .\install-prerequisites.ps1
+Install-Prerequisites -Dest .
+
+# Step 2: Install overlay
+iwr -useb https://raw.githubusercontent.com/FBakkensen/al-build-tools/main/bootstrap/install.ps1 | iex
+Install-AlBuildTools -Dest .
+```
+
+**Note:** The standard one-liner installation (`install.ps1`) automatically calls `install-prerequisites.ps1`, so manual two-step installation is only needed for special cases.
+
 ## What Problem This Solves
 
 AL Build Tools provides a predictable, copy-only build system that you can refresh at any time. No custom scaffolding, no hidden state—just a set of PowerShell scripts that live in your repository.
@@ -29,9 +64,12 @@ If you outgrow it, just delete the copied files—there's no hidden state.
 
 ## Prerequisites
 
-- **PowerShell 7.2+** - [Install PowerShell](https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell)
+The installer can automatically install missing prerequisites when run in interactive mode, or with `$env:ALBT_AUTO_INSTALL = '1'` in CI/CD environments.
+
+**Required:**
+- **PowerShell 7.2+** - [Install PowerShell](https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell) or let the installer install it
 - **.NET SDK** - Required for installing the AL compiler as a dotnet tool and downloading symbols from NuGet
-- **InvokeBuild module** - Install with: `Install-Module InvokeBuild -Scope CurrentUser`
+- **InvokeBuild module** - Install with: `Install-Module InvokeBuild -Scope CurrentUser` or let the installer install it
 - **Git working directory** - The installer copies files into your repo
 - **AL project directory** - Default expected path: `app/` with `app.json`
 

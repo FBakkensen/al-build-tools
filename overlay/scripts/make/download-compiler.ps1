@@ -109,17 +109,26 @@ function Get-InstalledCompilerVersion {
     param([string]$PackageId)
 
     try {
-        $jsonText = & dotnet tool list --global --format json 2>&1
+        $output = & dotnet tool list --global 2>&1 | Out-String
         if ($LASTEXITCODE -ne 0) { return $null }
 
-        $parsed = $jsonText | ConvertFrom-Json
-        if (-not $parsed -or -not $parsed.data) { return $null }
-
+        # Parse table format output
+        # Format: Package Id      Version      Commands
         $packageIdLower = $PackageId.ToLowerInvariant()
-        foreach ($entry in $parsed.data) {
-            $entryId = if ($entry.packageId) { $entry.packageId.ToString().ToLowerInvariant() } else { $null }
-            if ($entryId -eq $packageIdLower) {
-                return [string]$entry.version
+        $lines = $output -split "`r?`n"
+        foreach ($line in $lines) {
+            # Skip header and separator lines
+            if ($line -match '^Package Id' -or $line -match '^-+$' -or [string]::IsNullOrWhiteSpace($line)) {
+                continue
+            }
+
+            # Parse table row: split by whitespace, take first two columns
+            $parts = $line -split '\s+', 3
+            if ($parts.Count -ge 2) {
+                $idFromLine = $parts[0].Trim().ToLowerInvariant()
+                if ($idFromLine -eq $packageIdLower) {
+                    return $parts[1].Trim()
+                }
             }
         }
         return $null

@@ -1,6 +1,6 @@
 .tmp-tests/
 testResults.xml
-out/test-install/
+/out/
 
 # Claude Code local settings
 .claude/settings.local.json

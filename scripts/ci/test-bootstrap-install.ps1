@@ -424,6 +424,7 @@ function Invoke-ContainerWithTiming {
 
         $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
         $bootstrapPath = Join-Path $repoRoot 'bootstrap'
+        $testdataPath = Join-Path $PSScriptRoot 'testdata'
         if (-not (Test-Path $bootstrapPath)) {
             throw "bootstrap directory not found at $bootstrapPath"
         }
@@ -523,10 +524,19 @@ if (Test-Path C:\albt-workspace\overlay) {
             Set-Content -Path $containerScriptPath -Value $testScript -Encoding UTF8
         }
 
-        # Mount bootstrap directory and test directory as volumes, run with -File
+        # Mount bootstrap directory, test directory, and testdata directory as volumes, run with -File
         $runArgs += @(
             '-v', "${bootstrapPath}:C:\bootstrap"
             '-v', "${tempDir}:C:\test"
+        )
+
+        # Mount testdata directory if it exists
+        if (Test-Path $testdataPath) {
+            $runArgs += @('-v', "${testdataPath}:C:\testdata")
+            Write-ProvisionMessage "[albt] Mounted testdata directory: $testdataPath -> C:\testdata" -ProvisionLogLines ([ref]$provisionLogLines)
+        }
+
+        $runArgs += @(
             '-e', 'ALBT_AUTO_INSTALL=1'
             '-e', "ALBT_TEST_RELEASE_TAG=$($script:ReleaseTag)"
             '-e', 'ALBT_HTTP_TIMEOUT_SEC=300'
