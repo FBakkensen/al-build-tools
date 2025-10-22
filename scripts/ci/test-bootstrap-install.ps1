@@ -1128,9 +1128,12 @@ function Get-GitCommitMarkers {
     )
 
     $markers = @{
-        InitialCommitAfter = $false  # [install] git initial_commit=after
-        OverlayCommit = $false       # [install] git overlay_commit=true
-        OverlayStaged = $null        # [install] overlay_staged=true|false
+        # Whether initial commit happened after overlay ([install] git initial_commit=after)
+        InitialCommitAfter = $false
+        # Whether overlay files were automatically committed ([install] git overlay_commit=true)
+        OverlayCommit = $false
+        # Whether overlay files were automatically staged (null if marker not found) ([install] overlay_staged=true|false)
+        OverlayStaged = $null
     }
 
     if (-not $Output) {
@@ -1290,7 +1293,7 @@ try {
 
     # Parse git commit markers to detect unauthorized post-overlay commits
     $commitMarkers = Get-GitCommitMarkers -Output $containerOutput
-    
+
     if ($commitMarkers.InitialCommitAfter -or $commitMarkers.OverlayCommit) {
         Write-Log "[albt] REGRESSION DETECTED: Unauthorized post-overlay git commit" -Level Error
         if ($commitMarkers.InitialCommitAfter) {
@@ -1299,23 +1302,21 @@ try {
         if ($commitMarkers.OverlayCommit) {
             Write-Log "[albt] Found marker: overlay_commit=true" -Level Error
         }
-        
+
         $script:ErrorCategory = 'contract'
         $guardCondition = 'UnauthorizedCommit'
         $errorSummary = 'Installer made unauthorized git commit after copying overlay files'
         $exitCode = 4  # Contract violation
     }
-    
+
     if ($commitMarkers.OverlayStaged -eq $true) {
         Write-Log "[albt] REGRESSION DETECTED: Overlay files were automatically staged" -Level Error
-        if (-not $guardCondition) {
-            $script:ErrorCategory = 'contract'
-            $guardCondition = 'UnauthorizedStaging'
-            $errorSummary = 'Installer automatically staged overlay files'
-            $exitCode = 4  # Contract violation
-        }
+        $script:ErrorCategory = 'contract'
+        $guardCondition = 'UnauthorizedStaging'
+        $errorSummary = 'Installer automatically staged overlay files'
+        $exitCode = 4  # Contract violation
     }
-    
+
     if ($commitMarkers.OverlayStaged -eq $false) {
         Write-Log "[albt] Validation PASS: Overlay files left unstaged as expected"
     }

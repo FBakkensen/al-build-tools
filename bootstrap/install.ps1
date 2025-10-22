@@ -611,7 +611,7 @@ function Install-AlBuildTools {
 
         # Emit diagnostic marker indicating overlay files are left unstaged for user review
         Write-Host "[install] overlay_staged=false"
-        
+
         # Guide user to review and commit changes manually
         Write-BuildMessage -Type Info -Message "Overlay files copied successfully"
         Write-Host ""

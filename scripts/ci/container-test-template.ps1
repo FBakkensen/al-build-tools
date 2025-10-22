@@ -343,7 +343,7 @@ function Validate-Scenario2 {
         if ($commitCount -eq 1) {
             Write-ContainerMessage "Expected 1 commit found (no new commits)" -Type Success
         } else {
-            Write-ContainerMessage "Expected 1 commit but found $commitCount - installer made unauthorized commits" -Type Error
+            Write-ContainerMessage "Expected 1 commit but found $commitCount" -Type Error
             $pass = $false
         }
     }
