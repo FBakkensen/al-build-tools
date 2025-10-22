@@ -1112,6 +1112,46 @@ function Get-GuardCondition {
     return $null
 }
 
+<#
+.SYNOPSIS
+    Parses container output for git commit and staging markers.
+.DESCRIPTION
+    Detects post-overlay commit markers that indicate unauthorized automatic commits.
+    Returns hashtable with boolean flags for each marker type.
+.OUTPUTS
+    [hashtable] Contains: InitialCommitAfter, OverlayCommit, OverlayStaged
+#>
+function Get-GitCommitMarkers {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [object[]]$Output
+    )
+
+    $markers = @{
+        InitialCommitAfter = $false  # [install] git initial_commit=after
+        OverlayCommit = $false       # [install] git overlay_commit=true
+        OverlayStaged = $null        # [install] overlay_staged=true|false
+    }
+
+    if (-not $Output) {
+        return $markers
+    }
+
+    foreach ($line in $Output) {
+        if ($line -match '\[install\]\s+git\s+initial_commit=after') {
+            $markers.InitialCommitAfter = $true
+        }
+        if ($line -match '\[install\]\s+git\s+overlay_commit=true') {
+            $markers.OverlayCommit = $true
+        }
+        if ($line -match '\[install\]\s+overlay_staged=(true|false)') {
+            $markers.OverlayStaged = ($matches[1] -eq 'true')
+        }
+    }
+
+    return $markers
+}
+
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
@@ -1246,6 +1286,38 @@ try {
     $guardCondition = Get-GuardCondition -Output $containerOutput
     if ($guardCondition) {
         Write-Log "[albt] Guard condition triggered: $guardCondition" -Level Warning
+    }
+
+    # Parse git commit markers to detect unauthorized post-overlay commits
+    $commitMarkers = Get-GitCommitMarkers -Output $containerOutput
+    
+    if ($commitMarkers.InitialCommitAfter -or $commitMarkers.OverlayCommit) {
+        Write-Log "[albt] REGRESSION DETECTED: Unauthorized post-overlay git commit" -Level Error
+        if ($commitMarkers.InitialCommitAfter) {
+            Write-Log "[albt] Found marker: initial_commit=after" -Level Error
+        }
+        if ($commitMarkers.OverlayCommit) {
+            Write-Log "[albt] Found marker: overlay_commit=true" -Level Error
+        }
+        
+        $script:ErrorCategory = 'contract'
+        $guardCondition = 'UnauthorizedCommit'
+        $errorSummary = 'Installer made unauthorized git commit after copying overlay files'
+        $exitCode = 4  # Contract violation
+    }
+    
+    if ($commitMarkers.OverlayStaged -eq $true) {
+        Write-Log "[albt] REGRESSION DETECTED: Overlay files were automatically staged" -Level Error
+        if (-not $guardCondition) {
+            $script:ErrorCategory = 'contract'
+            $guardCondition = 'UnauthorizedStaging'
+            $errorSummary = 'Installer automatically staged overlay files'
+            $exitCode = 4  # Contract violation
+        }
+    }
+    
+    if ($commitMarkers.OverlayStaged -eq $false) {
+        Write-Log "[albt] Validation PASS: Overlay files left unstaged as expected"
     }
 
     Write-Log '[albt] === Summary Generation Phase ==='

@@ -609,45 +609,23 @@ function Install-AlBuildTools {
         }
         Write-BuildMessage -Type Success -Message "Copied $fileCount files across $dirCount directories"
 
-        # For new git repos, create the overlay commit after copying overlay files
-        if ($script:IsNewGitRepo) {
-            Write-BuildMessage -Type Info -Message "Creating overlay installation commit..."
-
-            $prevErrorAction = $ErrorActionPreference
-            try {
-                $ErrorActionPreference = 'Continue'
-                $gitOutput = & git -C "$destFull" add . 2>&1
-                $gitOutput = & git -C "$destFull" commit -m "Install AL Build Tools overlay" 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "[install] git initial_commit=after"
-                    Write-BuildMessage -Type Success -Message "Overlay commit created"
-                } else {
-                    Write-Warning "Git commit returned exit code: $LASTEXITCODE"
-                    Write-Host "[install] git initial_commit=after status=failed exit_code=$LASTEXITCODE"
-                }
-            } finally {
-                $ErrorActionPreference = $prevErrorAction
-            }
-        } else {
-            # For existing repos, create overlay commit
-            Write-BuildMessage -Type Info -Message "Creating overlay installation commit..."
-
-            $prevErrorAction = $ErrorActionPreference
-            try {
-                $ErrorActionPreference = 'Continue'
-                $gitOutput = & git -C "$destFull" add . 2>&1
-                $gitOutput = & git -C "$destFull" commit -m "Install AL Build Tools overlay" 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "[install] git overlay_commit=true"
-                    Write-BuildMessage -Type Success -Message "Overlay commit created"
-                } else {
-                    Write-Warning "Git commit returned exit code: $LASTEXITCODE"
-                    Write-Host "[install] git overlay_commit=false exit_code=$LASTEXITCODE"
-                }
-            } finally {
-                $ErrorActionPreference = $prevErrorAction
-            }
-        }
+        # Emit diagnostic marker indicating overlay files are left unstaged for user review
+        Write-Host "[install] overlay_staged=false"
+        
+        # Guide user to review and commit changes manually
+        Write-BuildMessage -Type Info -Message "Overlay files copied successfully"
+        Write-Host ""
+        Write-Host "NEXT STEP: Review Changes" -ForegroundColor Yellow
+        Write-Host "The overlay files have been copied to your workspace." -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "To review what changed:" -ForegroundColor Cyan
+        Write-Host "  git status" -ForegroundColor White
+        Write-Host "  git diff" -ForegroundColor White
+        Write-Host ""
+        Write-Host "When satisfied, stage and commit the changes:" -ForegroundColor Cyan
+        Write-Host "  git add ." -ForegroundColor White
+        Write-Host "  git commit -m 'Install AL Build Tools overlay'" -ForegroundColor White
+        Write-Host ""
 
         $endTime = Get-Date
         $durationSeconds = ($endTime - $startTime).TotalSeconds
