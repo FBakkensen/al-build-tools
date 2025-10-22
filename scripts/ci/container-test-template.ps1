@@ -272,19 +272,42 @@ function Validate-Scenario1 {
     # Refresh PATH so git is available in this process
     Refresh-PathEnv
 
-    # Check commit count (should be 2: before + after overlay)
+    # Check commit count (should be 1: initial commit before overlay only)
     try {
         $commitCount = (& git -C $DestPath log --oneline 2>&1 | Measure-Object).Count
         Write-ContainerMessage "Commit count: $commitCount" -Type Info
-        if ($commitCount -eq 2) {
-            Write-ContainerMessage "Expected 2 commits found" -Type Success
+        if ($commitCount -eq 1) {
+            Write-ContainerMessage "Expected 1 commit found (initial before overlay)" -Type Success
         } else {
-            Write-ContainerMessage "Expected 2 commits but found $commitCount" -Type Error
+            Write-ContainerMessage "Expected 1 commit but found $commitCount" -Type Error
             $pass = $false
         }
     }
     catch {
         Write-ContainerMessage "Failed to check commit count: $_" -Type Error
+        $pass = $false
+    }
+
+    # Check for unauthorized post-overlay commit markers
+    if ($Output -match '\[install\]\s+git\s+initial_commit=after') {
+        Write-ContainerMessage "REGRESSION: Found unauthorized initial_commit=after marker" -Type Error
+        $pass = $false
+    } else {
+        Write-ContainerMessage "No initial_commit=after marker (correct)" -Type Success
+    }
+
+    if ($Output -match '\[install\]\s+git\s+overlay_commit=true') {
+        Write-ContainerMessage "REGRESSION: Found unauthorized overlay_commit=true marker" -Type Error
+        $pass = $false
+    } else {
+        Write-ContainerMessage "No overlay_commit=true marker (correct)" -Type Success
+    }
+
+    # Check for overlay_staged=false marker
+    if ($Output -match '\[install\]\s+overlay_staged=false') {
+        Write-ContainerMessage "Found overlay_staged=false marker (correct)" -Type Success
+    } else {
+        Write-ContainerMessage "overlay_staged=false marker NOT found" -Type Error
         $pass = $false
     }
 
@@ -313,18 +336,35 @@ function Validate-Scenario2 {
 
     Refresh-PathEnv
 
+    # For existing repos, commit count should remain unchanged (1 pre-existing commit only)
     try {
         $commitCount = (& git -C $DestPath log --oneline 2>&1 | Measure-Object).Count
         Write-ContainerMessage "Commit count: $commitCount" -Type Info
-        if ($commitCount -eq 2) {
-            Write-ContainerMessage "Expected 2 commits found (1 pre-existing + 1 overlay commit)" -Type Success
+        if ($commitCount -eq 1) {
+            Write-ContainerMessage "Expected 1 commit found (no new commits)" -Type Success
         } else {
-            Write-ContainerMessage "Expected 2 commits but found $commitCount" -Type Error
+            Write-ContainerMessage "Expected 1 commit but found $commitCount" -Type Error
             $pass = $false
         }
     }
     catch {
         Write-ContainerMessage "Failed to check commit count: $_" -Type Error
+        $pass = $false
+    }
+
+    # Check for unauthorized post-overlay commit markers
+    if ($Output -match '\[install\]\s+git\s+overlay_commit=true') {
+        Write-ContainerMessage "REGRESSION: Found unauthorized overlay_commit=true marker" -Type Error
+        $pass = $false
+    } else {
+        Write-ContainerMessage "No overlay_commit=true marker (correct)" -Type Success
+    }
+
+    # Check for overlay_staged=false marker
+    if ($Output -match '\[install\]\s+overlay_staged=false') {
+        Write-ContainerMessage "Found overlay_staged=false marker (correct)" -Type Success
+    } else {
+        Write-ContainerMessage "overlay_staged=false marker NOT found" -Type Error
         $pass = $false
     }
 
@@ -375,18 +415,42 @@ function Validate-Scenario3 {
 
     Refresh-PathEnv
 
+    # Scenario 3: git/config present, but no repo - should have 1 commit (initial before overlay)
     try {
         $commitCount = (& git -C $DestPath log --oneline 2>&1 | Measure-Object).Count
         Write-ContainerMessage "Commit count: $commitCount" -Type Info
-        if ($commitCount -eq 2) {
-            Write-ContainerMessage "Expected 2 commits found" -Type Success
+        if ($commitCount -eq 1) {
+            Write-ContainerMessage "Expected 1 commit found (initial before overlay)" -Type Success
         } else {
-            Write-ContainerMessage "Expected 2 commits but found $commitCount" -Type Error
+            Write-ContainerMessage "Expected 1 commit but found $commitCount" -Type Error
             $pass = $false
         }
     }
     catch {
         Write-ContainerMessage "Failed to check commit count: $_" -Type Error
+        $pass = $false
+    }
+
+    # Check for unauthorized post-overlay commit markers
+    if ($Output -match '\[install\]\s+git\s+initial_commit=after') {
+        Write-ContainerMessage "REGRESSION: Found unauthorized initial_commit=after marker" -Type Error
+        $pass = $false
+    } else {
+        Write-ContainerMessage "No initial_commit=after marker (correct)" -Type Success
+    }
+
+    if ($Output -match '\[install\]\s+git\s+overlay_commit=true') {
+        Write-ContainerMessage "REGRESSION: Found unauthorized overlay_commit=true marker" -Type Error
+        $pass = $false
+    } else {
+        Write-ContainerMessage "No overlay_commit=true marker (correct)" -Type Success
+    }
+
+    # Check for overlay_staged=false marker
+    if ($Output -match '\[install\]\s+overlay_staged=false') {
+        Write-ContainerMessage "Found overlay_staged=false marker (correct)" -Type Success
+    } else {
+        Write-ContainerMessage "overlay_staged=false marker NOT found" -Type Error
         $pass = $false
     }
 
