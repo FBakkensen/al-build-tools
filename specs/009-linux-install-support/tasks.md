@@ -97,20 +97,20 @@
 
 ### Implementation for User Story 3
 
-- [ ] T032 [P] [US3] Create test harness parameter parsing (ReleaseTag, BaseImage, KeepContainer, Verbose) in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T033 [P] [US3] Implement Docker image pull and container provisioning (docker pull, docker run with volume mounts) in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T034 [US3] Implement container setup script (install curl, git init, git config) generation in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T035 [US3] Implement installer execution in container (docker exec with environment variables ALBT_AUTO_INSTALL=1, ALBT_RELEASE) in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T036 [US3] Implement transcript capture and artifact extraction (copy install.transcript.txt from container volume) in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T037 [US3] Implement diagnostic marker parsing (extract prerequisite, step, guard, phase, diagnostic markers from transcript) in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T038 [US3] Implement prerequisite status extraction (parse tool names, versions, status from markers) in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T039 [US3] Implement execution phase extraction (parse phase names, start times, durations from markers) in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T040 [US3] Implement git state validation (check repository created, commit hash extracted) in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T041 [US3] Implement summary JSON generation (build InstallationSummary object with metadata, prerequisites, phases, gitState, release, exitCode, diagnostics) in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T042 [US3] Implement JSON schema validation (validate summary.json against specs/009-linux-install-support/contracts/test-summary-schema.json) in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T043 [US3] Implement provision log generation (capture container setup output separately) in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T044 [US3] Implement container cleanup with ALBT_TEST_KEEP_CONTAINER support (docker rm unless keep flag set) in scripts/ci/test-bootstrap-install-linux.ps1
-- [ ] T045 [US3] Add test scenario support (fresh install, partial prerequisites, network failure simulation via environment variables) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T032 [P] [US3] Create test harness parameter parsing (ReleaseTag, BaseImage, KeepContainer, Verbose) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T033 [P] [US3] Implement Docker image pull and container provisioning (docker pull, docker run with volume mounts) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T034 [US3] Implement container setup script (install curl, git init, git config) generation in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T035 [US3] Implement installer execution in container (docker exec with environment variables ALBT_AUTO_INSTALL=1, ALBT_RELEASE) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T036 [US3] Implement transcript capture and artifact extraction (copy install.transcript.txt from container volume) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T037 [US3] Implement diagnostic marker parsing (extract prerequisite, step, guard, phase, diagnostic markers from transcript) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T038 [US3] Implement prerequisite status extraction (parse tool names, versions, status from markers) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T039 [US3] Implement execution phase extraction (parse phase names, start times, durations from markers) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T040 [US3] Implement git state validation (check repository created, commit hash extracted) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T041 [US3] Implement summary JSON generation (build InstallationSummary object with metadata, prerequisites, phases, gitState, release, exitCode, diagnostics) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T042 [US3] Implement JSON schema validation (validate summary.json against specs/009-linux-install-support/contracts/test-summary-schema.json) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T043 [US3] Implement provision log generation (capture container setup output separately) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T044 [US3] Implement container cleanup with ALBT_TEST_KEEP_CONTAINER support (docker rm unless keep flag set) in scripts/ci/test-bootstrap-install-linux.ps1
+- [X] T045 [US3] Add test scenario support (fresh install, partial prerequisites, network failure simulation via environment variables) in scripts/ci/test-bootstrap-install-linux.ps1
 
 **Checkpoint**: All three user stories should now be independently functional - installer works (US1), prompts work (US2), test harness validates (US3)
 
