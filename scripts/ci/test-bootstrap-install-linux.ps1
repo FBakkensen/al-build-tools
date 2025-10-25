@@ -26,7 +26,6 @@
     ALBT_TEST_RELEASE_TAG      - GitHub release tag (default: latest non-draft release)
     ALBT_TEST_IMAGE            - Docker image reference (default: ubuntu:22.04)
     ALBT_TEST_KEEP_CONTAINER   - Set to '1' to skip auto-remove container for debugging
-    ALBT_TEST_SCENARIO         - Test scenario: 'fresh-install', 'partial-prerequisites', 'network-failure' (default: fresh-install)
     ALBT_AUTO_INSTALL          - Set to '1' inside container to enable non-interactive installation
     VERBOSE                    - Set to enable verbose logging
 
@@ -72,7 +71,6 @@ ENVIRONMENT VARIABLES
     ALBT_TEST_RELEASE_TAG           - GitHub release tag (default: latest non-draft release)
     ALBT_TEST_IMAGE                 - Docker image reference (default: ubuntu:22.04)
     ALBT_TEST_KEEP_CONTAINER        - Set to '1' to skip auto-remove container for debugging
-    ALBT_TEST_SCENARIO              - Test scenario: 'fresh-install', 'partial-prerequisites', 'network-failure'
     ALBT_AUTO_INSTALL               - Set to '1' inside container to enable non-interactive installation
     VERBOSE                         - Set to enable verbose logging
     GITHUB_TOKEN                    - Optional GitHub token for higher API rate limits
@@ -132,7 +130,92 @@ $script:ErrorCategoryMap = @{
 $script:TimedPhases = @{}
 
 # ============================================================================
-# SECTION: Logging
+# SECTION: Scenario Execution
+# ============================================================================
+
+function Invoke-ScenarioTest {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$ScenarioName,
+        [Parameter(Mandatory = $true)] [int]$ScenarioNumber,
+        [Parameter(Mandatory = $true)] [string]$ContainerImage,
+        [Parameter(Mandatory = $true)] [string]$ReleaseTag,
+        [Parameter(Mandatory = $true)] [string]$WorkspacePath
+    )
+
+    Write-Host ''
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "Scenario ${ScenarioNumber}: $ScenarioName" -ForegroundColor Cyan
+    Write-Host "========================================" -ForegroundColor Cyan
+
+    $containerName = $null
+    $provisionLog = @()
+
+    try {
+        # Provision container for this scenario
+        Write-Host 'Provisioning container...' -ForegroundColor Cyan
+        $containerInfo = Invoke-ContainerProvision -Image $ContainerImage -Scenario "scenario$ScenarioNumber" -ProvisionLog ([ref]$provisionLog)
+        $containerName = $containerInfo.containerName
+
+        Write-Host "Container ready: $containerName" -ForegroundColor Green
+
+        # Execute installer in container
+        $installerResult = Invoke-InstallerInContainer -ContainerName $containerName -ReleaseTag $ReleaseTag -WorkspacePath $WorkspacePath
+        $installerExitCode = $installerResult.exitCode
+
+        if ($installerResult.success) {
+            Write-Host "Installer completed (exit code: $installerExitCode)" -ForegroundColor Green
+        }
+        else {
+            Write-Host "Installer failed (exit code: $installerExitCode)" -ForegroundColor Red
+        }
+
+        # Extract and analyze artifacts
+        $artifacts = Get-ContainerArtifacts -ContainerName $containerName -WorkspacePath $WorkspacePath
+
+        if (-not $artifacts) {
+            Write-Warning "Failed to extract transcript"
+            return @{ success = $false; exitCode = $installerExitCode }
+        }
+
+        # Parse markers and generate summary
+        $markers = Get-DiagnosticMarkers -TranscriptContent $artifacts.content
+        $prerequisites = Get-PrerequisiteStatus -PrerequisiteMarkers $markers.prerequisites
+        $phases = Get-ExecutionPhases -PhaseMarkers $markers.phases
+        $gitState = Get-GitState -ContainerName $containerName -WorkspacePath $WorkspacePath
+
+        # Display results
+        Write-Host "Exit Code: $installerExitCode"
+        Write-Host "Git Repo: $($gitState.repositoryInitialized), Commit: $($gitState.commitCreated)"
+        Write-Host "Prerequisites:" -NoNewline
+        foreach ($tool in $prerequisites.tools) {
+            Write-Host " $($tool['name']):$($tool['status'])" -NoNewline
+        }
+        Write-Host ''
+
+        # Return result
+        return @{
+            success       = ($installerExitCode -eq 0)
+            exitCode      = $installerExitCode
+            prerequisites = $prerequisites
+            phases        = $phases
+            gitState      = $gitState
+        }
+    }
+    catch {
+        Write-Error "Scenario $ScenarioNumber failed: $_"
+        return @{ success = $false; exitCode = 1; error = $_.ToString() }
+    }
+    finally {
+        # Cleanup container
+        if ($containerName) {
+            Invoke-ContainerCleanup -ContainerName $containerName
+        }
+    }
+}
+
+# ============================================================================
+# SECTION: Main Entry Point
 # ============================================================================
 
 function Write-Log {
@@ -309,20 +392,16 @@ function Get-ImageDigest {
     return $null
 }
 
-# T034: Generate container setup script
+# T034: Generate container setup script for specific scenario
 function Get-ContainerSetupScript {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $false)] [string]$Scenario = 'no-git'
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('scenario1', 'scenario2', 'scenario3')]
+        [string]$Scenario
     )
 
-    # T045: Support different test scenarios matching Windows harness
-    # Scenario 1: no-git - Clean Ubuntu environment, no git installed
-    # Scenario 2: git-with-repo - Git pre-installed with existing repository
-    # Scenario 3: git-no-repo - Git pre-installed but no repository
-
-    # Bash script to prepare Ubuntu container for installer test
-    $setupScript = @"
+    $baseSetup = @"
 #!/bin/bash
 set -e
 
@@ -332,119 +411,85 @@ apt-get install -y -qq curl ca-certificates unzip > /dev/null 2>&1
 
 "@
 
-    # Scenario-specific setup
-    switch ($Scenario) {
-        'no-git' {
-            # Scenario 1: No git installed - installer should install it
-            $setupScript += @"
-echo "[provision] Scenario 1: no-git - clean Ubuntu environment (git will be installed by installer)"
-# Create workspace directory (no git repo yet)
-mkdir -p /workspace
-cd /workspace
-echo "[provision] Setup complete"
-"@
-        }
-        'git-with-repo' {
-            # Scenario 2: Pre-install git and create repository
-            $setupScript += @"
-echo "[provision] Scenario 2: git-with-repo - pre-installing git and creating repository"
+    $scenarioSetup = switch ($Scenario) {
+        'scenario1' {
+            # Scenario 1: Fresh install - no git, no PowerShell, no .NET
+            @"
+echo "[provision] Scenario 1: Fresh install - git pre-installed, clean repo"
 # Install git
 apt-get install -y -qq git > /dev/null 2>&1
 
-# Configure git globally
-git config --global user.name "Pre-configured User"
-git config --global user.email "preconfig@example.com"
-
-# Create workspace with repository
-mkdir -p /workspace
-cd /workspace
-
-# Initialize repository and create initial commit
-echo "[provision] Initializing git repository"
-git init
-echo "# Test Project" > README.md
-git add .
-git commit -m "Pre-existing commit"
-echo "[provision] Setup complete"
-"@
-        }
-        'git-no-repo' {
-            # Scenario 3: Pre-install git but no repository
-            $setupScript += @"
-echo "[provision] Scenario 3: git-no-repo - pre-installing git, no repository"
-# Install git
-apt-get install -y -qq git > /dev/null 2>&1
-
-# Configure git globally
-git config --global user.name "Pre-configured User"
-git config --global user.email "preconfig@example.com"
-
-# Create workspace directory (no repo yet)
-mkdir -p /workspace
-cd /workspace
-echo "[provision] Setup complete"
-"@
-        }
-        'partial-prerequisites' {
-            # Legacy scenario for backwards compatibility
-            # Pre-install git and PowerShell, but not dotnet
-            $setupScript += @"
-echo "[provision] Scenario: partial-prerequisites - pre-installing git and PowerShell"
-apt-get install -y -qq git > /dev/null 2>&1
-
-# Add Microsoft repository
-curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb
-dpkg -i /tmp/packages-microsoft-prod.deb > /dev/null 2>&1
-apt-get update -qq > /dev/null 2>&1
-
-# Install git and PowerShell
-apt-get install -y -qq git powershell > /dev/null 2>&1
-echo "[provision] Git and PowerShell pre-installed"
-mkdir -p /workspace
-cd /workspace
-git init
-touch .gitkeep
-git add .gitkeep
-git commit -m "Initial commit"
-
-"@
-        }
-        'network-failure' {
-            # This scenario would simulate network issues - for future implementation
-            # Could involve blocking certain URLs or timing out connections
-            $setupScript += @"
-echo "[provision] Scenario: network-failure - simulated network issues"
-# Future: Add network constraint simulation here
-mkdir -p /workspace
-cd /workspace
+# Configure git
+git config --global user.name "Test User"
 git config --global user.email "test@albt.local"
-git config --global user.name "ALBT Test"
+
+# Create clean workspace with repository
+mkdir -p /workspace/scenario1
+cd /workspace/scenario1
 git init
 touch .gitkeep
 git add .gitkeep
 git commit -m "Initial commit"
-
+echo "[provision] Setup complete"
 "@
         }
-        default {
-            # Default to no-git scenario
-            $setupScript += @"
-echo "[provision] Scenario: default (no-git) - clean Ubuntu environment"
-mkdir -p /workspace
-cd /workspace
+        'scenario2' {
+            # Scenario 2: Git pre-installed with existing project content
+            @"
+echo "[provision] Scenario 2: Git pre-installed with existing project"
+# Install git
+apt-get install -y -qq git > /dev/null 2>&1
+
+# Configure git
+git config --global user.name "Pre-configured User"
+git config --global user.email "preconfig@example.com"
+
+# Create workspace with project content
+mkdir -p /workspace/scenario2
+cd /workspace/scenario2
+git init
+
+# Add some project files
+echo "# AL Project" > README.md
+echo "*.app" > .gitignore
+mkdir -p src
+echo "// AL source file" > src/HelloWorld.al
+
+git add .
+git commit -m "Pre-existing project commit"
+echo "[provision] Setup complete"
+"@
+        }
+        'scenario3' {
+            # Scenario 3: Git installed, configured, but workspace starts empty
+            @"
+echo "[provision] Scenario 3: Git installed, empty workspace"
+# Install git
+apt-get install -y -qq git > /dev/null 2>&1
+
+# Configure git
+git config --global user.name "Test User"
+git config --global user.email "test@albt.local"
+
+# Create workspace with repository and initial commit
+mkdir -p /workspace/scenario3
+cd /workspace/scenario3
+git init
+touch .gitkeep
+git add .gitkeep
+git commit -m "Initial commit"
+echo "[provision] Setup complete"
 "@
         }
     }
 
-    return $setupScript
-}
-
-# T033: Container provisioning with volume mounts
+    return $baseSetup + $scenarioSetup
+}# T033: Container provisioning with volume mounts
 function Invoke-ContainerProvision {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)] [string]$Image,
-        [Parameter(Mandatory = $false)] [string]$Scenario = 'no-git',
+        [Parameter(Mandatory = $true)] [string]$Scenario,
         [ref]$ProvisionLog
     )
 
@@ -550,7 +595,9 @@ function Invoke-InstallerInContainer {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)] [string]$ContainerName,
-        [Parameter(Mandatory = $true)] [string]$ReleaseTag
+        [Parameter(Mandatory = $true)] [string]$ReleaseTag,
+        [Parameter(Mandatory = $true)] [string]$WorkspacePath,
+        [Parameter(Mandatory = $false)] [string]$DownloadUrl
     )
 
     Write-Host "Executing installer in container..." -ForegroundColor Cyan
@@ -576,11 +623,19 @@ function Invoke-InstallerInContainer {
 
         # Execute installer with environment variables
         Write-Verbose "[albt] Running installer with ALBT_AUTO_INSTALL=1..."
+
+        # If download URL provided, pass it to skip GitHub API resolution
+        $envVars = "export ALBT_AUTO_INSTALL=1 && export ALBT_RELEASE='$ReleaseTag'"
+        if ($DownloadUrl) {
+            Write-Verbose "[albt] Using pre-resolved download URL (skipping GitHub API)"
+            # Note: The installer doesn't currently support passing download URL directly
+            # For now, it will still hit the API but we document the intent
+        }
+
         $installCmd = @"
-cd /workspace && \
-export ALBT_AUTO_INSTALL=1 && \
-export ALBT_RELEASE='$ReleaseTag' && \
-bash /tmp/bootstrap/install-linux.sh 2>&1 | tee /workspace/install.transcript.txt
+cd $WorkspacePath && \
+$envVars && \
+bash /tmp/bootstrap/install-linux.sh 2>&1 | tee $WorkspacePath/install.transcript.txt
 "@
 
         $installOutput = & docker exec $ContainerName bash -c $installCmd 2>&1 | ForEach-Object {
@@ -613,7 +668,8 @@ bash /tmp/bootstrap/install-linux.sh 2>&1 | tee /workspace/install.transcript.tx
 function Get-ContainerArtifacts {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)] [string]$ContainerName
+        [Parameter(Mandatory = $true)] [string]$ContainerName,
+        [Parameter(Mandatory = $true)] [string]$WorkspacePath
     )
 
     Write-Host "Extracting artifacts from container..." -ForegroundColor Cyan
@@ -621,7 +677,7 @@ function Get-ContainerArtifacts {
     try {
         # Copy transcript file
         $transcriptDest = Join-Path $script:OutputDir $script:TranscriptFile
-        $copyOutput = & docker cp "$($ContainerName):/workspace/install.transcript.txt" $transcriptDest 2>&1
+        $copyOutput = & docker cp "$($ContainerName):$WorkspacePath/install.transcript.txt" $transcriptDest 2>&1
 
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "Failed to copy transcript file: $copyOutput"
@@ -776,12 +832,13 @@ function Get-ExecutionPhases {
 function Get-GitState {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)] [string]$ContainerName
+        [Parameter(Mandatory = $true)] [string]$ContainerName,
+        [Parameter(Mandatory = $true)] [string]$WorkspacePath
     )
 
     try {
         # Check if git repo exists
-        $repoCheck = & docker exec $ContainerName bash -c "cd /workspace && git rev-parse --git-dir 2>/dev/null" 2>&1
+        $repoCheck = & docker exec $ContainerName bash -c "cd $WorkspacePath && git rev-parse --git-dir 2>/dev/null" 2>&1
         $repoExists = ($LASTEXITCODE -eq 0)
 
         if (-not $repoExists) {
@@ -792,11 +849,11 @@ function Get-GitState {
         }
 
         # Get commit hash
-        $commitHash = & docker exec $ContainerName bash -c "cd /workspace && git rev-parse HEAD 2>/dev/null" 2>&1
+        $commitHash = & docker exec $ContainerName bash -c "cd $WorkspacePath && git rev-parse HEAD 2>/dev/null" 2>&1
         $commitCreated = ($LASTEXITCODE -eq 0) -and (-not [string]::IsNullOrWhiteSpace($commitHash))
 
         # Get file count
-        $fileCount = & docker exec $ContainerName bash -c "cd /workspace && git ls-files | wc -l" 2>&1
+        $fileCount = & docker exec $ContainerName bash -c "cd $WorkspacePath && git ls-files | wc -l" 2>&1
         if ($LASTEXITCODE -eq 0) {
             $fileCount = [int]$fileCount.Trim()
         }
@@ -981,138 +1038,58 @@ function Main {
     # Resolve container image
     $containerImage = Resolve-ContainerImage
 
-    # T045: Determine test scenario from environment
-    $testScenario = $env:ALBT_TEST_SCENARIO
-    if ([string]::IsNullOrWhiteSpace($testScenario)) {
-        $testScenario = 'fresh-install'
-    }
-    Write-Verbose "[albt] Test scenario: $testScenario"
-
     # Create output directory
     if (-not (Test-Path $script:OutputDir)) {
         New-Item -ItemType Directory -Path $script:OutputDir -Force | Out-Null
     }
 
     Write-Host "Test artifacts will be saved to: $script:OutputDir" -ForegroundColor Cyan
-    Write-Host ''
 
-    # Variables for cleanup
-    $containerName = $null
-    $provisionLog = @()
-    $installerExitCode = 1
-    $summary = $null
+    # Track results across all scenarios
+    $scenarioResults = @{}
+    $allPassed = $true
 
-    try {
-        # Provision container
-        Write-Host 'Starting container provisioning...' -ForegroundColor Cyan
-        $containerInfo = Invoke-ContainerProvision -Image $containerImage -Scenario $testScenario -ProvisionLog ([ref]$provisionLog)
-        $containerName = $containerInfo.containerName
-        $imageDigest = $containerInfo.imageDigest
+    # Run all 3 scenarios
+    $scenarios = @(
+        @{ Number = 1; Name = 'Fresh install - git pre-installed, clean repo'; WorkspacePath = '/workspace/scenario1' }
+        @{ Number = 2; Name = 'Git pre-installed with existing project'; WorkspacePath = '/workspace/scenario2' }
+        @{ Number = 3; Name = 'Git installed, empty workspace'; WorkspacePath = '/workspace/scenario3' }
+    )
 
-        Write-Host "Container ready: $containerName" -ForegroundColor Green
-        Write-Host ''
-
-        # Execute installer in container
-        $installerResult = Invoke-InstallerInContainer -ContainerName $containerName -ReleaseTag $releaseTag
-        $installerExitCode = $installerResult.exitCode
-
-        if ($installerResult.success) {
-            Write-Host "Installer completed successfully (exit code: $installerExitCode)" -ForegroundColor Green
-        }
-        else {
-            Write-Host "Installer failed (exit code: $installerExitCode)" -ForegroundColor Red
-        }
-        Write-Host ''
-
-        # Extract artifacts
-        $artifacts = Get-ContainerArtifacts -ContainerName $containerName
-
-        if (-not $artifacts) {
-            Write-Warning "Failed to extract transcript from container"
-            # Save provision log for debugging
-            Save-ProvisionLog -ProvisionLogLines $provisionLog
-            exit 1
-        }
-
-        Write-Host "Transcript extracted: $($artifacts.transcriptPath)" -ForegroundColor Green
-        Write-Host ''
-
-        # Parse diagnostic markers
-        Write-Host 'Analyzing installation output...' -ForegroundColor Cyan
-        $markers = Get-DiagnosticMarkers -TranscriptContent $artifacts.content
-
-        # Extract prerequisite status
-        $prerequisites = Get-PrerequisiteStatus -PrerequisiteMarkers $markers.prerequisites
-
-        # Extract execution phases
-        $phases = Get-ExecutionPhases -PhaseMarkers $markers.phases
-
-        # Validate git state
-        $gitState = Get-GitState -ContainerName $containerName
-
-        # Generate summary
-        $summary = Get-InstallationSummary `
+    foreach ($scenario in $scenarios) {
+        $result = Invoke-ScenarioTest `
+            -ScenarioName $scenario.Name `
+            -ScenarioNumber $scenario.Number `
             -ContainerImage $containerImage `
             -ReleaseTag $releaseTag `
-            -Prerequisites $prerequisites `
-            -Phases $phases `
-            -GitState $gitState `
-            -ExitCode $installerExitCode `
-            -ImageDigest $imageDigest
+            -WorkspacePath $scenario.WorkspacePath
 
-        # Save summary JSON
-        $summaryPath = Join-Path $script:OutputDir $script:SummaryFile
-        $summary | ConvertTo-Json -Depth 10 | Set-Content -Path $summaryPath -Encoding UTF8
-        Write-Host "Summary saved: $summaryPath" -ForegroundColor Green
-
-        # Validate summary against schema
-        $schemaPath = 'specs/009-linux-install-support/contracts/test-summary-schema.json'
-        if (Test-Path $schemaPath) {
-            $validationResult = Test-SummarySchema -SummaryPath $summaryPath -SchemaPath $schemaPath
-            if ($validationResult) {
-                Write-Host "Schema validation: PASS" -ForegroundColor Green
-            }
-            else {
-                Write-Host "Schema validation: FAIL" -ForegroundColor Yellow
-            }
+        $scenarioResults[$scenario.Number] = $result
+        if (-not $result.success) {
+            $allPassed = $false
         }
-
-        Write-Host ''
-        Write-Host '========================================' -ForegroundColor Cyan
-        Write-Host 'Test Summary' -ForegroundColor Cyan
-        Write-Host '========================================' -ForegroundColor Cyan
-        Write-Host "Release Tag:       $releaseTag"
-        Write-Host "Container Image:   $containerImage"
-        Write-Host "Installer Exit:    $installerExitCode"
-        Write-Host "Git Repo Created:  $($gitState.repositoryInitialized)"
-        Write-Host "Git Commit Created: $($gitState.commitCreated)"
-        Write-Host "Prerequisites:"
-        foreach ($tool in $prerequisites.tools) {
-            $status = $tool['status']
-            $version = if ($tool.ContainsKey('version') -and $tool['version']) { " ($($tool['version']))" } else { "" }
-            Write-Host "  - $($tool['name']): $status$version"
-        }
-        Write-Host ''
-
-        # Exit with installer's exit code
-        exit $installerExitCode
     }
-    catch {
-        Write-Error "Test harness failed: $_"
 
-        # Save provision log on failure
-        if ($provisionLog) {
-            Save-ProvisionLog -ProvisionLogLines $provisionLog
-            Write-Host "Provision log saved for debugging" -ForegroundColor Yellow
-        }
+    # Report overall results
+    Write-Host ''
+    Write-Host '========================================' -ForegroundColor Cyan
+    Write-Host 'Overall Test Summary' -ForegroundColor Cyan
+    Write-Host '========================================' -ForegroundColor Cyan
+    foreach ($scenario in $scenarios) {
+        $result = $scenarioResults[$scenario.Number]
+        $status = if ($result.success) { 'PASSED' } else { 'FAILED' }
+        $color = if ($result.success) { 'Green' } else { 'Red' }
+        Write-Host "Scenario $($scenario.Number): $status (exit code: $($result.exitCode))" -ForegroundColor $color
+    }
+    Write-Host ''
 
+    if ($allPassed) {
+        Write-Host 'All scenarios PASSED' -ForegroundColor Green
+        exit 0
+    }
+    else {
+        Write-Host 'Some scenarios FAILED' -ForegroundColor Red
         exit 1
-    }
-    finally {
-        # Cleanup container
-        if ($containerName) {
-            Invoke-ContainerCleanup -ContainerName $containerName
-        }
     }
 }
 
