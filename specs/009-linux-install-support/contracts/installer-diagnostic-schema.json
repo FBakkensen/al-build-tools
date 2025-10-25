@@ -1,0 +1,302 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://github.com/FBakkensen/al-build-tools/schemas/installer-diagnostic-schema.json",
+    "title": "Installer Diagnostic Markers",
+    "description": "Schema for structured diagnostic output emitted by AL Build Tools installer scripts",
+    "type": "object",
+    "required": [
+        "type",
+        "rawOutput"
+    ],
+    "properties": {
+        "type": {
+            "type": "string",
+            "enum": [
+                "prerequisite",
+                "step",
+                "guard",
+                "phase",
+                "diagnostic",
+                "input"
+            ],
+            "description": "Diagnostic marker type"
+        },
+        "rawOutput": {
+            "type": "string",
+            "description": "Original diagnostic line as emitted by installer"
+        }
+    },
+    "allOf": [
+        {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "prerequisite"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "tool": {
+                        "type": "string",
+                        "enum": [
+                            "git",
+                            "powershell",
+                            "dotnet",
+                            "InvokeBuild",
+                            "choco",
+                            "sudo"
+                        ],
+                        "description": "Prerequisite tool identifier"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "check",
+                            "found",
+                            "missing",
+                            "installing",
+                            "installed",
+                            "failed",
+                            "retry"
+                        ],
+                        "description": "Tool status"
+                    },
+                    "version": {
+                        "type": "string",
+                        "description": "Detected or installed version (optional)"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Reason for retry (e.g., 'apt-locked')"
+                    },
+                    "delay": {
+                        "type": "string",
+                        "pattern": "^\\d+s$",
+                        "description": "Retry delay (e.g., '5s')"
+                    }
+                },
+                "required": [
+                    "tool",
+                    "status"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "step"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "index": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Step sequence number"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Step name (e.g., 'Check_Prerequisites')"
+                    }
+                },
+                "required": [
+                    "index",
+                    "name"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "guard"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "enum": [
+                            "UnknownParameter",
+                            "GitRepoRequired",
+                            "CleanWorkingTreeRequired"
+                        ],
+                        "description": "Guard violation category"
+                    },
+                    "argument": {
+                        "type": "string",
+                        "description": "Invalid argument name (for UnknownParameter)"
+                    }
+                },
+                "required": [
+                    "category"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "phase"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "enum": [
+                            "release-resolution",
+                            "prerequisite-installation",
+                            "overlay-download",
+                            "file-copy",
+                            "git-commit"
+                        ],
+                        "description": "Execution phase identifier"
+                    },
+                    "duration": {
+                        "type": "string",
+                        "pattern": "^\\d+[smh]( \\d+[smh])*$",
+                        "description": "Phase duration (e.g., '42s', '1m 23s')"
+                    }
+                },
+                "required": [
+                    "name",
+                    "duration"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "diagnostic"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "enum": [
+                            "NetworkTimeout",
+                            "CorruptArchive",
+                            "DiskFull",
+                            "PermissionDenied"
+                        ],
+                        "description": "Error category"
+                    },
+                    "hint": {
+                        "type": "string",
+                        "description": "User-facing hint for resolving error"
+                    }
+                },
+                "required": [
+                    "category",
+                    "hint"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "input"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "invalid"
+                        ],
+                        "description": "Input validation status"
+                    },
+                    "example": {
+                        "type": "string",
+                        "description": "Example of valid input"
+                    }
+                },
+                "required": [
+                    "status",
+                    "example"
+                ]
+            }
+        }
+    ],
+    "examples": [
+        {
+            "type": "prerequisite",
+            "tool": "git",
+            "status": "check",
+            "rawOutput": "[install] prerequisite tool=\"git\" status=\"check\""
+        },
+        {
+            "type": "prerequisite",
+            "tool": "powershell",
+            "status": "found",
+            "version": "7.4.0",
+            "rawOutput": "[install] prerequisite tool=\"powershell\" status=\"found\" version=\"7.4.0\""
+        },
+        {
+            "type": "prerequisite",
+            "tool": "dotnet",
+            "status": "installing",
+            "rawOutput": "[install] prerequisite tool=\"dotnet\" status=\"installing\""
+        },
+        {
+            "type": "prerequisite",
+            "status": "retry",
+            "reason": "apt-locked",
+            "delay": "5s",
+            "rawOutput": "[install] prerequisite status=\"retry\" reason=\"apt-locked\" delay=\"5s\""
+        },
+        {
+            "type": "step",
+            "index": 1,
+            "name": "Check_Prerequisites",
+            "rawOutput": "[install] step index=1 name=Check_Prerequisites"
+        },
+        {
+            "type": "step",
+            "index": 2,
+            "name": "Resolve_Release",
+            "rawOutput": "[install] step index=2 name=Resolve_Release"
+        },
+        {
+            "type": "guard",
+            "category": "UnknownParameter",
+            "argument": "BadParam",
+            "rawOutput": "[install] guard UnknownParameter argument=\"BadParam\""
+        },
+        {
+            "type": "guard",
+            "category": "GitRepoRequired",
+            "rawOutput": "[install] guard GitRepoRequired"
+        },
+        {
+            "type": "phase",
+            "name": "prerequisite-installation",
+            "duration": "42s",
+            "rawOutput": "[install] phase name=\"prerequisite-installation\" duration=\"42s\""
+        },
+        {
+            "type": "diagnostic",
+            "category": "CorruptArchive",
+            "hint": "Re-download overlay.zip",
+            "rawOutput": "[install] diagnostic category=\"CorruptArchive\" hint=\"Re-download overlay.zip\""
+        },
+        {
+            "type": "input",
+            "status": "invalid",
+            "example": "Y/n",
+            "rawOutput": "[install] input status=\"invalid\" example=\"Y/n\""
+        }
+    ]
+}

@@ -1,0 +1,333 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://github.com/FBakkensen/al-build-tools/schemas/test-summary-schema.json",
+    "title": "Installation Test Summary",
+    "description": "JSON schema for AL Build Tools installer test harness summary artifacts (Windows and Linux)",
+    "type": "object",
+    "required": [
+        "metadata",
+        "prerequisites",
+        "phases",
+        "gitState",
+        "exitCode",
+        "exitCategory",
+        "success"
+    ],
+    "properties": {
+        "metadata": {
+            "type": "object",
+            "required": [
+                "testHarness",
+                "executionTime",
+                "containerImage"
+            ],
+            "properties": {
+                "testHarness": {
+                    "type": "string",
+                    "description": "Test script name (e.g., 'test-bootstrap-install-linux.ps1')"
+                },
+                "executionTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Test start timestamp in ISO 8601 format"
+                },
+                "containerImage": {
+                    "type": "string",
+                    "description": "Docker image used for testing (e.g., 'ubuntu:22.04')"
+                },
+                "releaseTag": {
+                    "type": "string",
+                    "description": "Release tag tested (e.g., 'v1.0.0' or 'latest')"
+                },
+                "platform": {
+                    "type": "string",
+                    "enum": [
+                        "Windows",
+                        "Linux"
+                    ],
+                    "description": "Operating system platform"
+                }
+            }
+        },
+        "prerequisites": {
+            "type": "object",
+            "required": [
+                "tools",
+                "allPresent",
+                "anyFailed",
+                "installationRequired"
+            ],
+            "properties": {
+                "tools": {
+                    "type": "array",
+                    "description": "List of prerequisite tools",
+                    "minItems": 4,
+                    "maxItems": 4,
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "name",
+                            "status"
+                        ],
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "enum": [
+                                    "git",
+                                    "powershell",
+                                    "dotnet",
+                                    "InvokeBuild"
+                                ],
+                                "description": "Tool identifier"
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": [
+                                    "missing",
+                                    "found",
+                                    "installed",
+                                    "failed"
+                                ],
+                                "description": "Tool installation status"
+                            },
+                            "version": {
+                                "type": "string",
+                                "description": "Detected version (optional)"
+                            },
+                            "packageName": {
+                                "type": "string",
+                                "description": "Package name (e.g., 'git.install' on Windows, 'git' on Linux)"
+                            }
+                        }
+                    }
+                },
+                "allPresent": {
+                    "type": "boolean",
+                    "description": "True if all tools detected before installation"
+                },
+                "anyFailed": {
+                    "type": "boolean",
+                    "description": "True if any tool installation failed"
+                },
+                "installationRequired": {
+                    "type": "boolean",
+                    "description": "True if any tools were missing"
+                },
+                "sudoCached": {
+                    "type": "boolean",
+                    "description": "True if sudo session available (Linux only)"
+                }
+            }
+        },
+        "phases": {
+            "type": "array",
+            "description": "Timed execution phases",
+            "items": {
+                "type": "object",
+                "required": [
+                    "name",
+                    "status"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "enum": [
+                            "release-resolution",
+                            "prerequisite-installation",
+                            "overlay-download",
+                            "file-copy",
+                            "git-commit"
+                        ],
+                        "description": "Phase identifier"
+                    },
+                    "startTime": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Phase start timestamp"
+                    },
+                    "endTime": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Phase end timestamp"
+                    },
+                    "duration": {
+                        "type": "string",
+                        "pattern": "^\\d+[smh]( \\d+[smh])*$",
+                        "description": "Human-readable duration (e.g., '42s', '1m 23s')"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "in-progress",
+                            "completed",
+                            "failed",
+                            "skipped"
+                        ],
+                        "description": "Phase execution status"
+                    },
+                    "errorMessage": {
+                        "type": "string",
+                        "description": "Error details if failed"
+                    }
+                }
+            }
+        },
+        "gitState": {
+            "type": "object",
+            "required": [
+                "isRepository",
+                "isClean"
+            ],
+            "properties": {
+                "isRepository": {
+                    "type": "boolean",
+                    "description": "True if destination is git repository"
+                },
+                "isClean": {
+                    "type": "boolean",
+                    "description": "True if working tree clean"
+                },
+                "currentBranch": {
+                    "type": "string",
+                    "description": "Active branch name"
+                },
+                "hasInitialCommit": {
+                    "type": "boolean",
+                    "description": "True if repository has commits"
+                },
+                "commitCreated": {
+                    "type": "boolean",
+                    "description": "True if installer created commit"
+                },
+                "commitHash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{40}$",
+                    "description": "SHA-1 hash of created commit"
+                }
+            }
+        },
+        "release": {
+            "type": "object",
+            "description": "Resolved release metadata (optional if resolution failed)",
+            "properties": {
+                "tagName": {
+                    "type": "string",
+                    "description": "Release tag (e.g., 'v1.0.0')"
+                },
+                "assetUrl": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Direct URL to overlay.zip"
+                },
+                "assetSize": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Size of overlay.zip in bytes"
+                },
+                "publishedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Release publication timestamp"
+                },
+                "isDraft": {
+                    "type": "boolean",
+                    "description": "True if release is draft"
+                },
+                "isPrerelease": {
+                    "type": "boolean",
+                    "description": "True if release is pre-release"
+                }
+            }
+        },
+        "exitCode": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+            ],
+            "description": "Installer exit code (0=success, 1=general, 2=guard, 3=analysis, 4=contract, 5=integration, 6=missing-tool)"
+        },
+        "exitCategory": {
+            "type": "string",
+            "enum": [
+                "success",
+                "general-error",
+                "guard",
+                "analysis",
+                "contract",
+                "integration",
+                "missing-tool"
+            ],
+            "description": "Exit code category name"
+        },
+        "diagnostics": {
+            "type": "array",
+            "description": "Parsed diagnostic markers from installer output",
+            "items": {
+                "type": "object",
+                "required": [
+                    "type",
+                    "rawOutput"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "prerequisite",
+                            "step",
+                            "guard",
+                            "phase",
+                            "diagnostic"
+                        ],
+                        "description": "Marker type"
+                    },
+                    "tool": {
+                        "type": "string",
+                        "description": "Tool name (prerequisite markers only)"
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Status value (prerequisite/step markers)"
+                    },
+                    "index": {
+                        "type": "integer",
+                        "description": "Step index (step markers only)"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Step name (step markers only)"
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Error category (guard/diagnostic markers)"
+                    },
+                    "hint": {
+                        "type": "string",
+                        "description": "User hint (diagnostic markers only)"
+                    },
+                    "version": {
+                        "type": "string",
+                        "description": "Version number (prerequisite markers)"
+                    },
+                    "duration": {
+                        "type": "string",
+                        "description": "Phase duration (phase markers)"
+                    },
+                    "rawOutput": {
+                        "type": "string",
+                        "description": "Original marker line from output"
+                    }
+                }
+            }
+        },
+        "success": {
+            "type": "boolean",
+            "description": "True if installation succeeded (exit code 0)"
+        }
+    }
+}
