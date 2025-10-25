@@ -313,29 +313,85 @@ function Get-ImageDigest {
 function Get-ContainerSetupScript {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $false)] [string]$Scenario = 'fresh-install'
+        [Parameter(Mandatory = $false)] [string]$Scenario = 'no-git'
     )
 
-    # T045: Support different test scenarios
-    # Scenarios: fresh-install, partial-prerequisites, network-failure
+    # T045: Support different test scenarios matching Windows harness
+    # Scenario 1: no-git - Clean Ubuntu environment, no git installed
+    # Scenario 2: git-with-repo - Git pre-installed with existing repository
+    # Scenario 3: git-no-repo - Git pre-installed but no repository
     
     # Bash script to prepare Ubuntu container for installer test
     $setupScript = @"
 #!/bin/bash
 set -e
 
-echo "[provision] Installing prerequisites: curl, ca-certificates, git"
+echo "[provision] Installing base prerequisites: curl, ca-certificates, unzip"
 apt-get update -qq
-apt-get install -y -qq curl ca-certificates git > /dev/null 2>&1
+apt-get install -y -qq curl ca-certificates unzip > /dev/null 2>&1
 
 "@
 
     # Scenario-specific setup
     switch ($Scenario) {
+        'no-git' {
+            # Scenario 1: No git installed - installer should install it
+            $setupScript += @"
+echo "[provision] Scenario 1: no-git - clean Ubuntu environment (git will be installed by installer)"
+# Create workspace directory (no git repo yet)
+mkdir -p /workspace
+cd /workspace
+echo "[provision] Setup complete"
+"@
+        }
+        'git-with-repo' {
+            # Scenario 2: Pre-install git and create repository
+            $setupScript += @"
+echo "[provision] Scenario 2: git-with-repo - pre-installing git and creating repository"
+# Install git
+apt-get install -y -qq git > /dev/null 2>&1
+
+# Configure git globally
+git config --global user.name "Pre-configured User"
+git config --global user.email "preconfig@example.com"
+
+# Create workspace with repository
+mkdir -p /workspace
+cd /workspace
+
+# Initialize repository and create initial commit
+echo "[provision] Initializing git repository"
+git init
+echo "# Test Project" > README.md
+git add .
+git commit -m "Pre-existing commit"
+echo "[provision] Setup complete"
+"@
+        }
+        'git-no-repo' {
+            # Scenario 3: Pre-install git but no repository
+            $setupScript += @"
+echo "[provision] Scenario 3: git-no-repo - pre-installing git, no repository"
+# Install git
+apt-get install -y -qq git > /dev/null 2>&1
+
+# Configure git globally
+git config --global user.name "Pre-configured User"
+git config --global user.email "preconfig@example.com"
+
+# Create workspace directory (no repo yet)
+mkdir -p /workspace
+cd /workspace
+echo "[provision] Setup complete"
+"@
+        }
         'partial-prerequisites' {
+            # Legacy scenario for backwards compatibility
             # Pre-install git and PowerShell, but not dotnet
             $setupScript += @"
 echo "[provision] Scenario: partial-prerequisites - pre-installing git and PowerShell"
+apt-get install -y -qq git > /dev/null 2>&1
+
 # Add Microsoft repository
 curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb
 dpkg -i /tmp/packages-microsoft-prod.deb > /dev/null 2>&1
@@ -344,6 +400,12 @@ apt-get update -qq > /dev/null 2>&1
 # Install git and PowerShell
 apt-get install -y -qq git powershell > /dev/null 2>&1
 echo "[provision] Git and PowerShell pre-installed"
+mkdir -p /workspace
+cd /workspace
+git init
+touch .gitkeep
+git add .gitkeep
+git commit -m "Initial commit"
 
 "@
         }
@@ -353,34 +415,26 @@ echo "[provision] Git and PowerShell pre-installed"
             $setupScript += @"
 echo "[provision] Scenario: network-failure - simulated network issues"
 # Future: Add network constraint simulation here
-
-"@
-        }
-        default {
-            # fresh-install: no additional setup needed
-            $setupScript += @"
-echo "[provision] Scenario: fresh-install - clean Ubuntu environment"
-
-"@
-        }
-    }
-
-    # Common git setup for all scenarios
-    $setupScript += @"
-echo "[provision] Creating test repository"
 mkdir -p /workspace
 cd /workspace
 git config --global user.email "test@albt.local"
 git config --global user.name "ALBT Test"
-git config --global init.defaultBranch main
 git init
-# Create initial commit to satisfy installer's clean working tree check
 touch .gitkeep
 git add .gitkeep
-git commit -m "Initial commit" > /dev/null 2>&1
+git commit -m "Initial commit"
 
-echo "[provision] Setup complete"
 "@
+        }
+        default {
+            # Default to no-git scenario
+            $setupScript += @"
+echo "[provision] Scenario: default (no-git) - clean Ubuntu environment"
+mkdir -p /workspace
+cd /workspace
+"@
+        }
+    }
 
     return $setupScript
 }
@@ -390,7 +444,7 @@ function Invoke-ContainerProvision {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)] [string]$Image,
-        [Parameter(Mandatory = $false)] [string]$Scenario = 'fresh-install',
+        [Parameter(Mandatory = $false)] [string]$Scenario = 'no-git',
         [ref]$ProvisionLog
     )
 
@@ -526,10 +580,13 @@ function Invoke-InstallerInContainer {
 cd /workspace && \
 export ALBT_AUTO_INSTALL=1 && \
 export ALBT_RELEASE='$ReleaseTag' && \
-bash /tmp/bootstrap/install-linux.sh > /workspace/install.transcript.txt 2>&1
+bash /tmp/bootstrap/install-linux.sh 2>&1 | tee /workspace/install.transcript.txt
 "@
         
-        $installOutput = & docker exec $ContainerName bash -c $installCmd 2>&1
+        $installOutput = & docker exec $ContainerName bash -c $installCmd 2>&1 | ForEach-Object {
+            Write-Host $_
+            $_
+        }
         $installerExitCode = $LASTEXITCODE
 
         Write-Verbose "[albt] Installer exited with code: $installerExitCode"
