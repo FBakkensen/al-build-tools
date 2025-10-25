@@ -79,11 +79,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T027 [US2] Implement interactive prompt function (read_user_input with validation, retry logic, 2s delay, example display) in bootstrap/install-prerequisites-linux.sh
-- [ ] T028 [US2] Add prerequisite installation prompts (display tool name, purpose, prompt for Y/n confirmation) for each missing tool in bootstrap/install-prerequisites-linux.sh
-- [ ] T029 [US2] Add graceful exit on user decline (emit diagnostic marker, exit with EXIT_MISSING_TOOL) in bootstrap/install-prerequisites-linux.sh
-- [ ] T030 [US2] Add prerequisite description messages (explain PowerShell 7 for overlay scripts, .NET SDK for AL compiler, InvokeBuild for build orchestration) in bootstrap/install-prerequisites-linux.sh
-- [ ] T031 [US2] Add apt cache update transparency message (display "Updating package cache..." during apt-get update) in bootstrap/install-prerequisites-linux.sh
+- [X] T027 [US2] Implement interactive prompt function (read_user_input with validation, retry logic, 2s delay, example display) in bootstrap/install-prerequisites-linux.sh
+- [X] T028 [US2] Add prerequisite installation prompts (display tool name, purpose, prompt for Y/n confirmation) for each missing tool in bootstrap/install-prerequisites-linux.sh
+- [X] T029 [US2] Add graceful exit on user decline (emit diagnostic marker, exit with EXIT_MISSING_TOOL) in bootstrap/install-prerequisites-linux.sh
+- [X] T030 [US2] Add prerequisite description messages (explain PowerShell 7 for overlay scripts, .NET SDK for AL compiler, InvokeBuild for build orchestration) in bootstrap/install-prerequisites-linux.sh
+- [X] T031 [US2] Add apt cache update transparency message (display "Updating package cache..." during apt-get update) in bootstrap/install-prerequisites-linux.sh
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work - auto-install mode (US1) and interactive mode (US2) both functional
 

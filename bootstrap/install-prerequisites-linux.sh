@@ -360,10 +360,64 @@ install_invokebuild() {
 }
 
 # ============================================================================
-# Interactive Prompt (for Phase 4 - US2)
+# Interactive Prompt Functions (T027 - Phase 4 - US2)
 # ============================================================================
 
-# Prompt user for installation approval
+# Read and validate user input with retry logic (FR-019)
+# Arguments:
+#   $1: Prompt message
+#   $2: Valid inputs (space-separated, e.g., "Y y N n")
+#   $3: Example of valid input (e.g., "Y/n")
+# Returns:
+#   0 if valid input provided (echoes normalized response to stdout)
+#   1 if invalid input after retry
+read_user_input() {
+    local prompt="$1"
+    local valid_inputs="$2"
+    local example="$3"
+    local max_attempts=2
+    local attempt=1
+    
+    while [[ ${attempt} -le ${max_attempts} ]]; do
+        echo -n "${prompt}"
+        local response
+        read -r response
+        
+        # Normalize to uppercase for comparison
+        local normalized
+        normalized=$(echo "${response}" | tr '[:lower:]' '[:upper:]')
+        
+        # Check if response is valid
+        if [[ " ${valid_inputs} " == *" ${normalized} "* ]]; then
+            echo "${normalized}"
+            return 0
+        fi
+        
+        # Invalid input handling
+        if [[ ${attempt} -lt ${max_attempts} ]]; then
+            write_marker "input" "status=\"invalid\"" "example=\"${example}\""
+            echo "Invalid input '${response}'. Valid options: ${example}" >&2
+            echo "Retrying in 2 seconds..." >&2
+            sleep 2
+        else
+            write_marker "input" "status=\"failed\"" "attempts=\"${max_attempts}\""
+            echo "ERROR: Invalid input '${response}' after ${max_attempts} attempts. Expected: ${example}" >&2
+            return 1
+        fi
+        
+        attempt=$((attempt + 1))
+    done
+    
+    return 1
+}
+
+# Prompt user for installation approval with tool details
+# Arguments:
+#   $1: Tool name (e.g., "Git", "PowerShell 7")
+#   $2: Tool purpose/description
+# Returns:
+#   0 if user approves (Y)
+#   1 if user declines (N) or invalid input after retry
 prompt_for_installation() {
     local tool_name="$1"
     local tool_purpose="$2"
@@ -376,17 +430,18 @@ prompt_for_installation() {
     echo "Tool: ${tool_name}"
     echo "Purpose: ${tool_purpose}"
     echo ""
-    echo -n "Install ${tool_name}? [Y/n]: "
-
+    
+    # Use read_user_input with validation
     local response
-    read -r response
-
-    # Default to 'yes' if empty
-    response="${response:-Y}"
-
-    if [[ "${response}" =~ ^[Yy]$ ]]; then
-        return 0
+    if response=$(read_user_input "Install ${tool_name}? [Y/n]: " "Y YES N NO " "Y/n"); then
+        # Valid response received
+        if [[ "${response}" == "Y" || "${response}" == "YES" || "${response}" == "" ]]; then
+            return 0
+        else
+            return 1
+        fi
     else
+        # Invalid input after retry
         return 1
     fi
 }
@@ -470,17 +525,114 @@ orchestrate_prerequisites() {
         return 0
     fi
 
-    # Check if auto-install mode is enabled
+    # Check if auto-install mode is enabled (T028 - Phase 4 - US2)
     if [[ "${AUTO_INSTALL}" != "1" ]]; then
-        echo "Missing prerequisites detected. Auto-install is disabled."
-        echo "Set ALBT_AUTO_INSTALL=1 to enable automatic installation."
+        echo "Missing prerequisites detected. Interactive installation mode."
         echo ""
-        write_diagnostic "error" "Prerequisites missing and auto-install disabled"
-        exit "${EXIT_MISSING_TOOL}"
+        
+        # Interactive mode - prompt for each missing tool (T028, T030)
+        local tools_to_install=()
+        
+        for tool in "${missing_tools[@]}"; do
+            local tool_name=""
+            local tool_purpose=""
+            
+            # Define tool descriptions (T030)
+            case "${tool}" in
+                git)
+                    tool_name="Git"
+                    tool_purpose="Version control system required for managing AL Build Tools overlay files and repository operations"
+                    ;;
+                powershell)
+                    tool_name="PowerShell 7"
+                    tool_purpose="Cross-platform shell and scripting framework required to run AL Build Tools overlay scripts and build orchestration"
+                    ;;
+                dotnet)
+                    tool_name=".NET SDK 8.0"
+                    tool_purpose="Microsoft .NET development kit required for AL compiler (microsoft.dynamics.businesscentral.development.tools) and build tools"
+                    ;;
+                InvokeBuild)
+                    tool_name="InvokeBuild"
+                    tool_purpose="PowerShell build automation module required for AL Build Tools task orchestration (Invoke-Build command)"
+                    ;;
+            esac
+            
+            # Prompt user for approval (T028)
+            if prompt_for_installation "${tool_name}" "${tool_purpose}"; then
+                write_diagnostic "info" "User approved installation of ${tool_name}"
+                tools_to_install+=("${tool}")
+            else
+                # User declined installation (T029)
+                echo ""
+                echo "Installation declined for ${tool_name}."
+                write_diagnostic "warning" "User declined installation of ${tool_name}"
+                write_prerequisite "${tool}" "declined" "" ""
+                
+                # Exit gracefully with clear message (T029)
+                echo ""
+                echo "====================================="
+                echo "Installation Cannot Proceed"
+                echo "====================================="
+                echo ""
+                echo "AL Build Tools requires ${tool_name} to function."
+                echo ""
+                echo "To install manually, please run:"
+                case "${tool}" in
+                    git)
+                        echo "  sudo apt-get update && sudo apt-get install -y git"
+                        ;;
+                    powershell)
+                        echo "  # Install Microsoft repository"
+                        echo "  wget -q ${MICROSOFT_REPO_URL}/${UBUNTU_VERSION}/${MICROSOFT_PACKAGES_DEB}"
+                        echo "  sudo dpkg -i ${MICROSOFT_PACKAGES_DEB}"
+                        echo "  sudo apt-get update"
+                        echo "  sudo apt-get install -y powershell"
+                        ;;
+                    dotnet)
+                        echo "  # Install Microsoft repository"
+                        echo "  wget -q ${MICROSOFT_REPO_URL}/${UBUNTU_VERSION}/${MICROSOFT_PACKAGES_DEB}"
+                        echo "  sudo dpkg -i ${MICROSOFT_PACKAGES_DEB}"
+                        echo "  sudo apt-get update"
+                        echo "  sudo apt-get install -y dotnet-sdk-8.0"
+                        ;;
+                    InvokeBuild)
+                        echo "  pwsh -Command 'Install-Module InvokeBuild -Scope CurrentUser -Force'"
+                        ;;
+                esac
+                echo ""
+                echo "Then re-run the installer."
+                echo ""
+                
+                exit "${EXIT_MISSING_TOOL}"
+            fi
+        done
+        
+        # Update missing_tools to only include approved tools
+        missing_tools=("${tools_to_install[@]}")
+        
+        # If user declined all tools, exit
+        if [[ ${#missing_tools[@]} -eq 0 ]]; then
+            write_diagnostic "error" "No prerequisites approved for installation"
+            exit "${EXIT_MISSING_TOOL}"
+        fi
+        
+        echo ""
+        echo "Proceeding with installation of approved tools..."
+        echo ""
+        
+        # Recalculate if Microsoft repo is needed
+        needs_microsoft_repo=false
+        for tool in "${missing_tools[@]}"; do
+            if [[ "${tool}" == "powershell" || "${tool}" == "dotnet" ]]; then
+                needs_microsoft_repo=true
+                break
+            fi
+        done
+    else
+        # Auto-install mode
+        echo "Installing missing prerequisites (auto-install mode)..."
+        echo ""
     fi
-
-    echo "Installing missing prerequisites..."
-    echo ""
 
     # Setup Microsoft repository if needed (T013, T014)
     if [[ "${needs_microsoft_repo}" == true ]]; then
