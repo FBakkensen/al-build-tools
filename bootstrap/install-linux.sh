@@ -276,14 +276,12 @@ resolve_github_release() {
     phase_start "release-resolution"
     write_step "1" "Resolving release information"
 
-    local releases_url="${api_url}/releases"
-
     if [[ "${ref}" == "latest" ]]; then
         echo "Querying GitHub API for latest release..."
-        local release_url="${releases_url}/latest"
+        local release_url="${api_url}/latest"
     else
         echo "Querying GitHub API for release tag: ${ref}..."
-        local release_url="${releases_url}/tags/${ref}"
+        local release_url="${api_url}/tags/${ref}"
     fi
 
     write_diagnostic "info" "Querying ${release_url}"
@@ -306,12 +304,20 @@ resolve_github_release() {
         return 1
     fi
 
-    # Parse download URL for overlay.zip asset
+    # Parse download URL for overlay.zip asset (with fallback to al-build-tools-*.zip)
     local download_url
     download_url=$(echo "${response}" | grep -oP '"browser_download_url":\s*"\K[^"]+overlay\.zip' | head -n1)
 
+    # Fallback to al-build-tools-*.zip if overlay.zip not found
     if [[ -z "${download_url}" ]]; then
-        write_diagnostic "error" "Failed to find overlay.zip asset in release ${release_tag}"
+        download_url=$(echo "${response}" | grep -oP '"browser_download_url":\s*"\K[^"]+al-build-tools-[^"]+\.zip' | head -n1)
+        if [[ -n "${download_url}" ]]; then
+            write_diagnostic "info" "Using fallback asset: $(basename "${download_url}")"
+        fi
+    fi
+
+    if [[ -z "${download_url}" ]]; then
+        write_diagnostic "error" "Failed to find overlay.zip or al-build-tools-*.zip asset in release ${release_tag}"
         phase_end "release-resolution"
         return 1
     fi
@@ -525,8 +531,8 @@ orchestrate_installation() {
     local temp_dir
     temp_dir=$(mktemp -d)
 
-    # Ensure cleanup on exit
-    trap 'rm -rf "${temp_dir}"' EXIT
+    # Ensure cleanup on exit (use subshell to avoid unbound variable issues)
+    trap 'if [[ -n "${temp_dir:-}" ]]; then rm -rf "${temp_dir}"; fi' EXIT
 
     # Step 1: Resolve GitHub release (T020)
     if ! resolve_github_release "${url}" "${ref}"; then

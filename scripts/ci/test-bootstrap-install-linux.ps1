@@ -324,9 +324,9 @@ function Get-ContainerSetupScript {
 #!/bin/bash
 set -e
 
-echo "[provision] Installing prerequisites: curl, ca-certificates"
+echo "[provision] Installing prerequisites: curl, ca-certificates, git"
 apt-get update -qq
-apt-get install -y -qq curl ca-certificates > /dev/null 2>&1
+apt-get install -y -qq curl ca-certificates git > /dev/null 2>&1
 
 "@
 
@@ -374,6 +374,10 @@ git config --global user.email "test@albt.local"
 git config --global user.name "ALBT Test"
 git config --global init.defaultBranch main
 git init
+# Create initial commit to satisfy installer's clean working tree check
+touch .gitkeep
+git add .gitkeep
+git commit -m "Initial commit" > /dev/null 2>&1
 
 echo "[provision] Setup complete"
 "@
@@ -403,7 +407,7 @@ function Invoke-ContainerProvision {
     # Pull image
     Write-ProvisionMessage "[albt] Pulling Docker image..." -ProvisionLogLines ([ref]$provisionLogLines)
     try {
-        $pullOutput = & docker pull $Image 2>&1 | ForEach-Object { $_.ToString() }
+        $pullOutput = & docker pull $Image 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw "Docker pull failed with exit code $LASTEXITCODE"
         }
@@ -422,11 +426,17 @@ function Invoke-ContainerProvision {
     Write-ProvisionMessage "[albt] Creating container..." -ProvisionLogLines ([ref]$provisionLogLines)
     try {
         # Run container in detached mode with bash sleep to keep it alive
-        $createOutput = & docker run -d --name $containerName $Image sleep 3600 2>&1 | ForEach-Object { $_.ToString() }
+        $createOutput = & docker run -d --name $containerName $Image sleep 3600 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw "Docker run failed with exit code $LASTEXITCODE"
         }
-        $containerId = $createOutput[-1].Trim()
+        # Get container ID from output (last line)
+        if ($createOutput -is [array]) {
+            $containerId = ($createOutput | Select-Object -Last 1).ToString().Trim()
+        }
+        else {
+            $containerId = $createOutput.ToString().Trim()
+        }
         Write-Verbose "[albt] Container created: $containerId"
     }
     catch {
@@ -443,7 +453,7 @@ function Invoke-ContainerProvision {
 
     try {
         # Copy setup script to container
-        $copyOutput = & docker cp $setupScriptPath "$($containerName):/tmp/setup.sh" 2>&1 | ForEach-Object { $_.ToString() }
+        $copyOutput = & docker cp $setupScriptPath "$($containerName):/tmp/setup.sh" 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw "Docker cp failed with exit code $LASTEXITCODE"
         }
@@ -491,25 +501,24 @@ function Invoke-InstallerInContainer {
 
     Write-Host "Executing installer in container..." -ForegroundColor Cyan
 
-    # Download installer script to container
-    $installerUrl = "https://raw.githubusercontent.com/FBakkensen/al-build-tools/refs/heads/main/bootstrap/install-linux.sh"
-    
     Invoke-TimedPhaseStart 'installer-execution'
 
     try {
-        # Download installer
-        Write-Verbose "[albt] Downloading installer script..."
-        $downloadCmd = "curl -fsSL '$installerUrl' -o /tmp/install-linux.sh"
-        $downloadOutput = & docker exec $ContainerName bash -c $downloadCmd 2>&1 | ForEach-Object { $_.ToString() }
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to download installer script: $downloadOutput"
+        # Copy local bootstrap directory to container
+        Write-Verbose "[albt] Copying local bootstrap scripts to container..."
+        $bootstrapPath = Join-Path $PSScriptRoot "../../bootstrap"
+        
+        if (-not (Test-Path $bootstrapPath)) {
+            throw "Bootstrap directory not found: $bootstrapPath"
         }
 
-        # Make executable
-        $chmodOutput = & docker exec $ContainerName chmod +x /tmp/install-linux.sh 2>&1 | ForEach-Object { $_.ToString() }
+        # Copy bootstrap directory to container
+        $copyOutput = & docker cp $bootstrapPath "$($ContainerName):/tmp/bootstrap" 2>&1
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to make installer executable: $chmodOutput"
+            throw "Failed to copy bootstrap directory: $copyOutput"
         }
+
+        Write-Verbose "[albt] Bootstrap scripts copied successfully"
 
         # Execute installer with environment variables
         Write-Verbose "[albt] Running installer with ALBT_AUTO_INSTALL=1..."
@@ -517,10 +526,10 @@ function Invoke-InstallerInContainer {
 cd /workspace && \
 export ALBT_AUTO_INSTALL=1 && \
 export ALBT_RELEASE='$ReleaseTag' && \
-bash /tmp/install-linux.sh > /workspace/install.transcript.txt 2>&1
+bash /tmp/bootstrap/install-linux.sh > /workspace/install.transcript.txt 2>&1
 "@
         
-        $installOutput = & docker exec $ContainerName bash -c $installCmd 2>&1 | ForEach-Object { $_.ToString() }
+        $installOutput = & docker exec $ContainerName bash -c $installCmd 2>&1
         $installerExitCode = $LASTEXITCODE
 
         Write-Verbose "[albt] Installer exited with code: $installerExitCode"
@@ -555,7 +564,7 @@ function Get-ContainerArtifacts {
     try {
         # Copy transcript file
         $transcriptDest = Join-Path $script:OutputDir $script:TranscriptFile
-        $copyOutput = & docker cp "$($ContainerName):/workspace/install.transcript.txt" $transcriptDest 2>&1 | ForEach-Object { $_.ToString() }
+        $copyOutput = & docker cp "$($ContainerName):/workspace/install.transcript.txt" $transcriptDest 2>&1
         
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "Failed to copy transcript file: $copyOutput"
@@ -628,7 +637,7 @@ function Get-DiagnosticMarkers {
 function Get-PrerequisiteStatus {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)] [array]$PrerequisiteMarkers
+        [Parameter(Mandatory = $false)] [array]$PrerequisiteMarkers = @()
     )
 
     $tools = @()
@@ -653,9 +662,9 @@ function Get-PrerequisiteStatus {
         }
     }
 
-    $allPresent = ($tools | Where-Object { $_.status -eq 'found' }).Count -eq $tools.Count
-    $anyFailed = ($tools | Where-Object { $_.status -eq 'failed' }).Count -gt 0
-    $installationRequired = ($tools | Where-Object { $_.status -eq 'installed' }).Count -gt 0
+    $allPresent = (@($tools | Where-Object { $_.status -eq 'found' })).Count -eq $tools.Count
+    $anyFailed = (@($tools | Where-Object { $_.status -eq 'failed' })).Count -gt 0
+    $installationRequired = (@($tools | Where-Object { $_.status -eq 'installed' })).Count -gt 0
 
     return @{
         tools                 = $tools
@@ -669,7 +678,7 @@ function Get-PrerequisiteStatus {
 function Get-ExecutionPhases {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)] [array]$PhaseMarkers
+        [Parameter(Mandatory = $false)] [array]$PhaseMarkers = @()
     )
 
     $phases = @()
@@ -680,13 +689,20 @@ function Get-ExecutionPhases {
         $endMarker = $PhaseMarkers | Where-Object { $_.name -eq $phaseName -and $_.event -eq 'end' } | Select-Object -First 1
 
         if ($startMarker -and $endMarker) {
-            $phases += @{
-                name      = $phaseName
-                startTime = $startMarker.timestamp
-                endTime   = $endMarker.timestamp
-                duration  = [int]$endMarker.duration
-                status    = 'completed'
+            $phaseObj = @{
+                name   = $phaseName
+                status = 'completed'
             }
+            
+            # Add optional fields if they exist
+            if ($startMarker.ContainsKey('timestamp')) { $phaseObj['startTime'] = $startMarker['timestamp'] }
+            if ($endMarker.ContainsKey('timestamp')) { $phaseObj['endTime'] = $endMarker['timestamp'] }
+            if ($endMarker.ContainsKey('duration')) { 
+                $durationValue = $endMarker['duration']
+                $phaseObj['duration'] = [int]($durationValue -replace 's$', '')
+            }
+            
+            $phases += $phaseObj
         }
         elseif ($startMarker) {
             $phases += @{
@@ -861,7 +877,7 @@ function Invoke-ContainerCleanup {
 
     try {
         Write-Verbose "[albt] Removing container: $ContainerName"
-        $removeOutput = & docker rm -f $ContainerName 2>&1 | ForEach-Object { $_.ToString() }
+        $removeOutput = & docker rm -f $ContainerName 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-Verbose "[albt] Container removed successfully"
         }
@@ -1015,9 +1031,9 @@ function Main {
         Write-Host "Git Commit Created: $($gitState.commitCreated)"
         Write-Host "Prerequisites:"
         foreach ($tool in $prerequisites.tools) {
-            $status = $tool.status
-            $version = if ($tool.version) { " ($($tool.version))" } else { "" }
-            Write-Host "  - $($tool.name): $status$version"
+            $status = $tool['status']
+            $version = if ($tool.ContainsKey('version') -and $tool['version']) { " ($($tool['version']))" } else { "" }
+            Write-Host "  - $($tool['name']): $status$version"
         }
         Write-Host ''
 

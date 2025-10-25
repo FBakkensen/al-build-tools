@@ -168,8 +168,26 @@ check_invokebuild() {
 # Sudo Session Validation (T011)
 # ============================================================================
 
+# Helper function to run commands with or without sudo based on user privileges
+run_as_root() {
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+        # Running as root, no sudo needed
+        "$@"
+    else
+        # Not root, use sudo
+        sudo "$@"
+    fi
+}
+
 # Check if sudo session is cached (can run sudo without password prompt)
 check_sudo_session() {
+    # Skip sudo check if running as root
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+        write_diagnostic "info" "Running as root - sudo not required"
+        write_prerequisite "sudo" "check" "" "root"
+        return 0
+    fi
+
     if sudo -n true 2>/dev/null; then
         write_diagnostic "info" "Sudo session is cached"
         return 0
@@ -259,7 +277,7 @@ setup_microsoft_repository() {
 
     # Install the package
     echo "Installing Microsoft repository configuration..."
-    if ! sudo dpkg -i "${deb_file}" >/dev/null 2>&1; then
+    if ! run_as_root dpkg -i "${deb_file}" >/dev/null 2>&1; then
         rm -rf "${temp_dir}"
         write_diagnostic "error" "Failed to install Microsoft repository configuration"
         return 1
@@ -279,7 +297,7 @@ update_apt_cache() {
     write_step "2" "Updating package cache"
     echo "Updating package cache (this may take a moment)..."
 
-    if ! run_apt_with_retry sudo apt-get update -qq; then
+    if ! run_apt_with_retry run_as_root apt-get update -qq; then
         write_diagnostic "error" "Failed to update apt cache"
         return 1
     fi
@@ -297,7 +315,7 @@ install_git() {
     write_prerequisite "git" "installing" "" ""
     echo "Installing Git..."
 
-    if ! run_apt_with_retry sudo apt-get install -y git; then
+    if ! run_apt_with_retry run_as_root apt-get install -y git; then
         write_prerequisite "git" "failed" "" ""
         return 1
     fi
@@ -313,7 +331,7 @@ install_powershell() {
     write_prerequisite "powershell" "installing" "" ""
     echo "Installing PowerShell 7..."
 
-    if ! run_apt_with_retry sudo apt-get install -y powershell; then
+    if ! run_apt_with_retry run_as_root apt-get install -y powershell; then
         write_prerequisite "powershell" "failed" "" ""
         return 1
     fi
@@ -329,7 +347,7 @@ install_dotnet() {
     write_prerequisite "dotnet" "installing" "" ""
     echo "Installing .NET SDK 8.0..."
 
-    if ! run_apt_with_retry sudo apt-get install -y dotnet-sdk-8.0; then
+    if ! run_apt_with_retry run_as_root apt-get install -y dotnet-sdk-8.0; then
         write_prerequisite "dotnet" "failed" "" ""
         return 1
     fi
@@ -579,21 +597,21 @@ orchestrate_prerequisites() {
                 echo "To install manually, please run:"
                 case "${tool}" in
                     git)
-                        echo "  sudo apt-get update && sudo apt-get install -y git"
+                        echo "  run_as_root apt-get update && run_as_root apt-get install -y git"
                         ;;
                     powershell)
                         echo "  # Install Microsoft repository"
                         echo "  wget -q ${MICROSOFT_REPO_URL}/${UBUNTU_VERSION}/${MICROSOFT_PACKAGES_DEB}"
-                        echo "  sudo dpkg -i ${MICROSOFT_PACKAGES_DEB}"
-                        echo "  sudo apt-get update"
-                        echo "  sudo apt-get install -y powershell"
+                        echo "  run_as_root dpkg -i ${MICROSOFT_PACKAGES_DEB}"
+                        echo "  run_as_root apt-get update"
+                        echo "  run_as_root apt-get install -y powershell"
                         ;;
                     dotnet)
                         echo "  # Install Microsoft repository"
                         echo "  wget -q ${MICROSOFT_REPO_URL}/${UBUNTU_VERSION}/${MICROSOFT_PACKAGES_DEB}"
-                        echo "  sudo dpkg -i ${MICROSOFT_PACKAGES_DEB}"
-                        echo "  sudo apt-get update"
-                        echo "  sudo apt-get install -y dotnet-sdk-8.0"
+                        echo "  run_as_root dpkg -i ${MICROSOFT_PACKAGES_DEB}"
+                        echo "  run_as_root apt-get update"
+                        echo "  run_as_root apt-get install -y dotnet-sdk-8.0"
                         ;;
                     InvokeBuild)
                         echo "  pwsh -Command 'Install-Module InvokeBuild -Scope CurrentUser -Force'"
