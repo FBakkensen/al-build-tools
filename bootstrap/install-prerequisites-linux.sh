@@ -186,7 +186,7 @@ check_sudo_session() {
 # Wait for apt lock to be released with exponential backoff
 wait_for_apt_lock() {
     local attempt=1
-    
+
     while [[ ${attempt} -le ${APT_LOCK_MAX_RETRIES} ]]; do
         # Check if apt lock files exist
         if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && \
@@ -195,16 +195,16 @@ wait_for_apt_lock() {
             # No locks detected
             return 0
         fi
-        
+
         local delay=${APT_LOCK_RETRY_DELAYS[$((attempt - 1))]}
         write_prerequisite "sudo" "retry" "" ""
         write_diagnostic "warning" "Apt is locked by another process (attempt ${attempt}/${APT_LOCK_MAX_RETRIES}), waiting ${delay}s..."
         echo "Waiting for apt lock to be released (${delay} seconds)..."
         sleep "${delay}"
-        
+
         attempt=$((attempt + 1))
     done
-    
+
     # All retries exhausted
     write_diagnostic "error" "Apt lock timeout after ${APT_LOCK_MAX_RETRIES} attempts"
     return 1
@@ -214,7 +214,7 @@ wait_for_apt_lock() {
 run_apt_with_retry() {
     local max_attempts=3
     local attempt=1
-    
+
     while [[ ${attempt} -le ${max_attempts} ]]; do
         if wait_for_apt_lock; then
             # Run the apt command
@@ -226,10 +226,10 @@ run_apt_with_retry() {
                 return ${exit_code}
             fi
         fi
-        
+
         attempt=$((attempt + 1))
     done
-    
+
     return 1
 }
 
@@ -241,22 +241,22 @@ run_apt_with_retry() {
 setup_microsoft_repository() {
     write_step "1" "Setting up Microsoft package repository"
     write_prerequisite "sudo" "installing" "" ""
-    
+
     local temp_dir
     temp_dir=$(mktemp -d)
     local deb_file="${temp_dir}/${MICROSOFT_PACKAGES_DEB}"
-    
+
     # Download Microsoft packages configuration
     local repo_url="${MICROSOFT_REPO_URL}/${UBUNTU_VERSION}/${MICROSOFT_PACKAGES_DEB}"
     echo "Downloading Microsoft repository configuration..."
     write_diagnostic "info" "Downloading from ${repo_url}"
-    
+
     if ! curl -fsSL -o "${deb_file}" "${repo_url}"; then
         rm -rf "${temp_dir}"
         write_diagnostic "error" "Failed to download Microsoft repository configuration"
         return 1
     fi
-    
+
     # Install the package
     echo "Installing Microsoft repository configuration..."
     if ! sudo dpkg -i "${deb_file}" >/dev/null 2>&1; then
@@ -264,7 +264,7 @@ setup_microsoft_repository() {
         write_diagnostic "error" "Failed to install Microsoft repository configuration"
         return 1
     fi
-    
+
     rm -rf "${temp_dir}"
     write_prerequisite "sudo" "installed" "" "true"
     return 0
@@ -278,12 +278,12 @@ setup_microsoft_repository() {
 update_apt_cache() {
     write_step "2" "Updating package cache"
     echo "Updating package cache (this may take a moment)..."
-    
+
     if ! run_apt_with_retry sudo apt-get update -qq; then
         write_diagnostic "error" "Failed to update apt cache"
         return 1
     fi
-    
+
     write_diagnostic "info" "Package cache updated successfully"
     return 0
 }
@@ -296,12 +296,12 @@ update_apt_cache() {
 install_git() {
     write_prerequisite "git" "installing" "" ""
     echo "Installing Git..."
-    
+
     if ! run_apt_with_retry sudo apt-get install -y git; then
         write_prerequisite "git" "failed" "" ""
         return 1
     fi
-    
+
     local version
     version=$(check_git)
     write_prerequisite "git" "installed" "${version}" ""
@@ -312,12 +312,12 @@ install_git() {
 install_powershell() {
     write_prerequisite "powershell" "installing" "" ""
     echo "Installing PowerShell 7..."
-    
+
     if ! run_apt_with_retry sudo apt-get install -y powershell; then
         write_prerequisite "powershell" "failed" "" ""
         return 1
     fi
-    
+
     local version
     version=$(check_powershell)
     write_prerequisite "powershell" "installed" "${version}" ""
@@ -328,12 +328,12 @@ install_powershell() {
 install_dotnet() {
     write_prerequisite "dotnet" "installing" "" ""
     echo "Installing .NET SDK 8.0..."
-    
+
     if ! run_apt_with_retry sudo apt-get install -y dotnet-sdk-8.0; then
         write_prerequisite "dotnet" "failed" "" ""
         return 1
     fi
-    
+
     local version
     version=$(check_dotnet)
     write_prerequisite "dotnet" "installed" "${version}" ""
@@ -344,7 +344,7 @@ install_dotnet() {
 install_invokebuild() {
     write_prerequisite "InvokeBuild" "installing" "" ""
     echo "Installing InvokeBuild module..."
-    
+
     # Run PowerShell command and capture output
     local output
     if output=$(pwsh -NoProfile -Command "Install-Module InvokeBuild -Scope CurrentUser -Force -ErrorAction Stop" 2>&1); then
@@ -367,7 +367,7 @@ install_invokebuild() {
 prompt_for_installation() {
     local tool_name="$1"
     local tool_purpose="$2"
-    
+
     echo ""
     echo "==================================="
     echo "Prerequisite Installation Required"
@@ -377,13 +377,13 @@ prompt_for_installation() {
     echo "Purpose: ${tool_purpose}"
     echo ""
     echo -n "Install ${tool_name}? [Y/n]: "
-    
+
     local response
     read -r response
-    
+
     # Default to 'yes' if empty
     response="${response:-Y}"
-    
+
     if [[ "${response}" =~ ^[Yy]$ ]]; then
         return 0
     else
@@ -400,7 +400,7 @@ orchestrate_prerequisites() {
     local needs_microsoft_repo=false
     local needs_apt_update=false
     local missing_tools=()
-    
+
     # Validate sudo session first (T011)
     write_prerequisite "sudo" "check" "" ""
     if ! check_sudo_session; then
@@ -412,13 +412,13 @@ orchestrate_prerequisites() {
         exit "${EXIT_MISSING_TOOL}"
     fi
     write_prerequisite "sudo" "found" "" "true"
-    
+
     echo "Checking prerequisites..."
     echo ""
-    
+
     # Detect all prerequisites (T010)
     local git_version dotnet_version pwsh_version ib_version
-    
+
     write_prerequisite "git" "check" "" ""
     if git_version=$(check_git); then
         write_prerequisite "git" "found" "${git_version}" ""
@@ -428,7 +428,7 @@ orchestrate_prerequisites() {
         echo "[✗] Git: Not installed"
         missing_tools+=("git")
     fi
-    
+
     write_prerequisite "powershell" "check" "" ""
     if pwsh_version=$(check_powershell); then
         write_prerequisite "powershell" "found" "${pwsh_version}" ""
@@ -439,7 +439,7 @@ orchestrate_prerequisites() {
         missing_tools+=("powershell")
         needs_microsoft_repo=true
     fi
-    
+
     write_prerequisite "dotnet" "check" "" ""
     if dotnet_version=$(check_dotnet); then
         write_prerequisite "dotnet" "found" "${dotnet_version}" ""
@@ -450,7 +450,7 @@ orchestrate_prerequisites() {
         missing_tools+=("dotnet")
         needs_microsoft_repo=true
     fi
-    
+
     write_prerequisite "InvokeBuild" "check" "" ""
     if ib_version=$(check_invokebuild); then
         write_prerequisite "InvokeBuild" "found" "${ib_version}" ""
@@ -460,16 +460,16 @@ orchestrate_prerequisites() {
         echo "[✗] InvokeBuild: Not installed"
         missing_tools+=("InvokeBuild")
     fi
-    
+
     echo ""
-    
+
     # If all prerequisites are met, exit early
     if [[ ${#missing_tools[@]} -eq 0 ]]; then
         write_diagnostic "info" "All prerequisites already installed"
         echo "All prerequisites are already installed!"
         return 0
     fi
-    
+
     # Check if auto-install mode is enabled
     if [[ "${AUTO_INSTALL}" != "1" ]]; then
         echo "Missing prerequisites detected. Auto-install is disabled."
@@ -478,10 +478,10 @@ orchestrate_prerequisites() {
         write_diagnostic "error" "Prerequisites missing and auto-install disabled"
         exit "${EXIT_MISSING_TOOL}"
     fi
-    
+
     echo "Installing missing prerequisites..."
     echo ""
-    
+
     # Setup Microsoft repository if needed (T013, T014)
     if [[ "${needs_microsoft_repo}" == true ]]; then
         if ! setup_microsoft_repository; then
@@ -490,7 +490,7 @@ orchestrate_prerequisites() {
         fi
         needs_apt_update=true
     fi
-    
+
     # Update apt cache if needed
     if [[ "${needs_apt_update}" == true ]]; then
         if ! update_apt_cache; then
@@ -498,7 +498,7 @@ orchestrate_prerequisites() {
             exit "${EXIT_GENERAL}"
         fi
     fi
-    
+
     # Install missing tools (T015-T018)
     for tool in "${missing_tools[@]}"; do
         case "${tool}" in
@@ -533,7 +533,7 @@ orchestrate_prerequisites() {
                 ;;
         esac
     done
-    
+
     echo ""
     echo "All prerequisites installed successfully!"
     write_diagnostic "info" "Prerequisite installation completed"
@@ -547,14 +547,14 @@ orchestrate_prerequisites() {
 main() {
     # Validate bash version first (T009)
     check_bash_version
-    
+
     echo "AL Build Tools Prerequisites Installer for Linux"
     echo "================================================="
     echo ""
-    
+
     # Run prerequisite orchestration (T019)
     orchestrate_prerequisites
-    
+
     exit "${EXIT_SUCCESS}"
 }
 
