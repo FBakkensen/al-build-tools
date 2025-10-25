@@ -24,13 +24,13 @@ write_marker() {
     local marker_type="$1"
     shift
     local output="[install] ${marker_type}"
-    
+
     # Append key="value" pairs
     while [[ $# -gt 0 ]]; do
         output="${output} $1"
         shift
     done
-    
+
     echo "${output}"
 }
 
@@ -40,17 +40,17 @@ write_prerequisite() {
     local status="$2"
     local version="${3:-}"
     local sudo_cached="${4:-}"
-    
+
     local args=("tool=\"${tool}\"" "status=\"${status}\"")
-    
+
     if [[ -n "${version}" ]]; then
         args+=("version=\"${version}\"")
     fi
-    
+
     if [[ -n "${sudo_cached}" ]]; then
         args+=("sudoCached=\"${sudo_cached}\"")
     fi
-    
+
     write_marker "prerequisite" "${args[@]}"
 }
 
@@ -75,13 +75,13 @@ write_step() {
 # Check if bash version is 4.0 or higher
 check_bash_version() {
     local major_version="${BASH_VERSINFO[0]}"
-    
+
     if [[ "${major_version}" -lt 4 ]]; then
         echo "ERROR: Bash 4.0 or higher is required. Current version: ${BASH_VERSION}" >&2
         write_diagnostic "error" "Bash version check failed: ${BASH_VERSION} (requires 4.0+)"
         exit "${EXIT_MISSING_TOOL}"
     fi
-    
+
     write_diagnostic "info" "Bash version check passed: ${BASH_VERSION}"
 }
 
@@ -92,14 +92,14 @@ check_bash_version() {
 main() {
     # Validate bash version first (T009)
     check_bash_version
-    
+
     echo "AL Build Tools Prerequisites Installer for Linux"
     echo "================================================="
     echo ""
-    
+
     # TODO: T010-T019 - Implement prerequisite detection and installation
     write_diagnostic "info" "Phase 2 foundation complete - prerequisite detection/installation pending"
-    
+
     exit "${EXIT_SUCCESS}"
 }
 

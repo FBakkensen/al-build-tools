@@ -24,13 +24,13 @@ write_marker() {
     local marker_type="$1"
     shift
     local output="[install] ${marker_type}"
-    
+
     # Append key="value" pairs
     while [[ $# -gt 0 ]]; do
         output="${output} $1"
         shift
     done
-    
+
     echo "${output}"
 }
 
@@ -46,7 +46,7 @@ write_prerequisite() {
     local tool="$1"
     local status="$2"
     local version="${3:-}"
-    
+
     if [[ -n "${version}" ]]; then
         write_marker "prerequisite" "tool=\"${tool}\"" "status=\"${status}\"" "version=\"${version}\""
     else
@@ -59,7 +59,7 @@ write_phase() {
     local phase_name="$1"
     local phase_event="$2"  # "start" or "end"
     local duration="${3:-}"
-    
+
     if [[ "${phase_event}" == "start" ]]; then
         write_marker "phase" "name=\"${phase_name}\"" "event=\"start\""
     elif [[ "${phase_event}" == "end" && -n "${duration}" ]]; then
@@ -90,13 +90,13 @@ write_diagnostic() {
 # Check if bash version is 4.0 or higher
 check_bash_version() {
     local major_version="${BASH_VERSINFO[0]}"
-    
+
     if [[ "${major_version}" -lt 4 ]]; then
         echo "ERROR: Bash 4.0 or higher is required. Current version: ${BASH_VERSION}" >&2
         write_diagnostic "error" "Bash version check failed: ${BASH_VERSION} (requires 4.0+)"
         exit "${EXIT_MISSING_TOOL}"
     fi
-    
+
     write_diagnostic "info" "Bash version check passed: ${BASH_VERSION}"
 }
 
@@ -148,7 +148,7 @@ EOF
 # Parse command-line arguments (T006, T008)
 parse_arguments() {
     local unknown_params=()
-    
+
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -Url)
@@ -177,7 +177,7 @@ parse_arguments() {
                 ;;
         esac
     done
-    
+
     # Check for unknown parameters (T008)
     if [[ ${#unknown_params[@]} -gt 0 ]]; then
         echo "ERROR: Unknown parameter(s): ${unknown_params[*]}" >&2
@@ -206,20 +206,20 @@ is_working_tree_clean() {
     if ! is_git_repo; then
         return 1
     fi
-    
+
     # Check for uncommitted changes
     if ! git diff-index --quiet HEAD -- 2>/dev/null; then
         return 1
     fi
-    
+
     # Check for untracked files that would be affected
     local untracked_count
     untracked_count=$(git ls-files --others --exclude-standard overlay/ 2>/dev/null | wc -l)
-    
+
     if [[ "${untracked_count}" -gt 0 ]]; then
         return 1
     fi
-    
+
     return 0
 }
 
@@ -231,14 +231,14 @@ validate_git_state() {
         write_guard "not-git-repo" "Installation requires git repository"
         exit "${EXIT_GUARD}"
     fi
-    
+
     if ! is_working_tree_clean; then
         echo "ERROR: Git working tree has uncommitted changes" >&2
         echo "Please commit or stash your changes before installing" >&2
         write_guard "dirty-working-tree" "Git working tree must be clean"
         exit "${EXIT_GUARD}"
     fi
-    
+
     write_diagnostic "info" "Git repository state validated"
 }
 
@@ -249,13 +249,13 @@ validate_git_state() {
 main() {
     # Validate bash version first (T009)
     check_bash_version
-    
+
     # Parse command-line arguments (T006, T008)
     parse_arguments "$@"
-    
+
     # Validate git repository state (T007)
     validate_git_state
-    
+
     echo "AL Build Tools Installation for Linux"
     echo "======================================"
     echo ""
@@ -264,10 +264,10 @@ main() {
     echo "  Destination: ${DESTINATION_PATH}"
     echo "  Source: ${SOURCE}"
     echo ""
-    
+
     # TODO: T010-T026 - Implement main installer orchestration
     write_diagnostic "info" "Phase 2 foundation complete - main installer logic pending"
-    
+
     exit "${EXIT_SUCCESS}"
 }
 
