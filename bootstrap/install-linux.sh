@@ -243,31 +243,406 @@ validate_git_state() {
 }
 
 # ============================================================================
+# Phase Timing Functions (T026)
+# ============================================================================
+
+declare -A PHASE_START_TIMES
+
+# Mark the start of an execution phase
+phase_start() {
+    local phase_name="$1"
+    PHASE_START_TIMES["${phase_name}"]=$(date +%s)
+    write_phase "${phase_name}" "start"
+}
+
+# Mark the end of an execution phase
+phase_end() {
+    local phase_name="$1"
+    local start_time="${PHASE_START_TIMES[${phase_name}]}"
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+    write_phase "${phase_name}" "end" "${duration}s"
+}
+
+# ============================================================================
+# GitHub Release Resolution (T020)
+# ============================================================================
+
+# Query GitHub API and resolve release tag
+resolve_github_release() {
+    local api_url="$1"
+    local ref="$2"
+    
+    phase_start "release-resolution"
+    write_step "1" "Resolving release information"
+    
+    local releases_url="${api_url}/releases"
+    
+    if [[ "${ref}" == "latest" ]]; then
+        echo "Querying GitHub API for latest release..."
+        local release_url="${releases_url}/latest"
+    else
+        echo "Querying GitHub API for release tag: ${ref}..."
+        local release_url="${releases_url}/tags/${ref}"
+    fi
+    
+    write_diagnostic "info" "Querying ${release_url}"
+    
+    # Query GitHub API with timeout
+    local response
+    if ! response=$(curl -fsSL --max-time 30 "${release_url}" 2>&1); then
+        write_diagnostic "error" "Failed to query GitHub API: ${response}"
+        phase_end "release-resolution"
+        return 1
+    fi
+    
+    # Parse release tag from JSON response
+    local release_tag
+    release_tag=$(echo "${response}" | grep -oP '"tag_name":\s*"\K[^"]+' | head -n1)
+    
+    if [[ -z "${release_tag}" ]]; then
+        write_diagnostic "error" "Failed to parse release tag from API response"
+        phase_end "release-resolution"
+        return 1
+    fi
+    
+    # Parse download URL for overlay.zip asset
+    local download_url
+    download_url=$(echo "${response}" | grep -oP '"browser_download_url":\s*"\K[^"]+overlay\.zip' | head -n1)
+    
+    if [[ -z "${download_url}" ]]; then
+        write_diagnostic "error" "Failed to find overlay.zip asset in release ${release_tag}"
+        phase_end "release-resolution"
+        return 1
+    fi
+    
+    echo "Resolved release: ${release_tag}"
+    write_diagnostic "info" "Release tag: ${release_tag}"
+    write_diagnostic "info" "Download URL: ${download_url}"
+    
+    # Export for use by other functions
+    RESOLVED_RELEASE_TAG="${release_tag}"
+    RESOLVED_DOWNLOAD_URL="${download_url}"
+    
+    phase_end "release-resolution"
+    return 0
+}
+
+# ============================================================================
+# Overlay Download (T021)
+# ============================================================================
+
+# Download overlay archive from GitHub
+download_overlay() {
+    local download_url="$1"
+    local temp_dir="$2"
+    
+    phase_start "overlay-download"
+    write_step "2" "Downloading overlay archive"
+    
+    local archive_path="${temp_dir}/overlay.zip"
+    
+    echo "Downloading overlay archive..."
+    write_diagnostic "info" "Downloading from ${download_url}"
+    
+    # Download with curl with timeout and progress
+    if ! curl -fsSL --max-time 300 -o "${archive_path}" "${download_url}" 2>&1; then
+        write_diagnostic "error" "Failed to download overlay archive"
+        phase_end "overlay-download"
+        return 1
+    fi
+    
+    # Verify file was downloaded
+    if [[ ! -f "${archive_path}" ]]; then
+        write_diagnostic "error" "Archive file not found after download"
+        phase_end "overlay-download"
+        return 1
+    fi
+    
+    local file_size
+    file_size=$(stat -c%s "${archive_path}" 2>/dev/null || stat -f%z "${archive_path}" 2>/dev/null)
+    
+    echo "Download complete (${file_size} bytes)"
+    write_diagnostic "info" "Archive downloaded: ${file_size} bytes"
+    
+    # Export for use by other functions
+    OVERLAY_ARCHIVE_PATH="${archive_path}"
+    
+    phase_end "overlay-download"
+    return 0
+}
+
+# ============================================================================
+# Overlay Extraction (T022)
+# ============================================================================
+
+# Extract overlay archive and detect corruption
+extract_overlay() {
+    local archive_path="$1"
+    local temp_dir="$2"
+    
+    write_step "3" "Extracting overlay archive"
+    
+    local extract_dir="${temp_dir}/overlay"
+    mkdir -p "${extract_dir}"
+    
+    echo "Extracting overlay archive..."
+    write_diagnostic "info" "Extracting to ${extract_dir}"
+    
+    # Extract with unzip
+    if ! unzip -q -o "${archive_path}" -d "${extract_dir}" 2>&1; then
+        write_diagnostic "error" "Failed to extract overlay archive (possibly corrupt)"
+        return 1
+    fi
+    
+    # Verify extraction succeeded (check for expected files)
+    if [[ ! -d "${extract_dir}/overlay" ]]; then
+        write_diagnostic "error" "Overlay directory not found after extraction (corrupt archive)"
+        return 1
+    fi
+    
+    echo "Extraction complete"
+    write_diagnostic "info" "Overlay extracted successfully"
+    
+    # Export for use by other functions
+    OVERLAY_EXTRACT_DIR="${extract_dir}/overlay"
+    
+    return 0
+}
+
+# ============================================================================
+# File Copy (T023)
+# ============================================================================
+
+# Copy overlay files to destination
+copy_overlay_files() {
+    local source_dir="$1"
+    local dest_path="$2"
+    
+    phase_start "file-copy"
+    write_step "4" "Copying overlay files"
+    
+    local dest_overlay="${dest_path}/overlay"
+    
+    echo "Copying overlay files to ${dest_overlay}..."
+    write_diagnostic "info" "Source: ${source_dir}"
+    write_diagnostic "info" "Destination: ${dest_overlay}"
+    
+    # Create destination directory if needed
+    mkdir -p "${dest_overlay}"
+    
+    # Copy files recursively
+    if ! cp -r "${source_dir}"/* "${dest_overlay}/" 2>&1; then
+        write_diagnostic "error" "Failed to copy overlay files"
+        phase_end "file-copy"
+        return 1
+    fi
+    
+    # Count copied files
+    local file_count
+    file_count=$(find "${dest_overlay}" -type f | wc -l)
+    
+    echo "Copy complete (${file_count} files)"
+    write_diagnostic "info" "Copied ${file_count} files"
+    
+    phase_end "file-copy"
+    return 0
+}
+
+# ============================================================================
+# Git Commit (T024)
+# ============================================================================
+
+# Create git commit with overlay files
+create_git_commit() {
+    local dest_path="$1"
+    local release_tag="$2"
+    
+    phase_start "git-commit"
+    write_step "5" "Creating git commit"
+    
+    echo "Creating git commit..."
+    
+    # Change to destination directory
+    cd "${dest_path}" || return 1
+    
+    # Check if this is initial commit
+    local is_initial_commit=false
+    if ! git rev-parse HEAD >/dev/null 2>&1; then
+        is_initial_commit=true
+        write_diagnostic "info" "Initial commit detected"
+    fi
+    
+    # Stage overlay files
+    if ! git add overlay/ 2>&1; then
+        write_diagnostic "error" "Failed to stage overlay files"
+        phase_end "git-commit"
+        return 1
+    fi
+    
+    # Check if there are changes to commit
+    if git diff --cached --quiet; then
+        echo "No changes to commit (overlay already up-to-date)"
+        write_diagnostic "info" "No changes to commit"
+        phase_end "git-commit"
+        return 0
+    fi
+    
+    # Create commit
+    local commit_message
+    if [[ "${is_initial_commit}" == true ]]; then
+        commit_message="chore: initialize AL Build Tools (${release_tag})"
+    else
+        commit_message="chore: update AL Build Tools overlay (${release_tag})"
+    fi
+    
+    if ! git commit -m "${commit_message}" >/dev/null 2>&1; then
+        write_diagnostic "error" "Failed to create git commit"
+        phase_end "git-commit"
+        return 1
+    fi
+    
+    local commit_hash
+    commit_hash=$(git rev-parse --short HEAD)
+    
+    echo "Commit created: ${commit_hash}"
+    write_diagnostic "info" "Commit hash: ${commit_hash}"
+    
+    phase_end "git-commit"
+    return 0
+}
+
+# ============================================================================
+# Main Installer Orchestration (T025)
+# ============================================================================
+
+orchestrate_installation() {
+    local url="$1"
+    local ref="$2"
+    local dest_path="$3"
+    
+    # Create temporary directory for download
+    local temp_dir
+    temp_dir=$(mktemp -d)
+    
+    # Ensure cleanup on exit
+    trap 'rm -rf "${temp_dir}"' EXIT
+    
+    # Step 1: Resolve GitHub release (T020)
+    if ! resolve_github_release "${url}" "${ref}"; then
+        echo ""
+        echo "ERROR: Failed to resolve GitHub release" >&2
+        return "${EXIT_GENERAL}"
+    fi
+    
+    # Step 2: Install prerequisites (calls install-prerequisites-linux.sh)
+    phase_start "prerequisite-installation"
+    write_step "1.5" "Installing prerequisites"
+    
+    local prereq_script="${BASH_SOURCE[0]%/*}/install-prerequisites-linux.sh"
+    if [[ ! -f "${prereq_script}" ]]; then
+        write_diagnostic "error" "Prerequisites installer not found: ${prereq_script}"
+        phase_end "prerequisite-installation"
+        return "${EXIT_GENERAL}"
+    fi
+    
+    echo ""
+    echo "==================================="
+    echo "Installing Prerequisites"
+    echo "==================================="
+    echo ""
+    
+    if ! bash "${prereq_script}"; then
+        write_diagnostic "error" "Prerequisite installation failed"
+        phase_end "prerequisite-installation"
+        return "${EXIT_GENERAL}"
+    fi
+    
+    phase_end "prerequisite-installation"
+    
+    echo ""
+    echo "==================================="
+    echo "Installing AL Build Tools"
+    echo "==================================="
+    echo ""
+    
+    # Step 3: Download overlay (T021)
+    if ! download_overlay "${RESOLVED_DOWNLOAD_URL}" "${temp_dir}"; then
+        echo ""
+        echo "ERROR: Failed to download overlay archive" >&2
+        return "${EXIT_GENERAL}"
+    fi
+    
+    # Step 4: Extract overlay (T022)
+    if ! extract_overlay "${OVERLAY_ARCHIVE_PATH}" "${temp_dir}"; then
+        echo ""
+        echo "ERROR: Failed to extract overlay archive" >&2
+        return "${EXIT_GENERAL}"
+    fi
+    
+    # Step 5: Copy files (T023)
+    if ! copy_overlay_files "${OVERLAY_EXTRACT_DIR}" "${dest_path}"; then
+        echo ""
+        echo "ERROR: Failed to copy overlay files" >&2
+        return "${EXIT_GENERAL}"
+    fi
+    
+    # Step 6: Create git commit (T024)
+    if ! create_git_commit "${dest_path}" "${RESOLVED_RELEASE_TAG}"; then
+        echo ""
+        echo "ERROR: Failed to create git commit" >&2
+        return "${EXIT_GENERAL}"
+    fi
+    
+    # Success!
+    echo ""
+    echo "==================================="
+    echo "Installation Complete!"
+    echo "==================================="
+    echo ""
+    echo "AL Build Tools ${RESOLVED_RELEASE_TAG} has been installed successfully."
+    echo ""
+    echo "Next steps:"
+    echo "  1. Review the overlay/ directory"
+    echo "  2. Run: pwsh -Command 'Invoke-Build' to build your AL project"
+    echo "  3. See overlay/CLAUDE.md for available commands"
+    echo ""
+    
+    write_diagnostic "info" "Installation completed successfully"
+    
+    return 0
+}
+
+# ============================================================================
 # Main Entry Point
 # ============================================================================
 
 main() {
     # Validate bash version first (T009)
     check_bash_version
-
+    
     # Parse command-line arguments (T006, T008)
     parse_arguments "$@"
-
+    
     # Validate git repository state (T007)
     validate_git_state
-
+    
+    echo ""
+    echo "========================================"
     echo "AL Build Tools Installation for Linux"
-    echo "======================================"
+    echo "========================================"
     echo ""
     echo "Configuration:"
     echo "  Release: ${REF}"
     echo "  Destination: ${DESTINATION_PATH}"
-    echo "  Source: ${SOURCE}"
+    echo "  API URL: ${URL}"
     echo ""
-
-    # TODO: T010-T026 - Implement main installer orchestration
-    write_diagnostic "info" "Phase 2 foundation complete - main installer logic pending"
-
+    
+    # Run main installer orchestration (T025, T026)
+    if ! orchestrate_installation "${URL}" "${REF}" "${DESTINATION_PATH}"; then
+        exit "${EXIT_GENERAL}"
+    fi
+    
     exit "${EXIT_SUCCESS}"
 }
 

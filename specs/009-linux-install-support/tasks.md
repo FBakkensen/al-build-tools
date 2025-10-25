@@ -49,23 +49,23 @@
 
 ### Implementation for User Story 1
 
-- [ ] T010 [P] [US1] Implement prerequisite detection (check_git, check_powershell, check_dotnet, check_invokebuild) in bootstrap/install-prerequisites-linux.sh with version extraction
-- [ ] T011 [P] [US1] Implement sudo session validation (sudo -n true) with diagnostic marker in bootstrap/install-prerequisites-linux.sh
-- [ ] T012 [US1] Implement apt lock retry logic with exponential backoff (5s, 10s, 20s, max 3 retries) in bootstrap/install-prerequisites-linux.sh
-- [ ] T013 [US1] Implement Microsoft repository setup (download and install packages-microsoft-prod.deb) in bootstrap/install-prerequisites-linux.sh
-- [ ] T014 [US1] Implement apt cache update with retry logic in bootstrap/install-prerequisites-linux.sh
-- [ ] T015 [P] [US1] Implement git installation via apt (apt-get install -y git) in bootstrap/install-prerequisites-linux.sh
-- [ ] T016 [P] [US1] Implement PowerShell 7 installation via apt (apt-get install -y powershell) in bootstrap/install-prerequisites-linux.sh
-- [ ] T017 [P] [US1] Implement .NET SDK 8.0 installation via apt (apt-get install -y dotnet-sdk-8.0) in bootstrap/install-prerequisites-linux.sh
-- [ ] T018 [US1] Implement InvokeBuild module installation via pwsh (pwsh -Command "Install-Module InvokeBuild -Scope CurrentUser -Force") in bootstrap/install-prerequisites-linux.sh
-- [ ] T019 [US1] Implement prerequisite orchestration (detect all tools, install missing, emit status markers) in bootstrap/install-prerequisites-linux.sh with ALBT_AUTO_INSTALL support
-- [ ] T020 [US1] Implement GitHub release resolution (query GitHub API, parse latest non-draft release or specific tag) in bootstrap/install-linux.sh
-- [ ] T021 [US1] Implement overlay download via curl with timeout and diagnostic markers in bootstrap/install-linux.sh
-- [ ] T022 [US1] Implement overlay extraction (unzip) with corruption detection in bootstrap/install-linux.sh
-- [ ] T023 [US1] Implement file copy from extracted archive to destination (cp -r with progress markers) in bootstrap/install-linux.sh
-- [ ] T024 [US1] Implement git commit creation (git add, git commit) with initial commit detection in bootstrap/install-linux.sh
-- [ ] T025 [US1] Implement main installer orchestration (parameter validation, guards, prerequisite call, download, copy, commit, success message) in bootstrap/install-linux.sh
-- [ ] T026 [US1] Add execution phases with timing (release-resolution, prerequisite-installation, overlay-download, file-copy, git-commit) using phase_start/phase_end functions in bootstrap/install-linux.sh
+- [X] T010 [P] [US1] Implement prerequisite detection (check_git, check_powershell, check_dotnet, check_invokebuild) in bootstrap/install-prerequisites-linux.sh with version extraction
+- [X] T011 [P] [US1] Implement sudo session validation (sudo -n true) with diagnostic marker in bootstrap/install-prerequisites-linux.sh
+- [X] T012 [US1] Implement apt lock retry logic with exponential backoff (5s, 10s, 20s, max 3 retries) in bootstrap/install-prerequisites-linux.sh
+- [X] T013 [US1] Implement Microsoft repository setup (download and install packages-microsoft-prod.deb) in bootstrap/install-prerequisites-linux.sh
+- [X] T014 [US1] Implement apt cache update with retry logic in bootstrap/install-prerequisites-linux.sh
+- [X] T015 [P] [US1] Implement git installation via apt (apt-get install -y git) in bootstrap/install-prerequisites-linux.sh
+- [X] T016 [P] [US1] Implement PowerShell 7 installation via apt (apt-get install -y powershell) in bootstrap/install-prerequisites-linux.sh
+- [X] T017 [P] [US1] Implement .NET SDK 8.0 installation via apt (apt-get install -y dotnet-sdk-8.0) in bootstrap/install-prerequisites-linux.sh
+- [X] T018 [US1] Implement InvokeBuild module installation via pwsh (pwsh -Command "Install-Module InvokeBuild -Scope CurrentUser -Force") in bootstrap/install-prerequisites-linux.sh
+- [X] T019 [US1] Implement prerequisite orchestration (detect all tools, install missing, emit status markers) in bootstrap/install-prerequisites-linux.sh with ALBT_AUTO_INSTALL support
+- [X] T020 [US1] Implement GitHub release resolution (query GitHub API, parse latest non-draft release or specific tag) in bootstrap/install-linux.sh
+- [X] T021 [US1] Implement overlay download via curl with timeout and diagnostic markers in bootstrap/install-linux.sh
+- [X] T022 [US1] Implement overlay extraction (unzip) with corruption detection in bootstrap/install-linux.sh
+- [X] T023 [US1] Implement file copy from extracted archive to destination (cp -r with progress markers) in bootstrap/install-linux.sh
+- [X] T024 [US1] Implement git commit creation (git add, git commit) with initial commit detection in bootstrap/install-linux.sh
+- [X] T025 [US1] Implement main installer orchestration (parameter validation, guards, prerequisite call, download, copy, commit, success message) in bootstrap/install-linux.sh
+- [X] T026 [US1] Add execution phases with timing (release-resolution, prerequisite-installation, overlay-download, file-copy, git-commit) using phase_start/phase_end functions in bootstrap/install-linux.sh
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - installer works end-to-end on Ubuntu
 
