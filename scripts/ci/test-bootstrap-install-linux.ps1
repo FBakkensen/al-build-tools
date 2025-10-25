@@ -119,13 +119,13 @@ $script:ProvisionLogFile = 'provision.log'
 $script:NetworkTimeout = 30  # seconds for GitHub API calls
 
 $script:ErrorCategoryMap = @{
-    'success'           = 0
-    'general-error'     = 1
-    'guard'             = 2
-    'analysis'          = 3
-    'contract'          = 4
-    'integration'       = 5
-    'missing-tool'      = 6
+    'success'       = 0
+    'general-error' = 1
+    'guard'         = 2
+    'analysis'      = 3
+    'contract'      = 4
+    'integration'   = 5
+    'missing-tool'  = 6
 }
 
 # Timed sections tracking
@@ -320,7 +320,7 @@ function Get-ContainerSetupScript {
     # Scenario 1: no-git - Clean Ubuntu environment, no git installed
     # Scenario 2: git-with-repo - Git pre-installed with existing repository
     # Scenario 3: git-no-repo - Git pre-installed but no repository
-    
+
     # Bash script to prepare Ubuntu container for installer test
     $setupScript = @"
 #!/bin/bash
@@ -514,7 +514,7 @@ function Invoke-ContainerProvision {
 
         # Execute setup script in container
         Write-ProvisionMessage "[albt] Executing container setup..." -ProvisionLogLines ([ref]$provisionLogLines)
-        $setupOutput = & docker exec $containerName bash /tmp/setup.sh 2>&1 | ForEach-Object { 
+        $setupOutput = & docker exec $containerName bash /tmp/setup.sh 2>&1 | ForEach-Object {
             $line = $_.ToString()
             Write-ProvisionMessage "  $line" -ProvisionLogLines ([ref]$provisionLogLines)
             $line
@@ -561,7 +561,7 @@ function Invoke-InstallerInContainer {
         # Copy local bootstrap directory to container
         Write-Verbose "[albt] Copying local bootstrap scripts to container..."
         $bootstrapPath = Join-Path $PSScriptRoot "../../bootstrap"
-        
+
         if (-not (Test-Path $bootstrapPath)) {
             throw "Bootstrap directory not found: $bootstrapPath"
         }
@@ -582,7 +582,7 @@ export ALBT_AUTO_INSTALL=1 && \
 export ALBT_RELEASE='$ReleaseTag' && \
 bash /tmp/bootstrap/install-linux.sh 2>&1 | tee /workspace/install.transcript.txt
 "@
-        
+
         $installOutput = & docker exec $ContainerName bash -c $installCmd 2>&1 | ForEach-Object {
             Write-Host $_
             $_
@@ -622,7 +622,7 @@ function Get-ContainerArtifacts {
         # Copy transcript file
         $transcriptDest = Join-Path $script:OutputDir $script:TranscriptFile
         $copyOutput = & docker cp "$($ContainerName):/workspace/install.transcript.txt" $transcriptDest 2>&1
-        
+
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "Failed to copy transcript file: $copyOutput"
             return $null
@@ -664,7 +664,7 @@ function Get-DiagnosticMarkers {
 
     # Pattern: [install] <type> key="value" key2="value2"
     $lines = $TranscriptContent -split "`n"
-    
+
     foreach ($line in $lines) {
         if ($line -match '^\[install\]\s+(\w+)\s+(.+)$') {
             $markerType = $matches[1]
@@ -702,7 +702,7 @@ function Get-PrerequisiteStatus {
 
     foreach ($toolName in $toolNames) {
         $toolMarkers = $PrerequisiteMarkers | Where-Object { $_.tool -eq $toolName }
-        
+
         if ($toolMarkers) {
             $latestMarker = $toolMarkers | Select-Object -Last 1
             $tools += @{
@@ -724,10 +724,10 @@ function Get-PrerequisiteStatus {
     $installationRequired = (@($tools | Where-Object { $_.status -eq 'installed' })).Count -gt 0
 
     return @{
-        tools                 = $tools
-        allPresent            = $allPresent
-        anyFailed             = $anyFailed
-        installationRequired  = $installationRequired
+        tools                = $tools
+        allPresent           = $allPresent
+        anyFailed            = $anyFailed
+        installationRequired = $installationRequired
     }
 }
 
@@ -750,15 +750,15 @@ function Get-ExecutionPhases {
                 name   = $phaseName
                 status = 'completed'
             }
-            
+
             # Add optional fields if they exist
             if ($startMarker.ContainsKey('timestamp')) { $phaseObj['startTime'] = $startMarker['timestamp'] }
             if ($endMarker.ContainsKey('timestamp')) { $phaseObj['endTime'] = $endMarker['timestamp'] }
-            if ($endMarker.ContainsKey('duration')) { 
+            if ($endMarker.ContainsKey('duration')) {
                 $durationValue = $endMarker['duration']
                 $phaseObj['duration'] = [int]($durationValue -replace 's$', '')
             }
-            
+
             $phases += $phaseObj
         }
         elseif ($startMarker) {
@@ -843,12 +843,12 @@ function Get-InstallationSummary {
 
     $summary = @{
         metadata      = @{
-            testHarness   = 'test-bootstrap-install-linux.ps1'
-            executionTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+            testHarness    = 'test-bootstrap-install-linux.ps1'
+            executionTime  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
             containerImage = $ContainerImage
-            releaseTag    = $ReleaseTag
-            platform      = 'Linux'
-            imageDigest   = $ImageDigest
+            releaseTag     = $ReleaseTag
+            platform       = 'Linux'
+            imageDigest    = $ImageDigest
         }
         prerequisites = $Prerequisites
         phases        = $Phases
@@ -881,10 +881,10 @@ function Test-SummarySchema {
     try {
         # Basic validation - check required fields exist
         $summary = Get-Content -Path $SummaryPath -Raw | ConvertFrom-Json
-        
+
         $requiredFields = @('metadata', 'prerequisites', 'phases', 'gitState', 'exitCode', 'exitCategory', 'success')
         $missingFields = $requiredFields | Where-Object { -not $summary.PSObject.Properties[$_] }
-        
+
         if ($missingFields) {
             Write-Warning "Missing required fields: $($missingFields -join ', ')"
             return $false
@@ -907,7 +907,7 @@ function Save-ProvisionLog {
     )
 
     $provisionLogPath = Join-Path $script:OutputDir $script:ProvisionLogFile
-    
+
     try {
         $ProvisionLogLines | Out-File -FilePath $provisionLogPath -Encoding UTF8
         Write-Verbose "[albt] Provision log saved to: $provisionLogPath"
@@ -925,7 +925,7 @@ function Invoke-ContainerCleanup {
     )
 
     $keepContainer = $env:ALBT_TEST_KEEP_CONTAINER -eq '1'
-    
+
     if ($keepContainer) {
         Write-Host "Container preserved for debugging: $ContainerName" -ForegroundColor Yellow
         Write-Host "To remove manually: docker rm -f $ContainerName" -ForegroundColor Yellow
@@ -968,7 +968,7 @@ function Main {
     Invoke-TimedPhaseStart 'release-resolution'
     $releaseInfo = Resolve-ReleaseTag
     Invoke-TimedPhaseStop 'release-resolution'
-    
+
     if (-not $releaseInfo) {
         Write-Error 'Failed to resolve release tag'
         exit 1
@@ -980,14 +980,14 @@ function Main {
 
     # Resolve container image
     $containerImage = Resolve-ContainerImage
-    
+
     # T045: Determine test scenario from environment
     $testScenario = $env:ALBT_TEST_SCENARIO
     if ([string]::IsNullOrWhiteSpace($testScenario)) {
         $testScenario = 'fresh-install'
     }
     Write-Verbose "[albt] Test scenario: $testScenario"
-    
+
     # Create output directory
     if (-not (Test-Path $script:OutputDir)) {
         New-Item -ItemType Directory -Path $script:OutputDir -Force | Out-Null
@@ -1026,7 +1026,7 @@ function Main {
 
         # Extract artifacts
         $artifacts = Get-ContainerArtifacts -ContainerName $containerName
-        
+
         if (-not $artifacts) {
             Write-Warning "Failed to extract transcript from container"
             # Save provision log for debugging
@@ -1099,7 +1099,7 @@ function Main {
     }
     catch {
         Write-Error "Test harness failed: $_"
-        
+
         # Save provision log on failure
         if ($provisionLog) {
             Save-ProvisionLog -ProvisionLogLines $provisionLog
