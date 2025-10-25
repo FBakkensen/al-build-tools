@@ -377,22 +377,22 @@ read_user_input() {
     local example="$3"
     local max_attempts=2
     local attempt=1
-    
+
     while [[ ${attempt} -le ${max_attempts} ]]; do
         echo -n "${prompt}"
         local response
         read -r response
-        
+
         # Normalize to uppercase for comparison
         local normalized
         normalized=$(echo "${response}" | tr '[:lower:]' '[:upper:]')
-        
+
         # Check if response is valid
         if [[ " ${valid_inputs} " == *" ${normalized} "* ]]; then
             echo "${normalized}"
             return 0
         fi
-        
+
         # Invalid input handling
         if [[ ${attempt} -lt ${max_attempts} ]]; then
             write_marker "input" "status=\"invalid\"" "example=\"${example}\""
@@ -404,10 +404,10 @@ read_user_input() {
             echo "ERROR: Invalid input '${response}' after ${max_attempts} attempts. Expected: ${example}" >&2
             return 1
         fi
-        
+
         attempt=$((attempt + 1))
     done
-    
+
     return 1
 }
 
@@ -430,7 +430,7 @@ prompt_for_installation() {
     echo "Tool: ${tool_name}"
     echo "Purpose: ${tool_purpose}"
     echo ""
-    
+
     # Use read_user_input with validation
     local response
     if response=$(read_user_input "Install ${tool_name}? [Y/n]: " "Y YES N NO " "Y/n"); then
@@ -529,14 +529,14 @@ orchestrate_prerequisites() {
     if [[ "${AUTO_INSTALL}" != "1" ]]; then
         echo "Missing prerequisites detected. Interactive installation mode."
         echo ""
-        
+
         # Interactive mode - prompt for each missing tool (T028, T030)
         local tools_to_install=()
-        
+
         for tool in "${missing_tools[@]}"; do
             local tool_name=""
             local tool_purpose=""
-            
+
             # Define tool descriptions (T030)
             case "${tool}" in
                 git)
@@ -556,7 +556,7 @@ orchestrate_prerequisites() {
                     tool_purpose="PowerShell build automation module required for AL Build Tools task orchestration (Invoke-Build command)"
                     ;;
             esac
-            
+
             # Prompt user for approval (T028)
             if prompt_for_installation "${tool_name}" "${tool_purpose}"; then
                 write_diagnostic "info" "User approved installation of ${tool_name}"
@@ -567,7 +567,7 @@ orchestrate_prerequisites() {
                 echo "Installation declined for ${tool_name}."
                 write_diagnostic "warning" "User declined installation of ${tool_name}"
                 write_prerequisite "${tool}" "declined" "" ""
-                
+
                 # Exit gracefully with clear message (T029)
                 echo ""
                 echo "====================================="
@@ -602,24 +602,24 @@ orchestrate_prerequisites() {
                 echo ""
                 echo "Then re-run the installer."
                 echo ""
-                
+
                 exit "${EXIT_MISSING_TOOL}"
             fi
         done
-        
+
         # Update missing_tools to only include approved tools
         missing_tools=("${tools_to_install[@]}")
-        
+
         # If user declined all tools, exit
         if [[ ${#missing_tools[@]} -eq 0 ]]; then
             write_diagnostic "error" "No prerequisites approved for installation"
             exit "${EXIT_MISSING_TOOL}"
         fi
-        
+
         echo ""
         echo "Proceeding with installation of approved tools..."
         echo ""
-        
+
         # Recalculate if Microsoft repo is needed
         needs_microsoft_repo=false
         for tool in "${missing_tools[@]}"; do
