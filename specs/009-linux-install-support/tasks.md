@@ -18,9 +18,9 @@
 
 **Purpose**: Prepare development environment and validate planning artifacts
 
-- [ ] T001 Verify constitution compliance per plan.md post-design re-check
-- [ ] T002 [P] Create development branch 009-linux-install-support
-- [ ] T003 [P] Validate contract schemas in specs/009-linux-install-support/contracts/
+- [x] T001 Verify constitution compliance per plan.md post-design re-check
+- [x] T002 [P] Create development branch 009-linux-install-support
+- [x] T003 [P] Validate contract schemas in specs/009-linux-install-support/contracts/
 
 ---
 
@@ -30,12 +30,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Create bash utility functions for diagnostic markers in bootstrap/install-linux.sh (write_marker, write_step, write_prerequisite functions matching Windows format `[install] <type> key="value"`)
-- [ ] T005 [P] Create bash exit code constants in bootstrap/install-linux.sh (EXIT_SUCCESS=0, EXIT_GENERAL=1, EXIT_GUARD=2, EXIT_MISSING_TOOL=6)
-- [ ] T006 [P] Implement parameter parsing for Url, Ref, DestinationPath, Source with defaults in bootstrap/install-linux.sh
-- [ ] T007 [P] Implement git repository guard checks (is_git_repo, is_working_tree_clean) in bootstrap/install-linux.sh
-- [ ] T008 Implement unknown parameter guard check with usage message in bootstrap/install-linux.sh
-- [ ] T009 Validate bash version 4.0+ at script start and exit with diagnostic message if incompatible in bootstrap/install-linux.sh
+- [X] T004 Create bash utility functions for diagnostic markers in bootstrap/install-linux.sh (write_marker, write_step, write_prerequisite functions matching Windows format `[install] <type> key="value"`)
+- [X] T005 [P] Create bash exit code constants in bootstrap/install-linux.sh (EXIT_SUCCESS=0, EXIT_GENERAL=1, EXIT_GUARD=2, EXIT_MISSING_TOOL=6)
+- [X] T006 [P] Implement parameter parsing for Url, Ref, DestinationPath, Source with defaults in bootstrap/install-linux.sh
+- [X] T007 [P] Implement git repository guard checks (is_git_repo, is_working_tree_clean) in bootstrap/install-linux.sh
+- [X] T008 Implement unknown parameter guard check with usage message in bootstrap/install-linux.sh
+- [X] T009 Validate bash version 4.0+ at script start and exit with diagnostic message if incompatible in bootstrap/install-linux.sh
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
